@@ -35,7 +35,7 @@ gen: gen-frb gen-dart gen-fmt
 
 gen-fmt:
     cargo fmt --all
-    dart format .
+    git ls-files -z '*.dart' | xargs -0 dart format
 
 gen-frb:
     flutter_rust_bridge_codegen generate
@@ -53,11 +53,11 @@ gen-dart:
 verify: doctor-selftest fmt-check lint test check-drift check-deps docs-check
 
 fmt-check:
-    dart format --output=none --set-exit-if-changed .
+    git ls-files -z '*.dart' | xargs -0 dart format --output=none --set-exit-if-changed
     cargo fmt --all -- --check
 
 fix:
-    dart format .
+    git ls-files -z '*.dart' | xargs -0 dart format
     cargo fmt --all
     dart fix --apply
 
@@ -85,9 +85,10 @@ goldens:
 goldens-update:
     @tools/goldens.sh update               # [T-001]
 
-# Regenerating must produce no diff.
+# Regenerating must produce no diff. Scoped to the paths `gen` writes: a bare `git diff` here
+# reports every uncommitted edit as "codegen drift", which is a lie with a confusing fix attached.
 check-drift: gen
-    git diff --exit-code || (echo "Generated code is out of date. Run: just gen" && exit 1)
+    @git diff --exit-code -- '**/frb_generated*.dart' '**/frb_generated.rs'         'packages/*/lib/src/rust/**'         || (echo "Generated code is out of date. Run: just gen" && exit 1)
 
 # Enforces the one-way dependency rule in AGENTS.md §5.
 check-deps:

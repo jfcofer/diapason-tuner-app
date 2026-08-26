@@ -158,7 +158,9 @@ frb_codegen=""
 if command -v flutter_rust_bridge_codegen >/dev/null 2>&1; then
     frb_codegen="$(flutter_rust_bridge_codegen --version 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 fi
-frb_rust="$(grep -oP '^\s*flutter_rust_bridge\s*=\s*(\{[^}]*version\s*=\s*)?"\K[0-9]+\.[0-9]+\.[0-9]+' Cargo.toml 2>/dev/null | head -1)"
+# Tolerate the caret/tilde/equals prefixes Cargo allows: "=2.13.0", "^2.13.0", "2.13.0", and
+# the { version = "..." } table form.
+frb_rust="$(grep -oP '^\s*flutter_rust_bridge\s*=\s*(\{[^}]*version\s*=\s*)?"[=^~]?\K[0-9]+\.[0-9]+\.[0-9]+' Cargo.toml 2>/dev/null | head -1)"
 frb_dart="$(grep -oP '^\s*flutter_rust_bridge:\s*\^?\K[0-9]+\.[0-9]+\.[0-9]+' packages/audio_engine/pubspec.yaml 2>/dev/null | head -1)"
 
 if [[ -z "$frb_codegen" ]]; then

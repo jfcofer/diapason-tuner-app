@@ -1,0 +1,43 @@
+# Pre-commit hooks. Installed by `just setup`; run `lefthook install` if commits are not being
+# checked. Never commit with hooks disabled (docs/DEVELOPMENT.md §5).
+#
+# These are fast checks only. `just verify` is the gate; this is the thing that stops an obviously
+# broken commit from being written in the first place.
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: dart-format
+      glob: "*.dart"
+      # The generated FRB tree is formatted by `just gen`, not here.
+      exclude:
+        - "**/lib/src/rust/**"
+        - "**/*.g.dart"
+        - "**/*.freezed.dart"
+      run: dart format {staged_files} && git add {staged_files}
+
+    - name: rust-format
+      glob: "*.rs"
+      exclude:
+        - "**/frb_generated.rs"
+      run: rustfmt --edition 2024 {staged_files} && git add {staged_files}
+
+    - name: secrets
+      # A safety net, not permission to be careless. .gitignore is the first line of defence.
+      run: |
+        if git diff --cached --name-only --diff-filter=A |
+             grep -EI '\.(keystore|jks|p8|p12|pem|mobileprovision|cer)$|(^|/)\.env($|\.)'; then
+          echo "✗ refusing to commit a secret-shaped file. See AGENTS.md §8."
+          exit 1
+        fi
+
+commit-msg:
+  jobs:
+    - name: conventional-commit
+      # {1} is lefthook's placeholder for the commit-message file. A bare "$1" is empty here.
+      run: |
+        head -1 {1} | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9_-]+\))?!?: .+' || {
+          echo "✗ Conventional Commits, imperative mood (AGENTS.md §3.4)."
+          echo "  e.g. feat(tuner): add strobe ring painter"
+          exit 1
+        }

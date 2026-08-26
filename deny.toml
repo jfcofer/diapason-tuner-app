@@ -1,0 +1,55 @@
+# cargo-deny: licences, advisories, bans. Run by `just verify` and by CI.
+#
+# Licensing policy lives in docs/adr/0009. Until that ADR moves from Proposed to Accepted, this
+# file encodes the conservative reading: permissive licences only, and nothing copyleft reaching
+# the shipped binary.
+
+[graph]
+targets = [
+    "aarch64-linux-android",
+    "armv7-linux-androideabi",
+    "i686-linux-android",
+    "x86_64-linux-android",
+    "aarch64-apple-ios",
+    "aarch64-apple-ios-sim",
+]
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+# Permissive only. Anything not on this list is a deliberate decision, not a default.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.93
+# Our own crates are unpublished and carry no licence key while adr/0009 is Proposed.
+private = { ignore = true }
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Path dependencies inside this workspace resolve to "*", which is not the supply-chain risk
+# `wildcards` exists to catch. Wildcards on *registry* crates are still denied.
+allow-wildcard-paths = true
+# The audio callback thread may not allocate or block (AGENTS.md §6). These crates make it far too
+# easy to do both by accident, so importing one is a conversation, not a convenience.
+deny = [
+    { name = "openssl" },
+    { name = "openssl-sys" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
