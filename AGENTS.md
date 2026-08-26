@@ -104,11 +104,13 @@ engine reports. Details and the drift-free scheduler design → `docs/AUDIO_ENGI
 
 ## 7. Conventions
 
-**Dart** — Flutter 3.44 / Dart 3.12 pinned via `.fvmrc`. Riverpod 3 (code-gen only, no manual
+**Dart** — Flutter and Dart pinned in `tools/versions.env` (`adr/0011`), which `just doctor`
+enforces; `.fvmrc` must agree with it. Riverpod 3 (code-gen only, no manual
 `Provider` globals). `go_router` typed routes. Feature-first packages, `lib/src/**` private with a
 single public barrel. Immutable state classes with `copyWith`. No `setState` in feature code.
-Widgets under ~150 lines; extract painters and sub-widgets. Lints: `analysis_options.yaml` at root,
-`custom_lint` enabled. Public API of `core_*` packages needs doc comments.
+Widgets under ~150 lines; extract painters and sub-widgets. Lints: `analysis_options.yaml` at root;
+`riverpod_lint` runs as a first-party analyzer plugin, so `dart analyze` is the only lint pass
+(`adr/0014`). Public API of `core_*` packages needs doc comments.
 
 **Rust** — edition 2024, MSRV pinned in `rust-toolchain.toml`. `#![forbid(unsafe_code)]` everywhere
 except `ffi` and `audio_io`, where every `unsafe` block carries a `// SAFETY:` comment.

@@ -1,0 +1,17 @@
+name: core_ui
+description: Design system - tokens, theme, primitives, painters, motion constants.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.1
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

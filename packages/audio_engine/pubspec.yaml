@@ -1,0 +1,29 @@
+name: audio_engine
+description: The Dart face of the Rust audio engine - generated FFI bindings plus an ergonomic facade.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.1
+  flutter: ">=3.47.0"
+
+dependencies:
+  core_domain: ^0.1.0
+  flutter:
+    sdk: flutter
+  # Pinned exactly. This must equal FRB_VERSION in tools/versions.env and the version in the root
+  # Cargo.toml; tools/doctor.sh enforces all three agreeing.
+  flutter_rust_bridge: 2.13.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        ffiPlugin: true
+      ios:
+        ffiPlugin: true

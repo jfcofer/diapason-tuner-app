@@ -1,0 +1,7 @@
+# flutter_rust_bridge codegen configuration.
+#
+# Lives at the repo root (docs/REPO_LAYOUT.md) so `just gen` works from anywhere in the tree.
+# The crate itself sits inside the plugin package because that is where cargokit builds it.
+rust_input: crate::api
+rust_root: packages/audio_engine/rust/
+dart_output: packages/audio_engine/lib/src/rust

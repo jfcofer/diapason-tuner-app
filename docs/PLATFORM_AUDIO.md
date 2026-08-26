@@ -58,10 +58,12 @@ the moment the app is not foreground, and the UI says so.
 **2026 platform requirements (verify before every release):**
 - `targetSdk = 36` (Android 16). Google Play requires API 36 for new apps and updates from
   **31 August 2026**; extensions run to 1 November 2026. `minSdk = 26`.
-- **16 KB memory page support is mandatory** for apps with native libraries on recent devices. Build
-  with NDK r27+ and ensure the linker flag `-Wl,-z,max-page-size=16384` reaches every `.so`,
-  including the Rust output. Verify in CI by inspecting alignment of the shipped `libdiapason.so` —
-  a silent regression here is a crash on affected devices, not a warning.
+- **16 KB memory page support is mandatory** for apps with native libraries on recent devices. We
+  pin **NDK r28+** (`tools/versions.env`), which aligns `arm64-v8a` and `x86_64` to 16 KB *by
+  default* — the old `-Wl,-z,max-page-size=16384` flag is only load-bearing on r27 and below.
+  Verified empirically under both FRB backends during `T-001a` (`LOAD align 0x4000`). Still inspect
+  the shipped `.so` in CI rather than trusting the NDK version: a silent regression here is a crash
+  on affected devices, not a warning.
 - Edge-to-edge is enforced; handle insets explicitly.
 - Predictive back must be supported and tested.
 - 16 KB, edge-to-edge and target API checks live in `just check-android-release`.

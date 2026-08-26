@@ -28,14 +28,24 @@ setup: doctor
 
 # ── Code generation ───────────────────────────────────────────────────────────
 
-gen: gen-frb gen-dart
+# Formatting is part of generation, deliberately. FRB and rustfmt disagree about import ordering
+# in frb_generated.rs, and that file is checked in (docs/REPO_LAYOUT.md). Without the format step
+# `just check-drift` would oscillate forever: generate, reformat, diff, repeat.
+gen: gen-frb gen-dart gen-fmt
+
+gen-fmt:
+    cargo fmt --all
+    dart format .
 
 gen-frb:
     flutter_rust_bridge_codegen generate
 
 gen-dart:
-    dart run build_runner build --delete-conflicting-outputs
-    flutter gen-l10n
+    # build_runner must run inside each package that has a generator; running it at the workspace
+    # root writes nothing. (--delete-conflicting-outputs was removed in current build_runner.)
+    melos exec --depends-on=build_runner -- dart run build_runner build
+    # flutter gen-l10n     # [T-0xx] re-enable when content strings land; the locale-aware app
+    #                      # *label* lives in native strings.xml / InfoPlist.strings, not here.
 
 # ── The gate ──────────────────────────────────────────────────────────────────
 
@@ -52,14 +62,18 @@ fix:
     dart fix --apply
 
 lint:
+    # riverpod_lint is a first-party analyzer plugin (docs/adr/0014), so `analyze` reports it.
+    # There is no separate custom_lint pass any more.
     flutter analyze --fatal-infos
-    dart run custom_lint
     cargo clippy --workspace --all-targets -- -D warnings
 
 test: test-rust test-dart
 
 test-rust filter="":
     cargo nextest run --workspace {{filter}}
+    # nextest cannot run doctests, and AGENTS.md §7 counts them as tests. Skipped when filtering,
+    # because a nextest filter expression is not a doctest filter.
+    {{ if filter == "" { "cargo test --workspace --doc" } else { "true" } }}
 
 test-dart package="":
     @tools/test-dart.sh "{{package}}"      # [T-001] melos-scoped, or all packages if empty

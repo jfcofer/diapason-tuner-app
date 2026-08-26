@@ -1,0 +1,14 @@
+[package]
+name = "diapason_engine"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+diapason_dsp.workspace = true
+diapason_audio_io.workspace = true
+
+[lints]
+workspace = true

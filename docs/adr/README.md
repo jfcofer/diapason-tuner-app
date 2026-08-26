@@ -30,3 +30,5 @@ agent from "improving" a deliberate choice.
 | [0010](0010-no-telemetry.md) | No telemetry, no network calls | Accepted |
 | [0011](0011-toolchain-pins.md) | Re-pin the toolchain, make pins machine-checkable | Accepted |
 | [0012](0012-frb-build-backend.md) | Keep cargokit; native assets not yet viable | Accepted |
+| [0013](0013-name-and-bundle-id.md) | Locale-aware name, ASCII identifiers, `dev.jfcofer.diapason` | Accepted |
+| [0014](0014-drop-custom-lint.md) | Drop custom_lint for first-party analyzer plugins | Accepted |

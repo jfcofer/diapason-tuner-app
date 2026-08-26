@@ -1,0 +1,32 @@
+name: diapason
+description: Instrument tuner and metronome. The app shell, and nothing else.
+version: 0.1.0+1
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.1
+  flutter: ">=3.47.0"
+
+dependencies:
+  audio_engine: ^0.1.0
+  core_domain: ^0.1.0
+  core_platform: ^0.1.0
+  core_ui: ^0.1.0
+  feature_metronome: ^0.1.0
+  feature_settings: ^0.1.0
+  feature_tuner: ^0.1.0
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_riverpod: ^3.0.0
+  go_router: ^18.0.0
+  intl: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,24 @@
+[package]
+name = "diapason_ffi"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "diapason_ffi"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+flutter_rust_bridge.workspace = true
+diapason_engine.workspace = true
+
+# NOT `[lints] workspace = true`: the workspace forbids unsafe_code, and this crate is one of the
+# two places AGENTS.md §7 permits it, because flutter_rust_bridge's generated bindings require it.
+# Every hand-written unsafe block here still carries a // SAFETY: comment.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

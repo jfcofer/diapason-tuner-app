@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher label. Identifiers stay ASCII "diapason" everywhere; only what a human reads
+         carries the accent. See docs/adr/0013. -->
+    <string name="app_name">Diapason (Stg)</string>
+</resources>

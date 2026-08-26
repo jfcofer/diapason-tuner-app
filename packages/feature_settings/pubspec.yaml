@@ -1,0 +1,20 @@
+name: feature_settings
+description: The settings screen, its view models and settings-only widgets.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.1
+  flutter: ">=3.47.0"
+
+dependencies:
+  core_domain: ^0.1.0
+  core_ui: ^0.1.0
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

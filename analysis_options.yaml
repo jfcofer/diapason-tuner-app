@@ -3,6 +3,16 @@
 
 include: package:very_good_analysis/analysis_options.yaml
 
+# `dart format` reads this, so the formatter and the linter cannot disagree about line length.
+# 100 is what .editorconfig has always said for this repo.
+formatter:
+  page_width: 100
+
+# First-party analyzer plugins (docs/adr/0014). Top-level key, not `analyzer.plugins` - that was
+# the custom_lint mechanism, which this repo no longer uses. Findings surface in `dart analyze`.
+plugins:
+  riverpod_lint: ^3.1.8
+
 analyzer:
   language:
     strict-casts: true
@@ -11,13 +21,23 @@ analyzer:
   errors:
     invalid_annotation_target: ignore   # freezed/json_serializable false positive
     todo: warning
+    # very_good_analysis enforces 80; .editorconfig says 100 and the formatter above agrees.
+    # One of them had to give, and .editorconfig is the older contract.
+    lines_longer_than_80_chars: ignore
   exclude:
     - "**/*.g.dart"
     - "**/*.freezed.dart"
-    - "**/frb_generated*.dart"
+    # flutter_rust_bridge generates this whole tree, not just frb_generated*.dart.
+    # Regenerate it with `just gen`; never hand-edit it (docs/REPO_LAYOUT.md).
+    - "**/lib/src/rust/**"
     - "**/l10n/app_localizations*.dart"
-  plugins:
-    - custom_lint
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
 
 linter:
   rules:

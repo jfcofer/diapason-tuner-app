@@ -1,0 +1,17 @@
+name: core_platform
+description: Interfaces and implementations for permissions, haptics, wakelock, prefs, lifecycle.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.1
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

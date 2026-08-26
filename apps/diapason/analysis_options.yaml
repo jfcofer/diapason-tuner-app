@@ -1,0 +1,2 @@
+# Extends the root configuration. Packages may add rules; they may never relax them.
+include: ../../analysis_options.yaml

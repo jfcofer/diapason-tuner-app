@@ -1,0 +1,37 @@
+# Cargo workspace root.
+#
+# diapason_ffi lives inside packages/audio_engine/rust because that is where cargokit expects the
+# crate it builds (docs/REPO_LAYOUT.md). It is still a workspace member, and the interesting code
+# stays out of the Flutter tree in rust/crates/ where `cargo test` reaches it directly.
+
+[workspace]
+members = ["rust/crates/*", "packages/audio_engine/rust"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.98"
+license = "UNLICENSED"
+publish = false
+
+[workspace.dependencies]
+# Pinned exactly: the codegen binary, this crate and the Dart package must all agree.
+# tools/versions.env is the source of truth; tools/doctor.sh enforces the three-way match.
+flutter_rust_bridge = "=2.13.0"
+thiserror = "2"
+
+diapason_dsp = { path = "rust/crates/dsp" }
+diapason_engine = { path = "rust/crates/engine" }
+diapason_audio_io = { path = "rust/crates/audio_io" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+# Release builds only: keeps `just verify` honest without slowing the inner loop.
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"

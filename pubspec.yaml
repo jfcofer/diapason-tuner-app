@@ -1,0 +1,34 @@
+# Pub workspace root. This is NOT a package - it declares the workspace and nothing else.
+#
+# One resolution, one lockfile, one analyzer context across every member (docs/adr/0006), which is
+# what makes cross-package navigation instant and keeps analyzer memory sane when an agent is
+# reading the repo. Melos 7+ sits on top of this for orchestration and has no melos.yaml of its own.
+
+name: diapason_workspace
+description: Instrument tuner and metronome. Workspace root.
+publish_to: none
+
+environment:
+  sdk: ^3.13.1
+
+workspace:
+  - apps/diapason
+  - packages/audio_engine
+  - packages/core_domain
+  - packages/core_platform
+  - packages/core_ui
+  - packages/feature_metronome
+  - packages/feature_settings
+  - packages/feature_tuner
+
+# Melos 8 reads its configuration from here; there is no melos.yaml any more (docs/adr/0006).
+melos:
+  name: diapason
+
+dev_dependencies:
+  melos: ^8.0.0
+  # A first-party analyzer plugin, NOT a custom_lint plugin - see docs/adr/0014. Enabled by the
+  # top-level `plugins:` key in analysis_options.yaml and reported by `dart analyze`.
+  riverpod_lint: ^3.1.8
+  # Provides the ruleset analysis_options.yaml includes.
+  very_good_analysis: ^10.3.0
