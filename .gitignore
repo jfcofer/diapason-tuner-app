@@ -1,0 +1,64 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+*.iml
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec_overrides.yaml
+**/l10n/app_localizations*.dart
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+coverage/
+
+# Rust
+target/
+**/*.rs.bk
+
+# Native build outputs
+*.so
+*.dylib
+*.a
+*.framework/
+!**/cargokit/**
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/ephemeral/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+
+# Android
+android/.gradle/
+android/local.properties
+android/key.properties
+.cxx/
+
+# Secrets — never commit. tools/ and lefthook also scan for these.
+*.keystore
+*.jks
+*.p8
+*.p12
+*.pem
+*.mobileprovision
+*.cer
+.env
+.env.*
+!.env.example
+fastlane/report.xml
+fastlane/Preview.html
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Agent scratch
+.claude/local/
+CLAUDE.local.md

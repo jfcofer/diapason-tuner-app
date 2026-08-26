@@ -1,0 +1,110 @@
+# Repository layout
+
+This document owns **where things live**. If you are about to create a file and are not sure where
+it goes, the answer is here. If it is not, add it here in the same commit.
+
+```
+diapason/
+├── AGENTS.md                    Canonical agent contract
+├── CLAUDE.md                    @AGENTS.md + Claude Code mechanics
+├── README.md
+├── justfile                     The only command surface (humans, agents, CI)
+├── pubspec.yaml                 Pub workspace root + Melos config. Not a package
+├── Cargo.toml                   Cargo workspace root
+├── rust-toolchain.toml          Pinned Rust toolchain + components + targets
+├── .fvmrc                       Pinned Flutter version
+├── analysis_options.yaml        Root Dart lints; packages extend, never relax
+├── flutter_rust_bridge.yaml     Codegen config
+├── lefthook.yml                 Pre-commit: format, quick lint
+├── deny.toml                    cargo-deny: licences, advisories, bans
+├── .editorconfig  .gitignore  .gitattributes
+│
+├── apps/
+│   └── diapason/                The shell, and nothing else
+│       ├── lib/
+│       │   ├── main_dev.dart  main_stg.dart  main_prod.dart   Flavour entrypoints
+│       │   ├── bootstrap.dart      Error zone, engine init, provider overrides
+│       │   ├── app.dart            MaterialApp, theme wiring, router
+│       │   └── router.dart
+│       ├── android/  ios/          Native projects, manifests, privacy manifest
+│       ├── integration_test/       Lifecycle + device tests (patrol)
+│       └── pubspec.yaml
+│
+├── packages/
+│   ├── audio_engine/            Flutter FFI plugin: the Dart face of the Rust engine
+│   │   ├── lib/
+│   │   │   ├── audio_engine.dart          Public barrel
+│   │   │   └── src/
+│   │   │       ├── frb_generated*.dart    GENERATED — regenerate, never edit
+│   │   │       ├── engine_facade.dart     Hand-written ergonomic wrapper
+│   │   │       └── fake_engine.dart       In-memory fake used by every UI test
+│   │   ├── rust/                Cargo crate `diapason_ffi` (cargokit builds it)
+│   │   ├── cargokit/            Vendored build integration
+│   │   └── android/  ios/       Plugin platform glue + AVAudioSession/Oboe setup
+│   │
+│   ├── core_domain/             Pure Dart. No Flutter import. Notes, tunings,
+│   │                            temperaments, cents math, settings model
+│   ├── core_ui/                 Design system: tokens, theme, primitives, painters,
+│   │                            motion constants, widgetbook. No Riverpod, no plugins
+│   ├── core_platform/           Interfaces + impls for permissions, haptics, wakelock,
+│   │                            prefs, lifecycle. Every impl has a fake
+│   ├── feature_tuner/           Screen, view models, tuner-only widgets
+│   ├── feature_metronome/
+│   └── feature_settings/
+│
+├── rust/
+│   ├── crates/
+│   │   ├── dsp/                 Pure computation. No I/O, no alloc in hot path.
+│   │   │                        Depends on nothing above it. Benches live here
+│   │   ├── engine/              RT graph, command queue, snapshots, scheduler,
+│   │   │                        tuner pipeline, engine state machine
+│   │   ├── audio_io/            AudioBackend trait + oboe/coreaudio/cpal/offline
+│   │   └── xtask/               cargo xtask: fixtures, bench-compare, size-report
+│   └── (diapason_ffi lives in packages/audio_engine/rust — see below)
+│
+├── fixtures/                    Test vectors shared by Rust and Dart
+│   ├── note_table.json          The shared truth for note/cents math
+│   └── audio/                   Small FLACs: sines, plucks, real instruments
+│
+├── docs/                        See docs/README.md
+├── tools/                       Scripts called by the justfile. Bash, POSIX-ish
+├── .claude/                     Claude Code: settings, commands, subagents
+└── .github/workflows/           CI
+```
+
+## Why `diapason_ffi` sits under `packages/audio_engine/rust`
+
+cargokit builds the Rust crate that lives inside the Flutter plugin package, and wires it into the
+Gradle and Xcode builds automatically. Fighting that convention costs a week of build-system
+debugging for no gain. The crate is still a member of the root Cargo workspace, and depends on
+`dsp`, `engine` and `audio_io` by relative path — so the interesting code stays outside the Flutter
+tree and remains buildable and testable with plain `cargo test`.
+
+Root `Cargo.toml`:
+
+```toml
+[workspace]
+members = ["rust/crates/*", "packages/audio_engine/rust"]
+resolver = "3"
+```
+
+## Package rules
+
+- A new `feature_*` package needs: `lib/<name>.dart` barrel, `lib/src/**` for everything else, its
+  own tests, and an entry in the root `pubspec.yaml` workspace list.
+- Anything two features need moves **down** into `core_*`. It never moves sideways.
+- A package that would depend on `apps/diapason` is a design error — invert it.
+- Rust crates are named `diapason_*` on crates.io-style paths but referenced by path only; nothing
+  here is published.
+
+## Generated files
+
+| Path | Generated by | Checked in? |
+|---|---|---|
+| `**/frb_generated*.dart`, `frb_generated.rs` | `just gen` (FRB) | Yes — reviewable diff, no codegen in CI critical path |
+| `**/*.g.dart`, `**/*.freezed.dart` | `just gen` (build_runner) | No |
+| `**/l10n/app_localizations*.dart` | `just gen` (gen-l10n) | No |
+| `fixtures/audio/**` | `cargo xtask fixtures` | Yes — deterministic, small, and CI must not synthesise them |
+
+`just verify` fails if regenerating produces a diff. That is how "someone hand-edited a generated
+file" gets caught the same day.

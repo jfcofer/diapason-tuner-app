@@ -1,0 +1,30 @@
+# Architecture Decision Records
+
+An ADR records a decision that **closes off an alternative**, together with the reasoning and the
+cost. Code says what we do; an ADR says what we rejected and why — which is what stops the next
+agent from "improving" a deliberate choice.
+
+## Rules
+
+- One decision per file, `NNNN-kebab-title.md`, numbered sequentially and never reused.
+- Status: `Proposed` → `Accepted` → `Superseded by NNNN` (or `Rejected`).
+- **Accepted ADRs are immutable.** To change a decision, write a new ADR that supersedes it and
+  update the old one's status line only.
+- Budget: 120 lines. If it needs more, the decision is not yet clear enough to record.
+- Write one when: choosing between libraries or architectures, accepting a constraint that will be
+  expensive to reverse, or deliberately doing something that looks wrong.
+
+## Index
+
+| # | Title | Status |
+|---|---|---|
+| [0001](0001-rust-owns-audio.md) | Rust owns the entire audio path | Accepted |
+| [0002](0002-agent-context-system.md) | AGENTS.md as canonical contract, tiered memory | Accepted |
+| [0003](0003-flutter-rust-bridge.md) | flutter_rust_bridge v2 + cargokit for the FFI boundary | Accepted |
+| [0004](0004-state-management.md) | Riverpod 3 for discrete state, Listenable for continuous | Accepted |
+| [0005](0005-pitch-detection-algorithm.md) | MPM/NSDF for pitch detection | Accepted |
+| [0006](0006-monorepo-tooling.md) | Pub workspaces + Melos | Accepted |
+| [0007](0007-domain-model-duplication.md) | Duplicate note math in Rust and Dart | Accepted |
+| [0008](0008-procedural-click.md) | Synthesise metronome clicks, ship no audio assets | Accepted |
+| [0009](0009-licensing-and-third-party.md) | Licensing and dependency policy | Proposed |
+| [0010](0010-no-telemetry.md) | No telemetry, no network calls | Accepted |

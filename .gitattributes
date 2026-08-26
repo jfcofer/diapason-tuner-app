@@ -1,0 +1,11 @@
+* text=auto eol=lf
+
+# Generated but checked in — collapse in reviews, but they are still reviewable.
+**/frb_generated*.dart linguist-generated=true
+**/frb_generated*.rs   linguist-generated=true
+
+# Binary fixtures
+fixtures/audio/** binary
+*.flac binary
+*.wav binary
+*.png binary
