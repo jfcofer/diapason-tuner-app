@@ -28,3 +28,4 @@ agent from "improving" a deliberate choice.
 | [0008](0008-procedural-click.md) | Synthesise metronome clicks, ship no audio assets | Accepted |
 | [0009](0009-licensing-and-third-party.md) | Licensing and dependency policy | Proposed |
 | [0010](0010-no-telemetry.md) | No telemetry, no network calls | Accepted |
+| [0011](0011-toolchain-pins.md) | Re-pin the toolchain, make pins machine-checkable | Accepted |

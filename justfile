@@ -10,9 +10,13 @@ default:
 
 # ── Environment ───────────────────────────────────────────────────────────────
 
-# Verify every pinned version in docs/DEVELOPMENT.md §1. Run this first, always.
+# Verify every pinned version in tools/versions.env. Run this first, always.
 doctor:
-    @tools/doctor.sh                       # [T-001] must fail on FRB codegen/runtime mismatch
+    @tools/doctor.sh
+
+# Prove doctor actually fails. Runs in a temp dir; never touches the working tree.
+doctor-selftest:
+    @tools/doctor-selftest.sh
 
 # Clean clone → ready to work.
 setup: doctor
@@ -36,7 +40,7 @@ gen-dart:
 # ── The gate ──────────────────────────────────────────────────────────────────
 
 # Everything CI checks. Must be green before any work is called done.
-verify: fmt-check lint test check-drift check-deps docs-check
+verify: doctor-selftest fmt-check lint test check-drift check-deps docs-check
 
 fmt-check:
     dart format --output=none --set-exit-if-changed .
