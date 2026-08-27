@@ -1,0 +1,4 @@
+/* Nombre en el launcher y en Ajustes. Con tilde: es la palabra española. Ver docs/adr/0013. */
+"CFBundleDisplayName" = "Diapasón";
+"CFBundleName" = "Diapasón";
+"NSMicrophoneUsageDescription" = "Diapasón escucha tu instrumento para mostrar su afinación. El audio se procesa en tu dispositivo, nunca sale de él y no se graba ni se almacena.";

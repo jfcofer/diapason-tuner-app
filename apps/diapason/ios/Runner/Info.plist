@@ -16,6 +16,19 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>diapason</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>es</string>
+	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Diapason listens to your instrument to show its pitch. Audio is processed on your device and never leaves it, and nothing is recorded or stored.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<!-- The metronome must keep sounding with the screen locked. Declared here and actually
+		     used - an unused background mode is an App Store rejection. -->
+		<string>audio</string>
+	</array>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

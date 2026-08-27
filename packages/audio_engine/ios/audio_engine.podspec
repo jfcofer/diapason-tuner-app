@@ -5,13 +5,14 @@
 Pod::Spec.new do |s|
   s.name             = 'audio_engine'
   s.version          = '0.0.1'
-  s.summary          = 'A new Flutter FFI plugin project.'
+  s.summary          = 'The Dart face of the Diapason Rust audio engine.'
   s.description      = <<-DESC
-A new Flutter FFI plugin project.
+FFI bindings to the Rust audio engine, plus the AVAudioSession glue that Rust does
+not own (docs/PLATFORM_AUDIO.md §3).
                        DESC
-  s.homepage         = 'http://example.com'
+  s.homepage         = 'https://github.com/jfcofer/diapason'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'Your Company' => 'email@example.com' }
+  s.author           = { 'jfcofer' => 'jfrancisco.fernandez.ramos@gmail.com' }
   s.module_name      = 'diapason_ffi'
 
   # This will ensure the source files in Classes/ are included in the native
@@ -21,7 +22,9 @@ A new Flutter FFI plugin project.
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.platform = :ios, '11.0'
+  # Must match IPHONEOS_DEPLOYMENT_TARGET and tools/versions.env. Flutter 3.47's own
+  # minimum is iOS 15, so anything lower is a fiction that fails at link time.
+  s.platform = :ios, '15.0'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }

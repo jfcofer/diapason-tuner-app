@@ -1,8 +1,8 @@
-# CI. Every job runs a `just` recipe — nothing here is logic a developer or agent cannot reproduce
-# locally with one command. See docs/CI_RELEASE.md §1.
+# CI. Every job runs a `just` recipe - nothing here is logic a developer or an agent cannot
+# reproduce locally with one command. See docs/CI_RELEASE.md §1.
 #
-# [T-001] Runner images and action versions are pinned during the scaffold task; verify current
-# versions rather than trusting these defaults.
+# Toolchain versions come from tools/versions.env, which `just doctor` also enforces, so CI and a
+# developer's machine cannot drift apart (docs/adr/0011).
 
 name: CI
 
@@ -19,11 +19,33 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # Read the pins once and hand them to every other job, so no version is written twice.
+  versions:
+    runs-on: ubuntu-latest
+    outputs:
+      flutter: ${{ steps.read.outputs.flutter }}
+      java: ${{ steps.read.outputs.java }}
+      frb: ${{ steps.read.outputs.frb }}
+      ndk: ${{ steps.read.outputs.ndk }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: read
+        run: |
+          set -a; . tools/versions.env; set +a
+          {
+            echo "flutter=$FLUTTER_VERSION"
+            echo "java=$JAVA_MAJOR"
+            echo "frb=$FRB_VERSION"
+            echo "ndk=$ANDROID_NDK_VERSION"
+          } >> "$GITHUB_OUTPUT"
+
   rust:
+    needs: versions
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt, clippy }
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
@@ -35,71 +57,104 @@ jobs:
       - run: cargo doc --workspace --no-deps
 
   dart:
+    needs: versions
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, cache: true }
-      - uses: extractions/setup-just@v2
-      - run: dart pub get
-      - run: dart format --output=none --set-exit-if-changed .
+        with:
+          flutter-version: ${{ needs.versions.outputs.flutter }}
+          channel: stable
+          cache: true
+      - uses: extractions/setup-just@v3
+      - run: flutter pub get
+      # riverpod_lint is a first-party analyzer plugin, so `analyze` covers it (docs/adr/0014).
+      # There is no separate custom_lint pass.
+      - run: just fmt-check
       - run: flutter analyze --fatal-infos
-      - run: dart run custom_lint
       - run: just test-dart
 
   goldens:
-    # Pinned container: font rendering differs by platform and goldens are platform-specific.
+    needs: versions
+    # Pinned container: font rasterisation differs by platform, so goldens are platform-specific
+    # (docs/TESTING.md §3).
     runs-on: ubuntu-latest
-    container: ghcr.io/cirruslabs/flutter:stable
+    container: ghcr.io/cirruslabs/flutter:${{ needs.versions.outputs.flutter }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: extractions/setup-just@v2
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
       - run: just goldens
 
   checks:
+    needs: versions
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ needs.versions.outputs.java }}
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, cache: true }
+        with:
+          flutter-version: ${{ needs.versions.outputs.flutter }}
+          channel: stable
+          cache: true
       - uses: dtolnay/rust-toolchain@stable
-      - uses: extractions/setup-just@v2
+      - uses: Swatinem/rust-cache@v2
+      - uses: extractions/setup-just@v3
+      - uses: taiki-e/install-action@v2
+        with: { tool: cargo-nextest }
+      - run: cargo install flutter_rust_bridge_codegen --version ${{ needs.versions.outputs.frb }} --locked
+      - run: flutter pub get
       - run: just doctor
-      - run: just check-drift      # regenerating must produce no diff
-      - run: just check-deps       # one-way dependency rule, AGENTS.md §5
-      - run: just docs-check       # links, line budgets, ADR index
+      - run: just doctor-selftest   # prove doctor still fails when it should
+      - run: just check-drift       # regenerating must produce no diff
+      - run: just check-deps        # one-way dependency rule, AGENTS.md §5
+      - run: just docs-check        # links, line budgets, ADR index
 
   build-android:
+    needs: versions
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '21' }
+        with:
+          distribution: temurin
+          java-version: ${{ needs.versions.outputs.java }}
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, cache: true }
+        with:
+          flutter-version: ${{ needs.versions.outputs.flutter }}
+          channel: stable
+          cache: true
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
       - uses: Swatinem/rust-cache@v2
-      - uses: extractions/setup-just@v2
-      - run: just build-android stg
-      - run: just check-android-release   # targetSdk 36, 16 KB alignment, size budget
+      - uses: extractions/setup-just@v3
+      - name: Install pinned NDK
+        run: sdkmanager --install "ndk;${{ needs.versions.outputs.ndk }}"
+      - run: flutter pub get
+      - run: just build-android prod
+      # targetSdk 36, per-ABI 16 KB alignment, size budget.
+      - run: just check-android-release
 
+  # The only place iOS is compiled at all - there is no macOS host on this project. A red job here
+  # is a red build, not someone else's problem (docs/DEVELOPMENT.md §2).
   build-ios:
+    needs: versions
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, cache: true }
+        with:
+          flutter-version: ${{ needs.versions.outputs.flutter }}
+          channel: stable
+          cache: true
       - uses: dtolnay/rust-toolchain@stable
+        with: { targets: aarch64-apple-ios,aarch64-apple-ios-sim }
       - uses: Swatinem/rust-cache@v2
-      - uses: extractions/setup-just@v2
-      - run: just build-ios stg --no-codesign
-      - run: test -f apps/diapason/ios/Runner/PrivacyInfo.xcprivacy
-
-  bench:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: extractions/setup-just@v2
-      - run: just bench            # fails on >10% regression vs committed baselines
+      - uses: extractions/setup-just@v3
+      - run: flutter pub get
+      - run: just build-ios prod --no-codesign
+      - name: Privacy manifest must ship
+        run: test -f apps/diapason/ios/Runner/PrivacyInfo.xcprivacy

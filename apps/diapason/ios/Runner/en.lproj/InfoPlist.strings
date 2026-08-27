@@ -1,0 +1,4 @@
+/* Launcher and Settings name. ASCII for English - see docs/adr/0013. */
+"CFBundleDisplayName" = "Diapason";
+"CFBundleName" = "Diapason";
+"NSMicrophoneUsageDescription" = "Diapason listens to your instrument to show its pitch. Audio is processed on your device and never leaves it, and nothing is recorded or stored.";

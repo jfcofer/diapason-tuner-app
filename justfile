@@ -122,9 +122,10 @@ build-android flavor="prod":
     cd apps/diapason && flutter build appbundle --flavor {{flavor}} \
         --dart-define-from-file=flavors/{{flavor}}.json
 
-build-ios flavor="prod":
+# `extra` exists for CI, which builds unsigned: `just build-ios stg --no-codesign`.
+build-ios flavor="prod" extra="":
     cd apps/diapason && flutter build ipa --flavor {{flavor}} \
-        --dart-define-from-file=flavors/{{flavor}}.json
+        --dart-define-from-file=flavors/{{flavor}}.json {{extra}}
 
 # targetSdk 36, 16 KB page alignment, size budget. See docs/PLATFORM_AUDIO.md §2.
 check-android-release:

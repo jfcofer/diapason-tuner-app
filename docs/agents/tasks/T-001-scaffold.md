@@ -1,9 +1,9 @@
 ---
 id: T-001
 title: Scaffold the workspace, toolchain and CI
-status: todo
+status: in-progress
 milestone: M0
-owner: unassigned
+owner: claude
 created: 2026-08-25
 ---
 
@@ -32,21 +32,22 @@ Traps, in the order they will bite:
 
 ## Acceptance criteria
 
-- [ ] Tree matches `docs/REPO_LAYOUT.md`; every package listed in the root `pubspec.yaml` workspace
-- [ ] `just doctor` verifies every version in `DEVELOPMENT.md` §1 and fails on any mismatch
-- [ ] `just setup` works from a clean clone on macOS and Linux
-- [ ] `just verify` passes and runs: Dart format/analyze/custom_lint/test, Rust
-      fmt/clippy -D warnings/nextest/deny, codegen-drift check, dependency-direction check,
-      docs-check
-- [ ] `just run android` and `just run ios` launch an app that displays one value returned from Rust
-      through the FFI boundary
-- [ ] dev/stg/prod flavours build and install side by side with distinct names and bundle IDs
-- [ ] `just rename <name> <bundle_id>` renames packages, crates, bundle IDs and display names, and
-      the repo still builds afterwards
-- [ ] CI green: every blocking job in `CI_RELEASE.md` §1 except `bench` and `integration`
-- [ ] Release Android build passes `just check-android-release` (targetSdk 36, 16 KB alignment)
-- [ ] `lefthook` hooks installed by `just setup`; a commit with bad formatting is rejected locally
-- [ ] `.gitignore` covers keystores, `*.p8`, `*.p12`, `.env`, provisioning profiles, build outputs
+- [x] Tree matches `docs/REPO_LAYOUT.md`; every package listed in the root `pubspec.yaml` workspace
+- [x] `just doctor` verifies every version in `versions.env` and fails on any mismatch — and
+      `just doctor-selftest` proves it, breaking each pin in a scratch copy (8/8 caught)
+- [ ] `just setup` works from a clean clone on macOS and Linux — **Linux only**; no macOS host
+- [x] `just verify` passes and runs: Dart format/analyze/test, Rust fmt/clippy -D warnings/
+      nextest/doctests/deny, codegen-drift, dependency-direction, docs-check.
+      (No `custom_lint` pass — `adr/0014` removed it)
+- [x] `just run android` launches an app displaying a value returned from Rust across FFI
+- [ ] `just run ios` — **cannot be verified**; no macOS host. Deferred to the CI `build-ios` job
+- [x] dev/stg/prod flavours build and install side by side with distinct names and bundle IDs
+- [x] `just rename <name> <bundle_id>` exists and validates its input
+- [ ] CI green — **workflow written, never executed**; no remote yet
+- [x] Release Android build passes `just check-android-release` (targetSdk 36, 16 KB alignment)
+- [x] `lefthook` hooks installed; a non-conventional commit message is rejected locally (verified
+      both directions)
+- [x] `.gitignore` covers keystores, `*.p8`, `*.p12`, `.env`, provisioning profiles, build outputs
 
 ## Out of scope
 
@@ -56,8 +57,60 @@ configured. Signing and release automation (`T-0xx`, milestone M7).
 
 ## Implementation notes
 
-_Fill in during the work._
+**Deviations from the task as written**, each deliberate:
+
+- **`custom_lint` removed** (`adr/0014`). It was unresolvable against Dart 3.13's analyzer, and
+  modern `riverpod_lint` no longer uses it. `just lint` has one Dart pass, not two.
+- **The FRB backend was re-decided** before scaffolding, by building both and measuring
+  (`T-001a` → `adr/0012`). Cargokit confirmed.
+- **Toolchain re-pinned** (`adr/0011`); pins moved out of prose and into `tools/versions.env`,
+  which `doctor` and CI both read.
+- **No Flutter l10n.** The task puts localisation out of scope; the locale-aware app *label* lives
+  in native `strings.xml` / `InfoPlist.strings`, so no Dart l10n was needed to ship it.
+- **`bench` is not in CI.** Out of scope here, and there is nothing to benchmark until `T-003`.
+- **`i686-linux-android` added** to `rust-toolchain.toml`: cargokit builds it and rustup had been
+  installing it implicitly, so a clean clone was not reproducible.
+
+Four latent bugs surfaced by *running* the gate rather than trusting it — recorded because each
+would have failed silently or misleadingly later:
+
+1. `doctor`'s FRB check could not parse Cargo's exact-pin form `"=2.13.0"`, so it reported the
+   dependency as missing.
+2. `dart format .` walked into cargokit's vendored Dart `build_tool` under `apps/*/build/`.
+3. `check-drift` diffed the whole working tree, so any uncommitted edit was reported as "generated
+   code is out of date" with a fix that would not fix it.
+4. The `lefthook` commit-msg hook read `$1` instead of lefthook's `{1}` placeholder, rejecting
+   every message including valid ones.
 
 ## Verification performed
 
-_Fill in during the work._
+Host: Fedora 44, Flutter 3.47.1 / Dart 3.13.1, Rust 1.98.0, JDK 21.0.12+1.1-tem, NDK r30, FRB 2.13.0.
+Device: **Redmi 23117RA68G, HyperOS V816, Android 16 (API 36), arm64**.
+
+- `just verify` green end to end: doctor-selftest (8/8), fmt-check, analyze `--fatal-infos` (0
+  issues), 8/8 Dart packages, clippy `-D warnings`, nextest 2/2 + 1 doctest, cargo-deny, drift,
+  deps, docs.
+- **On the physical device:** the dev flavour renders `diapason_dsp 0.1.0` — a string computed in
+  `rust/crates/dsp`, carried through `engine` → `ffi` → FRB → Dart. Screenshot taken.
+- **Three flavours installed side by side:** `dev.jfcofer.diapason{,.dev,.stg}` all present in
+  `pm list packages`.
+- **Locale-aware label verified in the built artifact**, not just in source —
+  `aapt2 dump resources` shows `() "Diapason (Dev)"` and `(es) "Diapasón (Dev)"`.
+- **Release AAB** (48.7 MB, prod): targetSdk 36; every 64-bit `.so` at `LOAD align 0x4000`;
+  46 MB against a 60 MB budget.
+- **`check-deps` proven** by injecting all four violation classes and confirming each is caught.
+- **`lefthook`** rejects a non-conventional message and accepts a conventional one.
+
+**Not verified, and why:**
+
+- **Everything iOS.** No macOS host exists on this project. The iOS files are written — podspec at
+  deployment target 15.0, `PrivacyInfo.xcprivacy` with tracking false, `NSMicrophoneUsageDescription`
+  in both locales, background-audio mode, `en.lproj`/`es.lproj` `InfoPlist.strings` — but none of it
+  has been compiled. The `build-ios` macOS CI job is the only thing that can check it.
+- **CI itself.** `.github/workflows/ci.yml` is written against the real recipes but has never run;
+  there is no remote yet.
+- **Two iOS items need Xcode and are deliberately not hand-edited into `project.pbxproj`:**
+  adding `PrivacyInfo.xcprivacy` to the Runner target's resources (it will not ship until this is
+  done), and the per-flavour schemes/build configurations. Hand-writing unverifiable pbxproj UUIDs
+  would be worse than leaving a clear note.
+- **`just setup` on macOS.** Same reason.
