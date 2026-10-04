@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Golden tests. Goldens are container-pinned: font rasterisation differs between machines, so a
-# golden generated locally will fail on someone else's box and in CI (docs/TESTING.md §3).
+# Golden tests. Goldens are pinned to the CI runner image: font rasterisation differs between
+# machines, so a golden generated locally will fail elsewhere (docs/TESTING.md §3, docs/adr/0016).
 #
 #   tools/goldens.sh check    verify goldens
 #   tools/goldens.sh update   regenerate them
@@ -22,8 +22,8 @@ fi
 case "$mode" in
     check)  ( cd packages/core_ui && flutter test ) ;;
     update)
-        echo "Goldens must be regenerated in the pinned container, not on this machine."
-        echo "See docs/TESTING.md §3 for the image and the command."
+        echo "Goldens must be regenerated in the pinned CI environment, not on this machine."
+        echo "The mechanism is decided with the first golden test in M3 (docs/adr/0016)."
         exit 1
         ;;
     *) echo "usage: tools/goldens.sh [check|update]" >&2; exit 1 ;;

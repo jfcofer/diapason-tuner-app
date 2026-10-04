@@ -33,3 +33,4 @@ agent from "improving" a deliberate choice.
 | [0013](0013-name-and-bundle-id.md) | Locale-aware name, ASCII identifiers, `dev.jfcofer.diapason` | Accepted |
 | [0014](0014-drop-custom-lint.md) | Drop custom_lint for first-party analyzer plugins | Accepted |
 | [0015](0015-pin-rust-toolchain.md) | Pin the Rust toolchain to an exact release | Accepted |
+| [0016](0016-goldens-environment.md) | Goldens on the pinned Ubuntu runner, no third-party container | Accepted |

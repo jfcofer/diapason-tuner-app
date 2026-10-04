@@ -42,8 +42,10 @@ deterministic the test must be.
   the same abstract interface, and a shared conformance suite runs against both (the real one only
   in the integration job). A fake that drifts from the real engine is worse than no fake.
 - **Golden tests** are the primary defence for a heavily painted UI. Run them in a pinned Linux
-  container only — font rendering differs by platform and goldens generated on a Mac will fail on
-  CI forever. `just goldens-update` runs the same container locally.
+  environment only: the `ubuntu-24.04` CI runner with Flutter at the pin and bundled fonts only.
+  Font rendering differs by platform, and goldens generated on a Mac will fail on CI forever. The
+  regeneration path is decided with the first golden in M3; until then `just goldens-update`
+  refuses to run (`adr/0016`).
 - Integration tests with `patrol` for anything that touches a system dialog (microphone permission),
   the lock screen, or backgrounding.
 - Accessibility assertions in widget tests: `meetsGuideline(textContrastGuideline)`,
