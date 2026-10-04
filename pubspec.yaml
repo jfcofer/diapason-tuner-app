@@ -26,7 +26,8 @@ melos:
   name: diapason
 
 dev_dependencies:
-  melos: ^8.0.0
+  # Exact: MELOS_VERSION in tools/versions.env is the pin, and doctor checks pubspec.lock against it.
+  melos: 8.5.0
   # A first-party analyzer plugin, NOT a custom_lint plugin - see docs/adr/0014. Enabled by the
   # top-level `plugins:` key in analysis_options.yaml and reported by `dart analyze`.
   riverpod_lint: ^3.1.8

@@ -27,6 +27,8 @@ updates:
     schedule: { interval: weekly }
     ignore:
       - dependency-name: flutter_rust_bridge
+      # Pinned in tools/versions.env; a bump is its own task (AGENTS.md §8).
+      - dependency-name: melos
     groups:
       dart-minor: { update-types: [minor, patch] }
     commit-message: { prefix: build, include: scope }
