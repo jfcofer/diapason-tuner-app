@@ -53,28 +53,36 @@ fi
 printf '\n%sAndroid release checks%s %s%s%s\n' "$BOLD" "$OFF" "$DIM" "$artifact" "$OFF"
 
 # ── SDK levels ───────────────────────────────────────────────────────────────
-aapt2="$(ls "${ANDROID_HOME:-$HOME/Android/Sdk}"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)"
-if [[ -z "$aapt2" ]]; then
+# Newest build-tools wins. An unmatched glob prints itself, hence the -x test.
+aapt2="$(printf '%s\n' "${ANDROID_HOME:-$HOME/Android/Sdk}"/build-tools/*/aapt2 | sort -V | tail -1)"
+if [[ ! -x "$aapt2" ]]; then
     fail "aapt2 not found" "install Android build-tools"
 elif [[ "$artifact" == *.apk ]]; then
     badging="$("$aapt2" dump badging "$artifact" 2>/dev/null)"
     target="$(grep -oP "targetSdkVersion:'\K[0-9]+" <<<"$badging")"
     # Note the capital S: aapt2 prints minSdkVersion / targetSdkVersion.
     minsdk="$(grep -oP "minSdkVersion:'\K[0-9]+" <<<"$badging")"
-    [[ "$target" == "$ANDROID_TARGET_SDK" ]] \
-        && ok "targetSdk" "$target" \
-        || fail "targetSdk is $target, pinned $ANDROID_TARGET_SDK" \
-                "Google Play requires API $ANDROID_TARGET_SDK for submissions from 2026-08-31."
-    [[ "$minsdk" == "$ANDROID_MIN_SDK" ]] \
-        && ok "minSdk" "$minsdk" \
-        || fail "minSdk is $minsdk, pinned $ANDROID_MIN_SDK"
+    if [[ "$target" == "$ANDROID_TARGET_SDK" ]]; then
+        ok "targetSdk" "$target"
+    else
+        fail "targetSdk is $target, pinned $ANDROID_TARGET_SDK" \
+             "Google Play requires API $ANDROID_TARGET_SDK for submissions from 2026-08-31."
+    fi
+    if [[ "$minsdk" == "$ANDROID_MIN_SDK" ]]; then
+        ok "minSdk" "$minsdk"
+    else
+        fail "minSdk is $minsdk, pinned $ANDROID_MIN_SDK"
+    fi
 else
     # An AAB carries its manifest in protobuf; read the pin from Gradle's own source of truth.
     ok "targetSdk (from versions.env)" "$ANDROID_TARGET_SDK"
 fi
 
 # ── 16 KB page alignment, per ABI ────────────────────────────────────────────
-readelf="$(ls "${ANDROID_HOME:-$HOME/Android/Sdk}"/ndk/"$ANDROID_NDK_VERSION"/toolchains/llvm/prebuilt/*/bin/llvm-readelf 2>/dev/null | head -1)"
+readelf=""
+for candidate in "${ANDROID_HOME:-$HOME/Android/Sdk}"/ndk/"$ANDROID_NDK_VERSION"/toolchains/llvm/prebuilt/*/bin/llvm-readelf; do
+    [[ -x "$candidate" ]] && { readelf="$candidate"; break; }
+done
 [[ -z "$readelf" ]] && readelf="$(command -v llvm-readelf || command -v readelf)"
 
 work="$(mktemp -d)"
