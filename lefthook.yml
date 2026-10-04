@@ -14,6 +14,7 @@ pre-commit:
         - "**/lib/src/rust/**"
         - "**/*.g.dart"
         - "**/*.freezed.dart"
+        - "packages/audio_engine/cargokit/**"   # vendored, not ours to format
       run: dart format {staged_files} && git add {staged_files}
 
     - name: rust-format
