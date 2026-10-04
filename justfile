@@ -134,6 +134,16 @@ build-ios flavor="prod" extra="":
     cd apps/diapason && flutter build ipa --flavor {{flavor}} \
         --target lib/main_{{flavor}}.dart --dart-define-from-file=flavors/{{flavor}}.json {{extra}}
 
+# The iOS flavour wiring (configurations, schemes, xcconfigs, Podfile, privacy manifest) is
+# generated, never hand-edited - there is no Xcode on this project. Needs the `xcodeproj` gem.
+ios-project:
+    ruby tools/ios/configure_project.rb
+
+# CI: regenerating the iOS project must change nothing, tracked or untracked.
+ios-project-check: ios-project
+    @test -z "$(git status --porcelain -- apps/diapason/ios)" \
+        || (git status --short -- apps/diapason/ios; echo "iOS project drifted. Run: just ios-project" && exit 1)
+
 # targetSdk 36, 16 KB page alignment, size budget. See docs/PLATFORM_AUDIO.md §2.
 check-android-release:
     @tools/check-android-release.sh        # [T-001]
