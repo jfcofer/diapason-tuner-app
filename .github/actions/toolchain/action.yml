@@ -1,0 +1,79 @@
+# Install exactly the toolchain pinned in tools/versions.env and rust-toolchain.toml (docs/adr/0011,
+# docs/adr/0015). Each job asks only for what it needs, then runs `just doctor <sections>` to prove
+# what it got matches the pins. No version is written anywhere in .github/.
+name: Pinned toolchain
+description: Install the pinned Flutter, Java, Rust, NDK and flutter_rust_bridge codegen on demand.
+
+inputs:
+  flutter:
+    description: Install the pinned Flutter SDK.
+    default: "false"
+  java:
+    description: Install the pinned Temurin JDK.
+    default: "false"
+  rust:
+    description: Install the Rust toolchain rust-toolchain.toml names, with its components and targets.
+    default: "false"
+  android-ndk:
+    description: Install the pinned Android NDK into the runner's preinstalled SDK.
+    default: "false"
+  frb:
+    description: Install the pinned flutter_rust_bridge_codegen binary. Requires rust.
+    default: "false"
+  tools:
+    description: Extra binaries for taiki-e/install-action, comma-separated. just is always installed.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - id: pins
+      shell: bash
+      run: |
+        set -a; . tools/versions.env; set +a
+        {
+          echo "flutter=$FLUTTER_VERSION"
+          echo "java=$JAVA_MAJOR"
+          echo "ndk=$ANDROID_NDK_VERSION"
+          echo "frb=$FRB_VERSION"
+        } >> "$GITHUB_OUTPUT"
+
+    - if: inputs.flutter == 'true'
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      with:
+        flutter-version: ${{ steps.pins.outputs.flutter }}
+        channel: stable
+        cache: true
+
+    - if: inputs.java == 'true'
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      with:
+        distribution: temurin
+        java-version: ${{ steps.pins.outputs.java }}
+
+    # With no arguments rustup installs what rust-toolchain.toml names: the exact version, its
+    # components and every cross-compile target. CI cannot pick a different compiler.
+    - if: inputs.rust == 'true'
+      shell: bash
+      run: rustup toolchain install
+
+    - if: inputs.rust == 'true'
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+    # The runner image's NDKs never include the pinned one for long; sdkmanager is not on PATH.
+    - if: inputs.android-ndk == 'true'
+      shell: bash
+      env:
+        NDK: ${{ steps.pins.outputs.ndk }}
+      run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK" > /dev/null
+
+    - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+      with:
+        tool: ${{ inputs.tools != '' && format('just,{0}', inputs.tools) || 'just' }}
+
+    # After rust-cache, so a cached ~/.cargo/bin makes this a no-op.
+    - if: inputs.frb == 'true'
+      shell: bash
+      env:
+        FRB: ${{ steps.pins.outputs.frb }}
+      run: cargo install flutter_rust_bridge_codegen --version "$FRB" --locked
