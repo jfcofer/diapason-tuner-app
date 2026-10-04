@@ -67,7 +67,10 @@ printf '\n%sdoctor self-test%s\n' "$BOLD" "$OFF"
 # 1. The trap that motivated the whole check: Flutter Android builds fail on JDK 25.
 #    Point doctor at a real JDK >= 25 and require it to name the actual issue, not just "wrong
 #    version" - the error text is the whole value of this check.
-JDK25="$(ls -d /usr/lib/jvm/java-2[5-9]-openjdk /usr/lib/jvm/java-2[5-9]* 2>/dev/null | head -1)"
+JDK25=""
+for candidate in /usr/lib/jvm/java-2[5-9]-openjdk /usr/lib/jvm/java-2[5-9]*; do
+    [[ -x "$candidate/bin/java" ]] && { JDK25="$candidate"; break; }
+done
 if ! want java; then
     :
 elif [[ -n "$JDK25" && -x "$JDK25/bin/java" ]]; then

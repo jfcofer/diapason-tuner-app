@@ -56,11 +56,16 @@ gen-dart:
 
 # ── The gate ──────────────────────────────────────────────────────────────────
 
-# Everything CI checks. Must be green before any work is called done.
-verify: doctor-selftest fmt-check lint test check-drift check-deps docs-check
+# Everything CI checks. Must be green before any work is called done. Each CI job runs a subset of
+# these recipes, never a command of its own (docs/CI_RELEASE.md §1).
+verify: doctor-selftest fmt-check lint test deny doc-rust check-drift check-deps docs-check lint-ci ios-project-check
 
-fmt-check:
+fmt-check: fmt-check-dart fmt-check-rust
+
+fmt-check-dart:
     {{dart_files}} | xargs -0 dart format --output=none --set-exit-if-changed
+
+fmt-check-rust:
     cargo fmt --all -- --check
 
 fix:
@@ -68,11 +73,28 @@ fix:
     cargo fmt --all
     dart fix --apply
 
-lint:
-    # riverpod_lint is a first-party analyzer plugin (docs/adr/0014), so `analyze` reports it.
-    # There is no separate custom_lint pass any more.
+lint: lint-dart lint-rust
+
+# riverpod_lint is a first-party analyzer plugin (docs/adr/0014), so `analyze` reports it.
+lint-dart:
     flutter analyze --fatal-infos
+
+lint-rust:
     cargo clippy --workspace --all-targets -- -D warnings
+
+# Advisories, licences, bans, sources - configured in deny.toml.
+deny:
+    cargo deny check
+
+# Public items must be documented (AGENTS.md §7); a broken intra-doc link is an error.
+doc-rust:
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+
+# CI configuration and shell scripts are code: lint them like code. actionlint also runs
+# shellcheck over every workflow `run:` block.
+lint-ci:
+    actionlint
+    shellcheck tools/*.sh
 
 test: test-rust test-dart
 
@@ -133,6 +155,10 @@ build-android flavor="prod":
 build-ios flavor="prod" extra="":
     cd apps/diapason && flutter build ipa --flavor {{flavor}} \
         --target lib/main_{{flavor}}.dart --dart-define-from-file=flavors/{{flavor}}.json {{extra}}
+
+# Privacy manifest bundled, mic usage string, MinimumOSVersion, Rust engine actually linked.
+check-ios-release:
+    @tools/check-ios-release.sh
 
 # The iOS flavour wiring (configurations, schemes, xcconfigs, Podfile, privacy manifest) is
 # generated, never hand-edited - there is no Xcode on this project. Needs the `xcodeproj` gem.

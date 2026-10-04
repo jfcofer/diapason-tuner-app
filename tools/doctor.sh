@@ -8,7 +8,7 @@
 #   tools/doctor.sh                  every section - what a developer machine needs
 #   tools/doctor.sh flutter frb      only these sections - what one CI job installed
 #
-# Sections: flutter java rust rust-tools frb android dev. Each CI job runs doctor on exactly the
+# Sections: flutter java rust rust-tools frb android repo-tools dev. Each CI job runs doctor on exactly the
 # toolchain it set up, so every job proves its own versions match tools/versions.env.
 #
 # Exit 0 = every check passed. Exit 1 = at least one hard failure (or an unknown section).
@@ -19,7 +19,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 # shellcheck disable=SC1091
 source tools/versions.env
 
-SECTIONS=(flutter java rust rust-tools frb android dev)
+SECTIONS=(flutter java rust rust-tools frb android repo-tools dev)
 for arg in "$@"; do
     [[ " ${SECTIONS[*]} " == *" $arg "* ]] || { echo "doctor: unknown section '$arg' (have: ${SECTIONS[*]})" >&2; exit 1; }
 done
@@ -259,11 +259,30 @@ else
     if [[ -d "$sdk/ndk/$ANDROID_NDK_VERSION" ]]; then
         pass "NDK $ANDROID_NDK_VERSION" "16 KB page alignment by default"
     else
-        fail "NDK $ANDROID_NDK_VERSION" "not installed (have: $(ls "$sdk/ndk" 2>/dev/null | tr '\n' ' '))" \
+        fail "NDK $ANDROID_NDK_VERSION" "not installed (have: $(cd "$sdk/ndk" 2>/dev/null && printf '%s ' *))" \
              "sdkmanager \"ndk;$ANDROID_NDK_VERSION\""
     fi
 fi
 
+fi
+
+# ── Tools the repo's own checks need ──────────────────────────────────────────
+if want repo-tools; then
+section "Repo check tools"
+
+for tool in actionlint shellcheck; do
+    if command -v "$tool" >/dev/null 2>&1; then
+        pass "$tool" "$(semver_of "$tool" --version)"
+    else
+        fail "$tool" "not on PATH" "see docs/DEVELOPMENT.md §2"
+    fi
+done
+# `just ios-project` generates the Xcode project; it needs CocoaPods' xcodeproj gem, not Xcode.
+if xcodeproj="$(ruby -e 'require "xcodeproj"; print Xcodeproj::VERSION' 2>/dev/null)"; then
+    pass "xcodeproj gem" "$xcodeproj"
+else
+    fail "xcodeproj gem" "not installed" "gem install --user-install xcodeproj"
+fi
 fi
 
 # ── Developer machine only ────────────────────────────────────────────────────
