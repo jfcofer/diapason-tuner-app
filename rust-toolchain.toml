@@ -1,5 +1,8 @@
 [toolchain]
-channel = "stable"
+# An exact version, not "stable": a floating channel lets a new release's lints turn
+# `clippy -D warnings` red with no code change. Equals RUST_VERSION in tools/versions.env, which
+# `just doctor rust` enforces (docs/adr/0015).
+channel = "1.98.0"
 components = ["rustfmt", "clippy", "rust-src"]
 targets = [
     "aarch64-linux-android",

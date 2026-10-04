@@ -152,7 +152,20 @@ section "Rust"
 if ! command -v rustc >/dev/null 2>&1; then
     fail "rustc" "not on PATH" "https://rustup.rs"
 else
-    pass "rustc" "$(rustc --version | awk '{print $2}')"
+    # rust-toolchain.toml selects the compiler, so check it agrees with the pin, then check rustc.
+    channel="$(grep -oP '^\s*channel\s*=\s*"\K[^"]+' rust-toolchain.toml 2>/dev/null)"
+    if [[ "$channel" == "$RUST_VERSION" ]]; then
+        pass "rust-toolchain.toml channel" "$channel"
+    else
+        fail "rust-toolchain.toml channel" "says ${channel:-nothing}, versions.env says $RUST_VERSION" \
+             "make them match - versions.env is the source of truth"
+    fi
+    actual="$(rustc --version | awk '{print $2}')"
+    if [[ "$actual" == "$RUST_VERSION" ]]; then
+        pass "rustc" "$actual"
+    else
+        fail "rustc" "have $actual, need $RUST_VERSION" "rustup toolchain install"
+    fi
 
     installed="$(rustup target list --installed 2>/dev/null)"
     missing=()

@@ -110,6 +110,11 @@ expect_failure rust "missing rustup target" \
     'sed -i "s|\"aarch64-apple-ios\",|\"aarch64-apple-ios\",\n    \"sparc64-unknown-netbsd\",|" rust-toolchain.toml' \
     'cross-compile targets.*sparc64-unknown-netbsd'
 
+# 6b. rust-toolchain.toml floating away from the Rust pin.
+expect_failure rust "rust channel diverged from versions.env" \
+    'sed -i "s/^channel = .*/channel = \"stable\"/" rust-toolchain.toml' \
+    'rust-toolchain\.toml channel.*stable'
+
 # 7. Missing Android NDK.
 expect_failure android "wrong Android NDK" \
     'sed -i "s/^ANDROID_NDK_VERSION=.*/ANDROID_NDK_VERSION=1.2.3/" tools/versions.env' \
