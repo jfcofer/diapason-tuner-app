@@ -13,7 +13,7 @@ and CI reads the same file. This table explains *why* each pin is what it is; wh
 | Tool | Version | Why this version |
 |---|---|---|
 | Flutter | 3.47.1 stable (Dart 3.13.1) | Current stable, 2026-08-19. Also the release whose iOS 15 / macOS 12 minimums we match |
-| Rust | stable, edition 2024 | `rust-toolchain.toml` pins the channel, components and all five cross-compile targets |
+| Rust | 1.98.0, edition 2024 | Exact pin, not `stable` (`adr/0015`). `rust-toolchain.toml` carries it with the components and all six cross-compile targets |
 | flutter_rust_bridge | 2.13.0 | Codegen binary, Rust crate and Dart package must match **exactly** — see below |
 | Java | **21** (`21.0.12+1.1-tem`) | AGP is validated on 17 / partially 21. Flutter Android builds **fail on JDK 25** ([flutter#187223](https://github.com/flutter/flutter/issues/187223)) |
 | Android NDK | r30 (`30.0.16138531`) | r28+ aligns shared libraries to 16 KB **by default**, so the old manual linker flag is no longer load-bearing |
