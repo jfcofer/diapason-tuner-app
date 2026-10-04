@@ -114,7 +114,7 @@ test-rust filter="":
 test-dart package="":
     @tools/test-dart.sh "{{package}}"      # [T-001] melos-scoped, or all packages if empty
 
-# Goldens run only in the pinned container — see docs/TESTING.md §3.
+# Goldens are authoritative only on the pinned CI runner - see docs/adr/0016.
 goldens:
     @tools/goldens.sh check                # [T-001]
 
@@ -178,10 +178,14 @@ check-ios-release:
 ios-project:
     ruby tools/ios/configure_project.rb
 
-# CI: regenerating the iOS project must change nothing, tracked or untracked.
+# What tools/ios/configure_project.rb owns - and nothing else, so a hand edit to Info.plist or
+# Swift is never misreported as generator drift with a fix that would not fix it.
+ios_generated := "'apps/*/ios/Runner.xcodeproj' 'apps/*/ios/Flutter/*.xcconfig' 'apps/*/ios/Podfile'"
+
+# CI: regenerating the iOS project must change nothing it owns, tracked or untracked.
 ios-project-check: ios-project
-    @test -z "$(git status --porcelain -- apps/diapason/ios)" \
-        || (git status --short -- apps/diapason/ios; echo "iOS project drifted. Run: just ios-project" && exit 1)
+    @test -z "$(git status --porcelain -- {{ios_generated}})" \
+        || (git status --short -- {{ios_generated}}; echo "iOS project drifted. Run: just ios-project" && exit 1)
 
 # targetSdk 36, 16 KB page alignment, size budget. See docs/PLATFORM_AUDIO.md §2.
 check-android-release:

@@ -284,10 +284,11 @@ else
     fail "shellcheck" "not on PATH" "see docs/DEVELOPMENT.md §2"
 fi
 # `just ios-project` generates the Xcode project; it needs CocoaPods' xcodeproj gem, not Xcode.
-if xcodeproj="$(ruby -e 'require "xcodeproj"; print Xcodeproj::VERSION' 2>/dev/null)"; then
-    pass "xcodeproj gem" "$xcodeproj"
+xcodeproj_fix="gem install --user-install xcodeproj -v $XCODEPROJ_VERSION"
+if ! xcodeproj="$(ruby -e "gem 'xcodeproj', '$XCODEPROJ_VERSION'; require 'xcodeproj'; print Xcodeproj::VERSION" 2>/dev/null)"; then
+    fail "xcodeproj gem" "$XCODEPROJ_VERSION not installed" "$xcodeproj_fix"
 else
-    fail "xcodeproj gem" "not installed" "gem install --user-install xcodeproj"
+    pass "xcodeproj gem" "$xcodeproj"
 fi
 fi
 

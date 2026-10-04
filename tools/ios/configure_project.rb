@@ -19,14 +19,24 @@
 #
 # The iOS launcher label is per-locale (InfoPlist.strings), not per-flavour; see docs/adr/0013.
 
+# The pinned version, not whatever is newest: output is diffed byte for byte (tools/versions.env).
+XCODEPROJ_PIN = File.readlines(File.expand_path('../versions.env', __dir__))
+                    .find { |l| l.start_with?('XCODEPROJ_VERSION=') }&.split('=', 2)&.last&.strip or
+                abort 'tools/versions.env has no XCODEPROJ_VERSION'
+gem 'xcodeproj', XCODEPROJ_PIN
 require 'xcodeproj'
 
 ROOT = File.expand_path('../..', __dir__)
-IOS = File.join(ROOT, 'apps/diapason/ios')
+# The one app under apps/. Not hard-coded, so `just rename` (which may move apps/<slug>) and this
+# script cannot disagree about where the iOS project lives.
+IOS = begin
+  apps = Dir[File.join(ROOT, 'apps/*/ios')]
+  abort "expected exactly one apps/*/ios, found #{apps.length}" unless apps.length == 1
+  apps.first
+end
 PROJECT_PATH = File.join(IOS, 'Runner.xcodeproj')
 SCHEMES_DIR = File.join(PROJECT_PATH, 'xcshareddata/xcschemes')
 
-BUNDLE_ID = 'dev.jfcofer.diapason'
 FLAVOURS = { 'dev' => '.dev', 'stg' => '.stg', 'prod' => '' }.freeze
 # Each flavoured configuration is a copy of Flutter's base configuration of the same build mode.
 MODES = { 'Debug' => :debug, 'Release' => :release, 'Profile' => :release }.freeze
@@ -69,6 +79,11 @@ end
 
 project = Xcodeproj::Project.open(PROJECT_PATH)
 runner = project.targets.find { |t| t.name == 'Runner' } or abort 'no Runner target'
+
+# The base bundle ID lives in exactly one place this script reads: the Runner target's unflavoured
+# Release configuration, which Flutter created and `just rename` rewrites. Never a second copy here.
+BUNDLE_ID = runner.build_configuration_list['Release']&.build_settings&.fetch('PRODUCT_BUNDLE_IDENTIFIER', nil) or
+            abort 'Runner Release has no PRODUCT_BUNDLE_IDENTIFIER'
 flutter_group = project.main_group.children.find { |g| g.display_name == 'Flutter' } or abort 'no Flutter group'
 
 # ── Build configurations ─────────────────────────────────────────────────────

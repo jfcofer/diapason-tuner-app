@@ -118,6 +118,19 @@ expect_failure rust "rust channel diverged from versions.env" \
     'sed -i "s/^channel = .*/channel = \"stable\"/" rust-toolchain.toml' \
     'rust-toolchain\.toml channel.*stable'
 
+# 6c. The active rustc differing from the pin.
+expect_failure rust "wrong rustc version" \
+    'sed -i "s/^RUST_VERSION=.*/RUST_VERSION=0.0.1/" tools/versions.env' \
+    'rustc .*need 0\.0\.1'
+
+# 6d. Repo check tools at the wrong version.
+expect_failure repo-tools "wrong actionlint version" \
+    'sed -i "s/^ACTIONLINT_VERSION=.*/ACTIONLINT_VERSION=0.0.1/" tools/versions.env' \
+    'actionlint.*need 0\.0\.1'
+expect_failure repo-tools "wrong xcodeproj gem version" \
+    'sed -i "s/^XCODEPROJ_VERSION=.*/XCODEPROJ_VERSION=0.0.1/" tools/versions.env' \
+    'xcodeproj gem.*0\.0\.1 not installed'
+
 # 7. Missing Android NDK.
 expect_failure android "wrong Android NDK" \
     'sed -i "s/^ANDROID_NDK_VERSION=.*/ANDROID_NDK_VERSION=1.2.3/" tools/versions.env' \

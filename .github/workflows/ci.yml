@@ -67,6 +67,7 @@ jobs:
         with:
           flutter: "true"
       - run: just deps   # pub get + Dart codegen
+      - run: just doctor flutter
       - run: just goldens
 
   # Repository invariants: pins, generated code, dependency direction, docs, CI config, iOS project.
@@ -81,11 +82,11 @@ jobs:
           rust: "true"
           frb: "true"
           actionlint: "true"
+          xcodeproj: "true"
           tools: shellcheck
-      - run: gem install --user-install xcodeproj
       - run: just deps   # pub get + Dart codegen
       - run: just doctor flutter rust frb repo-tools
-      - run: just doctor-selftest flutter rust frb   # prove doctor still fails when it should
+      - run: just doctor-selftest flutter rust frb repo-tools   # prove doctor still fails when it should
       - run: just check-drift                         # regenerating must produce no diff
       - run: just ios-project-check                   # regenerating the Xcode project, likewise
       - run: just check-deps                          # one-way dependency rule, AGENTS.md §5

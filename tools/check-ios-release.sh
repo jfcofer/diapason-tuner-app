@@ -65,7 +65,9 @@ linked=""
 for binary in "$app/$(plutil -extract CFBundleExecutable raw -o - "$plist" 2>/dev/null)" \
               "$app"/Frameworks/*.framework/*; do
     [ -f "$binary" ] || continue
-    if nm -gU "$binary" 2>/dev/null | grep -q 'frb_get_rust_content_hash$'; then
+    # Not `grep -q`: it exits on the first match, nm dies of SIGPIPE, and pipefail turns a correctly
+    # linked app into a failure. Reading all of nm's output avoids that.
+    if nm -gU "$binary" 2>/dev/null | grep 'frb_get_rust_content_hash$' >/dev/null; then
         linked="${binary#"$app"/}"
         break
     fi
