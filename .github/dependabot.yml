@@ -1,0 +1,32 @@
+# Dependency updates arrive as pull requests that CI gates; nothing merges itself.
+#
+# Out of scope here, on purpose: the toolchain pins in tools/versions.env and rust-toolchain.toml.
+# Bumping one is its own task and ADR (AGENTS.md §8), never a side effect of a dependency PR.
+version: 2
+updates:
+  # Workflows and the local composite action. SHA pins are bumped together with their comments.
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ["*"] }
+    commit-message: { prefix: ci }
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule: { interval: weekly }
+    ignore:
+      # Must match the codegen binary and the Dart package exactly; see tools/doctor.sh.
+      - dependency-name: flutter_rust_bridge
+    groups:
+      rust-minor: { update-types: [minor, patch] }
+    commit-message: { prefix: build, include: scope }
+
+  - package-ecosystem: pub
+    directory: /
+    schedule: { interval: weekly }
+    ignore:
+      - dependency-name: flutter_rust_bridge
+    groups:
+      dart-minor: { update-types: [minor, patch] }
+    commit-message: { prefix: build, include: scope }
