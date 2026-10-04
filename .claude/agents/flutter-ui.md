@@ -24,7 +24,8 @@ How you work:
   a scaled one. Landscape phones use the medium layout.
 - You test against `FakeEngine`, never the real engine. UI tests must not need a device or a Rust
   build.
-- Goldens at three widths and both themes, generated in the pinned container.
+- Goldens at three widths and both themes, generated in the pinned CI environment (`docs/adr/0016`),
+  never with `--update-goldens` locally.
 
 Report back with what you built, which states you covered, and what you could not verify without a
 device.

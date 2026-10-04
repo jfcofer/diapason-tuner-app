@@ -131,7 +131,7 @@ Device: **Redmi 23117RA68G, HyperOS V816, Android 16 (API 36), arm64**.
 - **CI.** All six jobs are green. `build-ios` produced `Runner.app` (16.3 MB), and
   `check-ios-release` passed: the privacy manifest is bundled, the mic string is set,
   MinimumOSVersion is 15.0, and the Rust engine is linked in `diapason_ffi.framework`.
-- **Local.** `just verify` is green, with doctor-selftest catching 10/10. Release AAB checks pass:
+- **Local.** `just verify` is green, with doctor-selftest catching 13/13. Release AAB checks pass:
   every 64-bit `.so` is at `0x4000` alignment, 46/60 MB.
 - **Fresh clone.** The dart job sequence passes in a fresh clone.
 - **Device.** The dev flavour runs on the Redmi and renders `diapason_dsp 0.1.0`.
