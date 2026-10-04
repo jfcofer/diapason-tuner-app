@@ -102,7 +102,7 @@ docs-check:
 
 run platform="ios" flavor="dev":
     cd apps/diapason && flutter run -d {{platform}} --flavor {{flavor}} \
-        --dart-define-from-file=flavors/{{flavor}}.json
+        --target lib/main_{{flavor}}.dart --dart-define-from-file=flavors/{{flavor}}.json
 
 # ── Performance ───────────────────────────────────────────────────────────────
 
@@ -120,12 +120,12 @@ size-report:
 
 build-android flavor="prod":
     cd apps/diapason && flutter build appbundle --flavor {{flavor}} \
-        --dart-define-from-file=flavors/{{flavor}}.json
+        --target lib/main_{{flavor}}.dart --dart-define-from-file=flavors/{{flavor}}.json
 
 # `extra` exists for CI, which builds unsigned: `just build-ios stg --no-codesign`.
 build-ios flavor="prod" extra="":
     cd apps/diapason && flutter build ipa --flavor {{flavor}} \
-        --dart-define-from-file=flavors/{{flavor}}.json {{extra}}
+        --target lib/main_{{flavor}}.dart --dart-define-from-file=flavors/{{flavor}}.json {{extra}}
 
 # targetSdk 36, 16 KB page alignment, size budget. See docs/PLATFORM_AUDIO.md §2.
 check-android-release:
