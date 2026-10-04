@@ -38,7 +38,8 @@ diagnosable.
       device, with an integration test where automatable
 - [ ] Zero-allocation test passes: 10 s through `OfflineBackend` with `assert_no_alloc` armed
 - [ ] Stream rebuilds cleanly on device disconnect and route change, off the RT thread
-- [ ] Measured latency recorded in the journal for all four reference devices
+- [ ] Measured latency recorded in the journal for every reference device available (today: the
+      Redmi 23117RA68G only - see Implementation notes)
 
 ## Out of scope
 
@@ -47,7 +48,18 @@ only here.
 
 ## Implementation notes
 
-_Fill in during the work._
+**Split into slices (2026-10-04)**, each verifiable on its own with the hardware that exists: a
+Linux host, one budget Android (Redmi 23117RA68G), an emulator, and macOS CI runners. There is no
+Mac and no iPhone.
+
+- `T-002a` — engine RT core, `OfflineBackend`, conformance suite, zero-alloc test. Host-only.
+- `T-002b` — Android duplex on the Redmi, binding ADR first (`oboe` vs `ndk` AAudio).
+- `T-002c` — iOS CoreAudio, verified on the CI Simulator. On-device rows stay open.
+
+This task is done when all three are, plus whatever the slices could not reach is listed as open
+in STATE.md. **Criterion amended before work started:** "all four reference devices" became "every
+reference device available". Four devices cannot be measured with one, and a criterion nobody can
+meet only gets ticked dishonestly or ignored.
 
 ## Verification performed
 
