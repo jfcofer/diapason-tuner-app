@@ -41,7 +41,8 @@ Rationale and the full memory model → `docs/agents/CONTEXT_SYSTEM.md`.
 3. **Never invent an API.** If unsure of a crate, package, or platform API, check the pinned docs or
    say so in STATE.md under "Open questions". Guessing wastes more of my time than asking.
 4. **Small, reversible commits.** Conventional Commits, imperative mood, one concern each,
-   `refs T-###` in the body.
+   `refs T-###` in the body. `main` is protected: work lands only through a PR with all six CI
+   jobs green, **rebase-merged** (linear history, each commit kept). No one can bypass the ruleset.
 5. **Respect the layer boundaries** in §5. Most damage in this repo will come from crossing them.
 6. **One fact, one home.** Duplicated documentation rots. Link instead of copying.
 7. Files are code: prefer editing an existing file over creating a parallel one. No `*_v2.dart`,
