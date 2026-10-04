@@ -1,8 +1,12 @@
-# CI. Every job runs a `just` recipe - nothing here is logic a developer or an agent cannot
-# reproduce locally with one command. See docs/CI_RELEASE.md §1.
+# CI. Every step runs a `just` recipe: nothing here is logic a developer or an agent cannot
+# reproduce locally with one command (docs/CI_RELEASE.md §1).
 #
-# Toolchain versions come from tools/versions.env, which `just doctor` also enforces, so CI and a
-# developer's machine cannot drift apart (docs/adr/0011).
+# Versions come from tools/versions.env and rust-toolchain.toml through the local toolchain action;
+# none is written in this directory (docs/adr/0011, docs/adr/0015). Each job then runs
+# `just doctor <sections>` on what it installed, so a job cannot pass on the wrong toolchain.
+#
+# Third-party actions are pinned by commit SHA, with the release in a comment; Dependabot bumps
+# both together (.github/dependabot.yml).
 
 name: CI
 
@@ -11,150 +15,111 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
 
 jobs:
-  # Read the pins once and hand them to every other job, so no version is written twice.
-  versions:
-    runs-on: ubuntu-latest
-    outputs:
-      flutter: ${{ steps.read.outputs.flutter }}
-      java: ${{ steps.read.outputs.java }}
-      frb: ${{ steps.read.outputs.frb }}
-      ndk: ${{ steps.read.outputs.ndk }}
-    steps:
-      - uses: actions/checkout@v5
-      - id: read
-        run: |
-          set -a; . tools/versions.env; set +a
-          {
-            echo "flutter=$FLUTTER_VERSION"
-            echo "java=$JAVA_MAJOR"
-            echo "frb=$FRB_VERSION"
-            echo "ndk=$ANDROID_NDK_VERSION"
-          } >> "$GITHUB_OUTPUT"
-
   rust:
-    needs: versions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with: { components: rustfmt, clippy }
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchain
         with:
-          tool: just,cargo-nextest,cargo-deny
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+          rust: "true"
+          tools: cargo-nextest,cargo-deny
+      - run: just doctor rust rust-tools
+      - run: just fmt-check-rust
+      - run: just lint-rust
       - run: just test-rust
-      - run: cargo deny check
-      - run: cargo doc --workspace --no-deps
+      - run: just deny
+      - run: just doc-rust
 
   dart:
-    needs: versions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchain
         with:
-          flutter-version: ${{ needs.versions.outputs.flutter }}
-          channel: stable
-          cache: true
-      - uses: extractions/setup-just@v3
+          flutter: "true"
       - run: flutter pub get
-      # riverpod_lint is a first-party analyzer plugin, so `analyze` covers it (docs/adr/0014).
-      # There is no separate custom_lint pass.
-      - run: just fmt-check
-      - run: flutter analyze --fatal-infos
+      - run: just doctor flutter
+      - run: just fmt-check-dart
+      - run: just lint-dart
       - run: just test-dart
 
+  # Goldens are platform-specific, so they run on exactly one pinned image (docs/adr/0016).
   goldens:
-    needs: versions
-    # Pinned container: font rasterisation differs by platform, so goldens are platform-specific
-    # (docs/TESTING.md §3).
-    runs-on: ubuntu-latest
-    container: ghcr.io/cirruslabs/flutter:${{ needs.versions.outputs.flutter }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: extractions/setup-just@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchain
+        with:
+          flutter: "true"
+      - run: flutter pub get
       - run: just goldens
 
+  # Repository invariants: pins, generated code, dependency direction, docs, CI config, iOS project.
   checks:
-    needs: versions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchain
         with:
-          distribution: temurin
-          java-version: ${{ needs.versions.outputs.java }}
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ needs.versions.outputs.flutter }}
-          channel: stable
-          cache: true
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: extractions/setup-just@v3
-      - uses: taiki-e/install-action@v2
-        with: { tool: cargo-nextest }
-      - run: cargo install flutter_rust_bridge_codegen --version ${{ needs.versions.outputs.frb }} --locked
+          flutter: "true"
+          rust: "true"
+          frb: "true"
+          tools: actionlint,shellcheck
+      - run: gem install --user-install xcodeproj
       - run: flutter pub get
-      - run: just doctor
-      - run: just doctor-selftest   # prove doctor still fails when it should
-      - run: just check-drift       # regenerating must produce no diff
-      - run: just check-deps        # one-way dependency rule, AGENTS.md §5
-      - run: just docs-check        # links, line budgets, ADR index
+      - run: just doctor flutter rust frb repo-tools
+      - run: just doctor-selftest flutter rust frb   # prove doctor still fails when it should
+      - run: just check-drift                         # regenerating must produce no diff
+      - run: just ios-project-check                   # regenerating the Xcode project, likewise
+      - run: just check-deps                          # one-way dependency rule, AGENTS.md §5
+      - run: just docs-check                          # links, line budgets, ADR index
+      - run: just lint-ci                             # actionlint + shellcheck
 
   build-android:
-    needs: versions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchain
         with:
-          distribution: temurin
-          java-version: ${{ needs.versions.outputs.java }}
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ needs.versions.outputs.flutter }}
-          channel: stable
-          cache: true
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
-      - uses: Swatinem/rust-cache@v2
-      - uses: extractions/setup-just@v3
-      - name: Install pinned NDK
-        run: sdkmanager --install "ndk;${{ needs.versions.outputs.ndk }}"
+          flutter: "true"
+          java: "true"
+          rust: "true"
+          android-ndk: "true"
       - run: flutter pub get
+      - run: just doctor flutter java rust android
       - run: just build-android prod
       # targetSdk 36, per-ABI 16 KB alignment, size budget.
       - run: just check-android-release
 
-  # The only place iOS is compiled at all - there is no macOS host on this project. A red job here
-  # is a red build, not someone else's problem (docs/DEVELOPMENT.md §2).
+  # The only place iOS is compiled at all: there is no macOS host on this project, so a red job
+  # here is a red build, not someone else's problem (docs/DEVELOPMENT.md §2). No `just doctor`:
+  # it needs GNU grep, and the toolchain action installs the pins by construction.
   build-ios:
-    needs: versions
-    runs-on: macos-latest
+    runs-on: macos-26
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchain
         with:
-          flutter-version: ${{ needs.versions.outputs.flutter }}
-          channel: stable
-          cache: true
-      - uses: dtolnay/rust-toolchain@stable
-        with: { targets: aarch64-apple-ios,aarch64-apple-ios-sim }
-      - uses: Swatinem/rust-cache@v2
-      - uses: extractions/setup-just@v3
+          flutter: "true"
+          rust: "true"
       - run: flutter pub get
       - run: just build-ios prod --no-codesign
-      - name: Privacy manifest must ship
-        run: test -f apps/diapason/ios/Runner/PrivacyInfo.xcprivacy
+      - run: just check-ios-release
