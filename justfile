@@ -27,10 +27,16 @@ doctor-selftest *sections:
 # Clean clone → ready to work.
 setup: doctor
     fvm install
-    dart pub get                           # pub workspace resolves every member
     cargo fetch
     lefthook install
     just gen
+
+# What a fresh checkout needs before Dart can be analysed, tested or built: resolve the workspace
+# and run Dart codegen. Riverpod's *.g.dart are generated, not committed (AGENTS.md §8), so without
+# this the analyzer sees undefined providers. Every CI job that touches Dart starts here.
+deps:
+    flutter pub get
+    just gen-dart
 
 # ── Code generation ───────────────────────────────────────────────────────────
 
@@ -151,10 +157,16 @@ build-android flavor="prod":
     cd apps/diapason && flutter build appbundle --flavor {{flavor}} \
         --target lib/main_{{flavor}}.dart --dart-define-from-file=flavors/{{flavor}}.json
 
-# `extra` exists for CI, which builds unsigned: `just build-ios stg --no-codesign`.
-build-ios flavor="prod" extra="":
+# A signed, distributable IPA. Needs a development team and profiles (M7, docs/CI_RELEASE.md).
+build-ios flavor="prod":
     cd apps/diapason && flutter build ipa --flavor {{flavor}} \
-        --target lib/main_{{flavor}}.dart --dart-define-from-file=flavors/{{flavor}}.json {{extra}}
+        --target lib/main_{{flavor}}.dart --dart-define-from-file=flavors/{{flavor}}.json
+
+# A release-mode device build with signing off: everything compiled and linked, nothing to ship.
+# This is what CI builds, because `build ipa` treats a team-less archive as a failure.
+build-ios-unsigned flavor="prod":
+    cd apps/diapason && flutter build ios --release --no-codesign --flavor {{flavor}} \
+        --target lib/main_{{flavor}}.dart --dart-define-from-file=flavors/{{flavor}}.json
 
 # Privacy manifest bundled, mic usage string, MinimumOSVersion, Rust engine actually linked.
 check-ios-release:

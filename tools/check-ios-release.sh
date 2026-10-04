@@ -25,12 +25,14 @@ ok()   { printf '  ✓ %-40s %s\n' "$1" "${2:-}"; }
 
 app="${1:-}"
 if [ -z "$app" ]; then
-    for candidate in apps/diapason/build/ios/archive/Runner.xcarchive/Products/Applications/*.app; do
+    # An archive from build-ios, else the unsigned device build from build-ios-unsigned.
+    for candidate in apps/diapason/build/ios/archive/Runner.xcarchive/Products/Applications/*.app \
+                     apps/diapason/build/ios/iphoneos/*.app; do
         [ -d "$candidate" ] && { app="$candidate"; break; }
     done
 fi
 if [ -z "$app" ] || [ ! -d "$app" ]; then
-    printf '✗ no built .app found\n  Build one first: just build-ios prod --no-codesign\n\n'
+    printf '✗ no built .app found\n  Build one first: just build-ios-unsigned prod\n\n'
     exit 1
 fi
 

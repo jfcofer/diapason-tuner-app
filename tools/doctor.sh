@@ -270,13 +270,19 @@ fi
 if want repo-tools; then
 section "Repo check tools"
 
-for tool in actionlint shellcheck; do
-    if command -v "$tool" >/dev/null 2>&1; then
-        pass "$tool" "$(semver_of "$tool" --version)"
-    else
-        fail "$tool" "not on PATH" "see docs/DEVELOPMENT.md §2"
-    fi
-done
+if ! command -v actionlint >/dev/null 2>&1; then
+    fail "actionlint" "not on PATH" "see docs/DEVELOPMENT.md §2"
+elif [[ "$(semver_of actionlint --version)" != "$ACTIONLINT_VERSION" ]]; then
+    fail "actionlint" "have $(semver_of actionlint --version), need $ACTIONLINT_VERSION" \
+         "https://github.com/rhysd/actionlint/releases/tag/v$ACTIONLINT_VERSION"
+else
+    pass "actionlint" "$ACTIONLINT_VERSION"
+fi
+if command -v shellcheck >/dev/null 2>&1; then
+    pass "shellcheck" "$(semver_of shellcheck --version)"
+else
+    fail "shellcheck" "not on PATH" "see docs/DEVELOPMENT.md §2"
+fi
 # `just ios-project` generates the Xcode project; it needs CocoaPods' xcodeproj gem, not Xcode.
 if xcodeproj="$(ruby -e 'require "xcodeproj"; print Xcodeproj::VERSION' 2>/dev/null)"; then
     pass "xcodeproj gem" "$xcodeproj"

@@ -20,6 +20,9 @@ inputs:
   frb:
     description: Install the pinned flutter_rust_bridge_codegen binary. Requires rust.
     default: "false"
+  actionlint:
+    description: Install the pinned actionlint.
+    default: "false"
   tools:
     description: Extra binaries for taiki-e/install-action, comma-separated. just is always installed.
     default: ""
@@ -36,6 +39,7 @@ runs:
           echo "java=$JAVA_MAJOR"
           echo "ndk=$ANDROID_NDK_VERSION"
           echo "frb=$FRB_VERSION"
+          echo "actionlint=$ACTIONLINT_VERSION"
         } >> "$GITHUB_OUTPUT"
 
     - if: inputs.flutter == 'true'
@@ -61,15 +65,28 @@ runs:
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
     # The runner image's NDKs never include the pinned one for long; sdkmanager is not on PATH.
+    # `yes` dies of SIGPIPE when sdkmanager exits, which pipefail would report as a failure.
     - if: inputs.android-ndk == 'true'
       shell: bash
       env:
         NDK: ${{ steps.pins.outputs.ndk }}
-      run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK" > /dev/null
+      run: |
+        { yes || true; } | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK" > /dev/null
+        test -d "$ANDROID_HOME/ndk/$NDK"
 
     - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
       with:
         tool: ${{ inputs.tools != '' && format('just,{0}', inputs.tools) || 'just' }}
+
+    # Not packaged by install-action; actionlint's own script, at the release tag of the pin.
+    - if: inputs.actionlint == 'true'
+      shell: bash
+      env:
+        VERSION: ${{ steps.pins.outputs.actionlint }}
+      run: |
+        mkdir -p "$HOME/.local/bin"
+        bash <(curl -sSfL "https://raw.githubusercontent.com/rhysd/actionlint/v$VERSION/scripts/download-actionlint.bash") "$VERSION" "$HOME/.local/bin"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     # After rust-cache, so a cached ~/.cargo/bin makes this a no-op.
     - if: inputs.frb == 'true'
