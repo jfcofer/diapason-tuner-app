@@ -33,7 +33,7 @@ allow = [
     "Zlib",
 ]
 confidence-threshold = 0.93
-# Our own crates are unpublished and carry no licence key while adr/0009 is Proposed.
+# Our own crates are FSL-1.1-ALv2 (adr/0017) and unpublished; the allow-list governs dependencies only.
 private = { ignore = true }
 
 [bans]

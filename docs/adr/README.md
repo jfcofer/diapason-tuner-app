@@ -26,7 +26,7 @@ agent from "improving" a deliberate choice.
 | [0006](0006-monorepo-tooling.md) | Pub workspaces + Melos | Accepted |
 | [0007](0007-domain-model-duplication.md) | Duplicate note math in Rust and Dart | Accepted |
 | [0008](0008-procedural-click.md) | Synthesise metronome clicks, ship no audio assets | Accepted |
-| [0009](0009-licensing-and-third-party.md) | Licensing and dependency policy | Proposed |
+| [0009](0009-licensing-and-third-party.md) | Licensing and dependency policy | Accepted |
 | [0010](0010-no-telemetry.md) | No telemetry, no network calls | Accepted |
 | [0011](0011-toolchain-pins.md) | Re-pin the toolchain, make pins machine-checkable | Accepted |
 | [0012](0012-frb-build-backend.md) | Keep cargokit; native assets not yet viable | Accepted |
@@ -34,3 +34,4 @@ agent from "improving" a deliberate choice.
 | [0014](0014-drop-custom-lint.md) | Drop custom_lint for first-party analyzer plugins | Accepted |
 | [0015](0015-pin-rust-toolchain.md) | Pin the Rust toolchain to an exact release | Accepted |
 | [0016](0016-goldens-environment.md) | Goldens on the pinned Ubuntu runner, no third-party container | Accepted |
+| [0017](0017-project-licence.md) | Project licence: FSL-1.1-ALv2 (Apache-2.0 after two years) | Accepted |

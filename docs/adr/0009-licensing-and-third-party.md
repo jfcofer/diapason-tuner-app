@@ -1,6 +1,7 @@
 # 0009 — Licensing and dependency policy
 
-**Status:** Proposed · 2026-08-25 — decide before M7
+**Status:** Accepted · 2026-10-04 — the dependency policy below stands; the project licence is
+decided in `adr/0017` (FSL-1.1-ALv2)
 
 ## Context
 

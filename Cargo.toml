@@ -11,9 +11,8 @@ resolver = "3"
 [workspace.package]
 edition = "2024"
 rust-version = "1.98"
-# No `license` key on purpose: the licence is still an open question (docs/adr/0009 is Proposed),
-# and "UNLICENSED" is not a valid SPDX expression. These crates are `publish = false`, and
-# deny.toml ignores private crates, so cargo-deny is satisfied without us inventing a licence.
+# Functional Source License, Apache-2.0 after two years (docs/adr/0017, LICENSE.md).
+license = "FSL-1.1-ALv2"
 publish = false
 
 [workspace.dependencies]

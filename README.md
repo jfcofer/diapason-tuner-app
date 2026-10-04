@@ -62,9 +62,18 @@ what gets written where, so context survives a session ending — is
 ## Renaming
 
 The codename appears in: package names (`diapason_*`), the Rust crate prefix, the bundle ID
-(`com.example.diapason` — **must** change before any store submission), and the app display name.
-`just rename <new_name> <com.your.bundle>` handles all of them; it is implemented as part of T-001.
+(`dev.jfcofer.diapason`, `adr/0013`), and the app display name. `just rename <new_name>
+<com.your.bundle>` handles all of them, including the generated iOS project.
 
 ## License
 
-TBD before first public release — see `docs/adr/0009-licensing-and-third-party.md`.
+[Functional Source License 1.1, Apache-2.0 future licence](LICENSE.md) (`FSL-1.1-ALv2`).
+
+- **Allowed:** read, audit, build, modify and share it for any purpose except offering a competing
+  commercial product.
+- **Becomes Apache-2.0:** each version converts automatically two years after its release.
+- **Why:** [`docs/adr/0017-project-licence.md`](docs/adr/0017-project-licence.md).
+
+**Contributions:** by submitting a contribution you license it to the project's licensor under the
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), and agree that it is
+distributed as part of this project under the licence above.
