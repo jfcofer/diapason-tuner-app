@@ -5,6 +5,11 @@
 
 set shell := ["bash", "-uc"]
 
+# Our Dart sources: tracked files minus cargokit's vendored `build_tool`, which is third-party code
+# with its own pubspec and language version. Formatting it is not ours to do, and in a clean
+# checkout (no `.dart_tool` inside it) the formatter cannot even parse it.
+dart_files := "git ls-files -z '*.dart' ':!:packages/audio_engine/cargokit/**'"
+
 default:
     @just --list
 
@@ -35,7 +40,7 @@ gen: gen-frb gen-dart gen-fmt
 
 gen-fmt:
     cargo fmt --all
-    git ls-files -z '*.dart' | xargs -0 dart format
+    {{dart_files}} | xargs -0 dart format
 
 gen-frb:
     flutter_rust_bridge_codegen generate
@@ -53,11 +58,11 @@ gen-dart:
 verify: doctor-selftest fmt-check lint test check-drift check-deps docs-check
 
 fmt-check:
-    git ls-files -z '*.dart' | xargs -0 dart format --output=none --set-exit-if-changed
+    {{dart_files}} | xargs -0 dart format --output=none --set-exit-if-changed
     cargo fmt --all -- --check
 
 fix:
-    git ls-files -z '*.dart' | xargs -0 dart format
+    {{dart_files}} | xargs -0 dart format
     cargo fmt --all
     dart fix --apply
 
