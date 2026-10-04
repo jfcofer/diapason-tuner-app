@@ -5,19 +5,20 @@
 
 ## Where we are
 
-**Milestone:** M0 — Foundations (`docs/ROADMAP.md`) is **complete** once PR #1 merges.
+**Milestone:** M0 — Foundations (`docs/ROADMAP.md`): work complete; PR #1 merged 2026-10-04.
 **Status:**
 
 - **CI is green on all six jobs.** That includes the first-ever iOS compile, on a `macos-26`
   runner, with the Rust engine verified as linked into the app.
 - `just verify` is green locally.
 - The dev flavour runs on the Redmi and shows a value computed in Rust.
+- **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
+- **Licensed FSL-1.1-ALv2** (`adr/0017`): source-available, Apache-2.0 after two years.
 
 ## Active task
 
-`T-001` is **done**. Two criteria are closed as unverifiable, since there is no macOS host; see
-the task file. The work is on branch `fix/T-001-ci-green`, PR #1, which is **not merged yet**:
-merging is the user's call.
+`T-001` and `T-005` (licence, repo policy) are **done**. Two `T-001` criteria are closed as
+unverifiable, since there is no macOS host; see the task file.
 
 **Next active task:** `docs/agents/tasks/T-002a-engine-rt-core.md`. `T-002` is now an umbrella
 over three slices (a/b/c), each verifiable with the hardware that exists. `CLAUDE.md` requires
@@ -65,6 +66,7 @@ plan mode before engine work, so present a plan first.
 | `0014` | No `custom_lint` |
 | `0015` | **Rust pinned to an exact release (1.98.0)**, not `stable` |
 | `0016` | **Goldens on the pinned ubuntu-24.04 runner**; regeneration mechanism decided in M3 |
+| `0009`/`0017` | Permissive dependencies only; **project licence FSL-1.1-ALv2** |
 
 ## Traps a later session will otherwise re-discover
 
@@ -98,19 +100,16 @@ plan mode before engine work, so present a plan first.
 
 | Question | Needed by | Notes |
 |---|---|---|
-| Licence | M7 | `adr/0009` still Proposed. **The repo is public**, so with no licence it is all-rights-reserved by default |
 | Monetisation model | M6 | Must not introduce ads, analytics or network calls (`PRODUCT_SPEC.md` §6) |
 | Reference devices beyond the Redmi | M1+ | No iPhone, Pixel or tablet available. `T-002` criteria were amended to "every device available" |
 | Font licences confirmed for bundling | M3 | `DESIGN_SYSTEM.md` §1 assumes OFL faces |
-| Branch protection requiring CI on `main` | now | Offered to the user, not applied: it is a repo settings change |
 
 ## Next up (in order)
 
-1. **Merge PR #1** (user), then consider branch protection requiring the six CI checks.
+1. Close M0 against `docs/ROADMAP.md`, then delete `docs/BOOTSTRAP.md`.
 2. **`T-002a`**, the engine RT core with `OfflineBackend`. It is host-only and fully verifiable
    here.
 3. **`T-002b`**, Android duplex on the Redmi. Its binding ADR (`oboe` vs `ndk` AAudio) comes first.
 4. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
 5. `T-004` (CI reproducibility) whenever a slice is waiting on CI. `T-003-pitch-core` after T-002.
 
-`docs/BOOTSTRAP.md` can be deleted once PR #1 is merged and M0 is formally closed.
