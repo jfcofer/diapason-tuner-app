@@ -22,6 +22,11 @@ thing to running this code that the project can get. It does not stand in for a 
 interruptions from real calls, and Bluetooth routing are **unverifiable** here, and STATE.md must
 say so rather than tick them.
 
+**Spike first, before trusting the criteria below.** It is unverified whether a headless `macos-26`
+runner's Simulator exposes an audio input, and whether mic permission can be granted
+non-interactively (`xcrun simctl privacy`). If either fails, amend the Simulator criteria before
+building toward them.
+
 Pick the CoreAudio binding on evidence, as `T-002b` does for Android: a crate vs a thin
 hand-written FFI over AudioUnit. Whatever is chosen lives in `audio_io`, with `// SAFETY:` on every
 `unsafe` block.

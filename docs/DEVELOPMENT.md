@@ -19,7 +19,7 @@ and CI reads the same file. This table explains *why* each pin is what it is; wh
 | Android NDK | r30 (`30.0.16138531`) | r28+ aligns shared libraries to 16 KB **by default**, so the old manual linker flag is no longer load-bearing |
 | Android compile/target SDK | 36 · min 26 | targetSdk 36 required for Play submissions from 2026-08-31 |
 | iOS deployment target | 15.0 | Flutter 3.47's own iOS minimum |
-| Xcode | current App Store-accepted release | `.github/workflows/ci.yml`; iOS is built only on CI (see §2) |
+| Xcode | the `macos-26` runner image default (**not pinned**) | `.github/workflows/ci.yml`; iOS is built only on CI (see §2) |
 | Melos | 8.5.0 | Workspace dev_dependency, run as `dart run melos`; `pubspec.lock` is the pin. No `melos.yaml` (`adr/0006`) |
 
 Two failure modes are worth calling out because they cost hours and produce misleading errors:
