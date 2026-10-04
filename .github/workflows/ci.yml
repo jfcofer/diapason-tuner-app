@@ -51,7 +51,7 @@ jobs:
       - uses: ./.github/actions/toolchain
         with:
           flutter: "true"
-      - run: flutter pub get
+      - run: just deps   # pub get + Dart codegen
       - run: just doctor flutter
       - run: just fmt-check-dart
       - run: just lint-dart
@@ -66,7 +66,7 @@ jobs:
       - uses: ./.github/actions/toolchain
         with:
           flutter: "true"
-      - run: flutter pub get
+      - run: just deps   # pub get + Dart codegen
       - run: just goldens
 
   # Repository invariants: pins, generated code, dependency direction, docs, CI config, iOS project.
@@ -80,9 +80,10 @@ jobs:
           flutter: "true"
           rust: "true"
           frb: "true"
-          tools: actionlint,shellcheck
+          actionlint: "true"
+          tools: shellcheck
       - run: gem install --user-install xcodeproj
-      - run: flutter pub get
+      - run: just deps   # pub get + Dart codegen
       - run: just doctor flutter rust frb repo-tools
       - run: just doctor-selftest flutter rust frb   # prove doctor still fails when it should
       - run: just check-drift                         # regenerating must produce no diff
@@ -102,7 +103,7 @@ jobs:
           java: "true"
           rust: "true"
           android-ndk: "true"
-      - run: flutter pub get
+      - run: just deps   # pub get + Dart codegen
       - run: just doctor flutter java rust android
       - run: just build-android prod
       # targetSdk 36, per-ABI 16 KB alignment, size budget.
@@ -120,6 +121,6 @@ jobs:
         with:
           flutter: "true"
           rust: "true"
-      - run: flutter pub get
-      - run: just build-ios prod --no-codesign
+      - run: just deps   # pub get + Dart codegen
+      - run: just build-ios-unsigned prod
       - run: just check-ios-release
