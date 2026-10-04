@@ -5,13 +5,27 @@
 # the error text, on the handful of mismatches that otherwise surface as an incomprehensible
 # Gradle, Xcode or linker error forty minutes into a build.
 #
-# Exit 0 = every check passed. Exit 1 = at least one hard failure.
+#   tools/doctor.sh                  every section - what a developer machine needs
+#   tools/doctor.sh flutter frb      only these sections - what one CI job installed
+#
+# Sections: flutter java rust rust-tools frb android dev. Each CI job runs doctor on exactly the
+# toolchain it set up, so every job proves its own versions match tools/versions.env.
+#
+# Exit 0 = every check passed. Exit 1 = at least one hard failure (or an unknown section).
 
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 # shellcheck disable=SC1091
 source tools/versions.env
+
+SECTIONS=(flutter java rust rust-tools frb android dev)
+for arg in "$@"; do
+    [[ " ${SECTIONS[*]} " == *" $arg "* ]] || { echo "doctor: unknown section '$arg' (have: ${SECTIONS[*]})" >&2; exit 1; }
+done
+REQUESTED=("$@")
+# No arguments means every section.
+want() { [[ ${#REQUESTED[@]} -eq 0 || " ${REQUESTED[*]} " == *" $1 "* ]]; }
 
 if [[ -t 1 ]]; then
     RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; DIM=$'\033[2m'; BOLD=$'\033[1m'; OFF=$'\033[0m'
@@ -30,8 +44,11 @@ fail() {
     FAILURES=$((FAILURES + 1))
 }
 section() { printf '\n%s%s%s\n' "$BOLD" "$1" "$OFF"; }
+# Tools print their versions in different shapes; take the first semver from either stream.
+semver_of() { "$@" 2>&1 | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -1; }
 
 # ── Flutter / Dart ────────────────────────────────────────────────────────────
+if want flutter; then
 section "Flutter / Dart"
 
 if ! command -v flutter >/dev/null 2>&1; then
@@ -70,10 +87,22 @@ else
     fail "dart" "not on PATH" "install Flutter $FLUTTER_VERSION"
 fi
 
+# Melos runs as `dart run melos` from the workspace dev_dependencies, so the lockfile is the pin -
+# no global install to drift.
+melos_locked="$(awk '/^  melos:$/{f=1} f&&/version:/{gsub(/"/,"",$2); print $2; exit}' pubspec.lock 2>/dev/null)"
+if [[ "$melos_locked" == "$MELOS_VERSION" ]]; then
+    pass "melos (pubspec.lock)" "$melos_locked"
+else
+    fail "melos (pubspec.lock)" "locked ${melos_locked:-nothing}, pinned $MELOS_VERSION" \
+         "set melos to $MELOS_VERSION in pubspec.yaml, then: dart pub get"
+fi
+fi
+
 # ── Java ──────────────────────────────────────────────────────────────────────
 # The JDK that matters is the one *Flutter* hands to Gradle, which is not necessarily the one on
 # PATH. Flutter prefers, in order: its own jdk-dir config, then Android Studio's bundled JBR, then
 # JAVA_HOME. Android Studio currently bundles JBR 25, which is exactly the version that breaks.
+if want java; then
 section "Java (the JDK Gradle will actually use)"
 
 flutter_jdk=""
@@ -114,8 +143,10 @@ else
              "sdk install java $JAVA_SDKMAN_ID && $jdk_fix"
     fi
 fi
+fi
 
 # ── Rust ──────────────────────────────────────────────────────────────────────
+if want rust; then
 section "Rust"
 
 if ! command -v rustc >/dev/null 2>&1; then
@@ -136,22 +167,24 @@ else
         fail "cross-compile targets" "missing: ${missing[*]}" "rustup target add ${missing[*]}"
     fi
 fi
+fi
 
-# Each of these prints its version in a different shape (and `cargo-ndk --version` refuses to run
-# at all outside cargo), so pull the first semver out of whatever comes back on either stream.
-semver_of() { "$@" 2>&1 | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -1; }
-
-for tool in cargo-nextest cargo-deny cargo-ndk; do
+# The test and supply-chain tools. Not cargo-ndk: cargokit drives the NDK linker itself.
+if want rust-tools; then
+section "Rust tools"
+for tool in cargo-nextest cargo-deny; do
     if command -v "$tool" >/dev/null 2>&1; then
         pass "$tool" "$(semver_of cargo "${tool#cargo-}" --version)"
     else
         fail "$tool" "not installed" "cargo install $tool --locked"
     fi
 done
+fi
 
 # ── flutter_rust_bridge: the three-way version check ──────────────────────────
 # The codegen binary, the Rust crate and the Dart package must be the same version. Any two of
 # them agreeing is not enough - that is precisely how this fails in practice.
+if want frb; then
 section "flutter_rust_bridge (three-way version match)"
 
 frb_codegen=""
@@ -191,8 +224,10 @@ check_frb_pin() {
 }
 check_frb_pin "frb Rust crate"   "$frb_rust" "Cargo.toml"
 check_frb_pin "frb Dart package" "$frb_dart" "packages/audio_engine/pubspec.yaml"
+fi
 
 # ── Android SDK ───────────────────────────────────────────────────────────────
+if want android; then
 section "Android SDK"
 
 sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
@@ -216,17 +251,18 @@ else
     fi
 fi
 
-# ── Monorepo tooling ──────────────────────────────────────────────────────────
-section "Monorepo tooling"
+fi
 
-for tool in melos lefthook; do
-    if command -v "$tool" >/dev/null 2>&1; then
-        pass "$tool" "$(semver_of "$tool" --version)"
-    else
-        fail "$tool" "not on PATH" \
-             "$([[ $tool == melos ]] && echo 'dart pub global activate melos' || echo 'see docs/DEVELOPMENT.md §2')"
-    fi
-done
+# ── Developer machine only ────────────────────────────────────────────────────
+if want dev; then
+section "Developer machine"
+
+if command -v lefthook >/dev/null 2>&1; then
+    pass "lefthook" "$(semver_of lefthook --version)"
+else
+    fail "lefthook" "not on PATH" "see docs/DEVELOPMENT.md §2"
+fi
+fi
 
 # ── Verdict ───────────────────────────────────────────────────────────────────
 printf '\n'

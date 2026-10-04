@@ -6,11 +6,21 @@
 # asserts doctor catches it, then asserts doctor is green when nothing is broken.
 #
 # Runs entirely in a temp directory. Never mutates the working tree or any machine-level config.
+#
+#   tools/doctor-selftest.sh                 every section
+#   tools/doctor-selftest.sh flutter frb     only cases for these sections, and a control run of
+#                                            `doctor.sh flutter frb` - for a CI job that installed
+#                                            only part of the toolchain
+#
+# Each case runs doctor on its own section only, so "failed, but not about this" cannot be masked
+# by an unrelated section that happens to be red on this machine.
 
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 REPO="$PWD"
+REQUESTED=("$@")
+want() { [[ ${#REQUESTED[@]} -eq 0 || " ${REQUESTED[*]} " == *" $1 "* ]]; }
 
 if [[ -t 1 ]]; then
     RED=$'\033[31m'; GREEN=$'\033[32m'; DIM=$'\033[2m'; BOLD=$'\033[1m'; OFF=$'\033[0m'
@@ -23,19 +33,21 @@ trap 'chmod -R u+w "$WORK" 2>/dev/null; rm -rf -- "$WORK"' EXIT
 
 FAILURES=0
 
-# Assert that doctor, run in a scratch repo mutated by $2, exits non-zero and its output matches $3.
+# Assert that `doctor <section>`, run in a scratch repo mutated by $3, exits non-zero and its
+# output matches $4.
 expect_failure() {
-    local name="$1" mutate="$2" pattern="$3" env_prefix="${4:-}"
+    local section="$1" name="$2" mutate="$3" pattern="$4" env_prefix="${5:-}"
+    want "$section" || return 0
     local sandbox="$WORK/$RANDOM$RANDOM"
 
     mkdir -p "$sandbox/tools"
     cp "$REPO/tools/doctor.sh" "$REPO/tools/versions.env" "$sandbox/tools/"
-    cp "$REPO/.fvmrc" "$REPO/rust-toolchain.toml" "$sandbox/"
+    cp "$REPO/.fvmrc" "$REPO/rust-toolchain.toml" "$REPO/pubspec.lock" "$sandbox/"
 
     ( cd "$sandbox" && eval "$mutate" )
 
     local out rc
-    out="$( cd "$sandbox" && eval "$env_prefix bash tools/doctor.sh" 2>&1 )"
+    out="$( cd "$sandbox" && eval "$env_prefix bash tools/doctor.sh $section" 2>&1 )"
     rc=$?
 
     if [[ $rc -eq 0 ]]; then
@@ -56,8 +68,10 @@ printf '\n%sdoctor self-test%s\n' "$BOLD" "$OFF"
 #    Point doctor at a real JDK >= 25 and require it to name the actual issue, not just "wrong
 #    version" - the error text is the whole value of this check.
 JDK25="$(ls -d /usr/lib/jvm/java-2[5-9]-openjdk /usr/lib/jvm/java-2[5-9]* 2>/dev/null | head -1)"
-if [[ -n "$JDK25" && -x "$JDK25/bin/java" ]]; then
-    expect_failure "JDK 25 named as the known-bad case" \
+if ! want java; then
+    :
+elif [[ -n "$JDK25" && -x "$JDK25/bin/java" ]]; then
+    expect_failure java "JDK 25 named as the known-bad case" \
         'true' \
         'Flutter Android builds FAIL on JDK 25' \
         "HOME=\"$WORK/nohome\" JAVA_HOME=\"$JDK25\""
@@ -67,43 +81,48 @@ else
 fi
 
 # 1b. Any other wrong major is rejected too.
-expect_failure "wrong Java major is rejected" \
+expect_failure java "wrong Java major is rejected" \
     'sed -i "s/^JAVA_MAJOR=.*/JAVA_MAJOR=99/" tools/versions.env' \
     'java.*need 99'
 
 # 2. flutter_rust_bridge codegen binary vs the pin.
-expect_failure "frb codegen version skew" \
+expect_failure frb "frb codegen version skew" \
     'sed -i "s/^FRB_VERSION=.*/FRB_VERSION=1.0.0/" tools/versions.env' \
     'frb codegen binary.*1\.0\.0'
 
 # 3. frb Rust crate disagreeing with the pin - the three-way check's second leg.
-expect_failure "frb Rust crate version skew" \
+expect_failure frb "frb Rust crate version skew" \
     'printf "[workspace]\nmembers = []\n\n[workspace.dependencies]\nflutter_rust_bridge = \"2.0.0\"\n" > Cargo.toml' \
     'frb Rust crate.*2\.0\.0'
 
 # 4. .fvmrc silently diverging from versions.env.
-expect_failure ".fvmrc diverged from versions.env" \
+expect_failure flutter ".fvmrc diverged from versions.env" \
     'printf "{\n  \"flutter\": \"3.0.0\"\n}\n" > .fvmrc' \
     '\.fvmrc.*3\.0\.0'
 
 # 5. Flutter itself at the wrong version.
-expect_failure "wrong Flutter version" \
+expect_failure flutter "wrong Flutter version" \
     'sed -i "s/^FLUTTER_VERSION=.*/FLUTTER_VERSION=1.2.3/" tools/versions.env' \
     'flutter.*need 1\.2\.3'
 
 # 6. A cross-compile target from rust-toolchain.toml missing.
-expect_failure "missing rustup target" \
+expect_failure rust "missing rustup target" \
     'sed -i "s|\"aarch64-apple-ios\",|\"aarch64-apple-ios\",\n    \"sparc64-unknown-netbsd\",|" rust-toolchain.toml' \
     'cross-compile targets.*sparc64-unknown-netbsd'
 
 # 7. Missing Android NDK.
-expect_failure "wrong Android NDK" \
+expect_failure android "wrong Android NDK" \
     'sed -i "s/^ANDROID_NDK_VERSION=.*/ANDROID_NDK_VERSION=1.2.3/" tools/versions.env' \
     'NDK 1\.2\.3.*not installed'
 
-# 8. And the control: unmutated, doctor must be green on this machine.
+# 8. melos is pinned by the lockfile, not a global binary - a lockfile that drifts is caught.
+expect_failure flutter "melos lockfile drift" \
+    'sed -i "s/^MELOS_VERSION=.*/MELOS_VERSION=0.0.1/" tools/versions.env' \
+    'melos \(pubspec\.lock\).*pinned 0\.0\.1'
+
+# 9. And the control: unmutated, doctor must be green on this machine.
 printf '\n%scontrol%s\n' "$BOLD" "$OFF"
-if bash "$REPO/tools/doctor.sh" >/dev/null 2>&1; then
+if bash "$REPO/tools/doctor.sh" "${REQUESTED[@]}" >/dev/null 2>&1; then
     printf '  %s✓%s %-38s %sgreen on this machine%s\n' "$GREEN" "$OFF" "unmutated doctor passes" "$DIM" "$OFF"
 else
     printf '  %s✗%s %-38s %sdoctor is red - run: just doctor%s\n' "$RED" "$OFF" "unmutated doctor passes" "$BOLD" "$OFF"
