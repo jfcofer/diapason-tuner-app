@@ -31,8 +31,23 @@ violation() {
 ok() { printf '  %s✓%s %s\n' "$GREEN" "$OFF" "$1"; }
 
 # Real Dart imports only: skip comments, doc comments and strings mentioning a package name.
+#
+# Only directories that exist are searched: grep exits 2 on a missing one, and under pipefail that
+# status used to make `imports_of x | grep -q y` false even on a match - so a package without a
+# test/ directory could import anything unreported. `|| true` because no matches is not an error.
 imports_of() {
-    grep -rhoP "^\s*(import|export)\s+'\K[^']+" "$1"/lib "$1"/test 2>/dev/null | sort -u
+    local dirs=() d
+    for d in "$1"/lib "$1"/test; do [[ -d "$d" ]] && dirs+=("$d"); done
+    [[ ${#dirs[@]} -eq 0 ]] && return 0
+    { grep -rhoP "^\s*(import|export)\s+'\K[^']+" "${dirs[@]}" || true; } | sort -u
+}
+
+# True if package $1 imports anything matching the regex $2. Captures the whole list first: a
+# `grep -q` on a pipe can kill the writer with SIGPIPE, which pipefail reports as failure.
+imports_match() {
+    local list
+    list="$(imports_of "$1")"
+    grep -E "$2" >/dev/null <<<"$list"
 }
 
 printf '\n%sDependency direction (AGENTS.md §5)%s\n' "$BOLD" "$OFF"
@@ -44,7 +59,7 @@ for dir in packages/feature_*; do
     for other_dir in packages/feature_*; do
         other="$(basename "$other_dir")"
         [[ "$self" == "$other" ]] && continue
-        if imports_of "$dir" | grep -q "^package:$other/"; then
+        if imports_match "$dir" "^package:$other/"; then
             violation "$self imports $other" \
                 "feature packages never import each other. Move the shared code down into core_*."
         fi
@@ -84,7 +99,7 @@ done < <(imports_of packages/core_ui)
 before=$VIOLATIONS
 for dir in packages/*; do
     [[ -d "$dir/lib" ]] || continue
-    if imports_of "$dir" | grep -q "^package:diapason/"; then
+    if imports_match "$dir" "^package:diapason/"; then
         violation "$(basename "$dir") imports the app shell" \
             "A package that depends on apps/diapason is a design error - invert it."
     fi
@@ -95,7 +110,7 @@ done
 before=$VIOLATIONS
 for dir in packages/core_* packages/audio_engine; do
     [[ -d "$dir/lib" ]] || continue
-    if imports_of "$dir" | grep -q "^package:feature_"; then
+    if imports_match "$dir" "^package:feature_"; then
         violation "$(basename "$dir") imports a feature package" \
             "Dependencies point down, never up."
     fi
