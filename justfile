@@ -27,6 +27,7 @@ doctor-selftest *sections:
 # Clean clone → ready to work.
 setup: doctor
     fvm install
+    dart pub get                           # pub workspace resolves every member
     cargo fetch
     lefthook install
     just gen
