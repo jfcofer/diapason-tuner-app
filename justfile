@@ -15,13 +15,14 @@ default:
 
 # ── Environment ───────────────────────────────────────────────────────────────
 
-# Verify every pinned version in tools/versions.env. Run this first, always.
-doctor:
-    @tools/doctor.sh
+# Verify every pinned version in tools/versions.env. Run this first, always. With no arguments it
+# checks everything; CI jobs name only the sections they installed, e.g. `just doctor flutter frb`.
+doctor *sections:
+    @tools/doctor.sh {{sections}}
 
 # Prove doctor actually fails. Runs in a temp dir; never touches the working tree.
-doctor-selftest:
-    @tools/doctor-selftest.sh
+doctor-selftest *sections:
+    @tools/doctor-selftest.sh {{sections}}
 
 # Clean clone → ready to work.
 setup: doctor
@@ -48,7 +49,8 @@ gen-frb:
 gen-dart:
     # build_runner must run inside each package that has a generator; running it at the workspace
     # root writes nothing. (--delete-conflicting-outputs was removed in current build_runner.)
-    melos exec --depends-on=build_runner -- dart run build_runner build
+    # melos is a workspace dev_dependency, so `dart run` uses the locked version - no global install.
+    dart run melos exec --depends-on=build_runner -- dart run build_runner build
     # flutter gen-l10n     # [T-0xx] re-enable when content strings land; the locale-aware app
     #                      # *label* lives in native strings.xml / InfoPlist.strings, not here.
 
