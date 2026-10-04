@@ -23,6 +23,9 @@ inputs:
   actionlint:
     description: Install the pinned actionlint.
     default: "false"
+  xcodeproj:
+    description: Install the pinned xcodeproj gem (just ios-project). Needs the runner's Ruby.
+    default: "false"
   tools:
     description: Extra binaries for taiki-e/install-action, comma-separated. just is always installed.
     default: ""
@@ -40,6 +43,7 @@ runs:
           echo "ndk=$ANDROID_NDK_VERSION"
           echo "frb=$FRB_VERSION"
           echo "actionlint=$ACTIONLINT_VERSION"
+          echo "xcodeproj=$XCODEPROJ_VERSION"
         } >> "$GITHUB_OUTPUT"
 
     - if: inputs.flutter == 'true'
@@ -83,10 +87,21 @@ runs:
       shell: bash
       env:
         VERSION: ${{ steps.pins.outputs.actionlint }}
+      # Downloaded to a file first: with `bash <(curl ...)` a failed download is an empty script
+      # and the step passes.
       run: |
         mkdir -p "$HOME/.local/bin"
-        bash <(curl -sSfL "https://raw.githubusercontent.com/rhysd/actionlint/v$VERSION/scripts/download-actionlint.bash") "$VERSION" "$HOME/.local/bin"
+        script="$RUNNER_TEMP/download-actionlint.bash"
+        curl -sSfL -o "$script" "https://raw.githubusercontent.com/rhysd/actionlint/v$VERSION/scripts/download-actionlint.bash"
+        bash "$script" "$VERSION" "$HOME/.local/bin"
+        "$HOME/.local/bin/actionlint" --version
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - if: inputs.xcodeproj == 'true'
+      shell: bash
+      env:
+        VERSION: ${{ steps.pins.outputs.xcodeproj }}
+      run: gem install --user-install --no-document xcodeproj -v "$VERSION"
 
     # After rust-cache, so a cached ~/.cargo/bin makes this a no-op.
     - if: inputs.frb == 'true'
