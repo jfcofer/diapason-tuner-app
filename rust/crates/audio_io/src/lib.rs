@@ -18,7 +18,7 @@ mod handle;
 mod offline;
 
 pub use callback::{AudioCallback, CallbackInfo};
-pub use config::{MAX_BLOCK_FRAMES, MAX_CHANNELS, StreamConfig, StreamTimestamp};
+pub use config::{MAX_BLOCK_FRAMES, MAX_CHANNELS, SAMPLE_RATES, StreamConfig, StreamTimestamp};
 pub use handle::StreamHandle;
 pub use offline::{BlockPattern, OfflineBackend};
 
@@ -75,7 +75,8 @@ pub trait AudioBackend {
         callback: Box<dyn AudioCallback>,
     ) -> Result<StreamHandle>;
 
-    /// What the device actually granted, which may differ from the request. `None` when closed.
+    /// What the device actually granted. Channel counts always match the request (or `open` fails);
+    /// the sample rate and block size may not. `None` when closed.
     fn actual_config(&self) -> Option<StreamConfig>;
 
     /// The stream clock at the most recent block. `None` before the first block, and when closed.

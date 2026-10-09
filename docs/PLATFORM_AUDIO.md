@@ -22,9 +22,15 @@ pub trait AudioCallback: Send + 'static {            // runs on the RT thread: A
 }
 ```
 
-Buffers are interleaved `f32`, and block sizes vary up to `max_block_frames`. `StreamHandle` is a
-lock-free view of the stream's counters (callbacks, frames, largest block) that never blocks either
-side. Every backend must pass the conformance suite in `audio_io/src/conformance.rs`. The rustdoc
+Buffers are interleaved `f32`, and block sizes vary up to `max_block_frames`.
+
+- The device's granted sample rate is used as it is (§2). `CallbackInfo` carries it, and the
+  engine retunes to it without allocating.
+- Channel counts must be honoured, or `open` fails.
+- The stream clock starts at frame 0 and advances by exactly the frames delivered.
+- Each block's host time is strictly later than the last one's.
+- `StreamHandle` is a lock-free view of the stream's counters (callbacks, frames, largest block)
+  that never blocks either side. Every backend must pass the conformance suite in `audio_io/src/conformance.rs`. The rustdoc
 on these types is the full contract.
 
 | Impl | Platform | Notes |
