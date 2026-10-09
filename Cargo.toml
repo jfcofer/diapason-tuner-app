@@ -20,6 +20,11 @@ publish = false
 # tools/versions.env is the source of truth; tools/doctor.sh enforces the three-way match.
 flutter_rust_bridge = "=2.13.0"
 thiserror = "2"
+# Real-time plumbing (docs/AUDIO_ENGINE.md §7): the only cross-thread primitives the engine may use.
+rtrb = "0.4"
+triple_buffer = "9"
+# Traps allocation on the audio thread in debug builds; compiled out of release builds.
+assert_no_alloc = "1.1"
 # Dev-only. No fork or timeout features: they pull in a process-forking runner we do not need.
 proptest = { version = "1.11", default-features = false, features = ["std"] }
 

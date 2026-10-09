@@ -1,8 +1,7 @@
 # cargo-deny: licences, advisories, bans. Run by `just verify` and by CI.
 #
-# Licensing policy lives in docs/adr/0009. Until that ADR moves from Proposed to Accepted, this
-# file encodes the conservative reading: permissive licences only, and nothing copyleft reaching
-# the shipped binary.
+# Licensing policy lives in docs/adr/0009 (Accepted): permissive licences, plus MPL-2.0 for
+# unmodified libraries, and nothing GPL or LGPL reaching the shipped binary.
 
 [graph]
 targets = [
@@ -25,10 +24,15 @@ version = 2
 allow = [
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
+    "BSD-1-Clause",  # assert_no_alloc
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
     "MIT",
+    # File-level copyleft: only changes to the MPL files themselves must be shared, and we ship
+    # triple_buffer unmodified, which adr/0009 permits. Its notice must reach the in-app licence
+    # page, which does not yet list Rust crates (STATE.md, known gaps).
+    "MPL-2.0",
     "Unicode-3.0",
     "Zlib",
 ]
