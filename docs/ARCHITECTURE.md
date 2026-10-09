@@ -49,7 +49,7 @@ UI is a *subscriber* to a state snapshot, never a participant in timing.
 ├──────────────────────────────┬────────────────────────────────────────┤
 │ rust/crates/dsp              │ rust/crates/audio_io                    │
 │ pure computation:            │ backends behind one trait:              │
-│ NSDF/MPM, filters, resample, │ Oboe (Android) · AudioUnit (iOS) ·      │
+│ NSDF/MPM, filters, resample, │ AAudio (Android) · AudioUnit (iOS) ·    │
 │ click synthesis, smoothing   │ cpal (desktop dev) · Offline (tests)    │
 │ no I/O · no alloc in hot path│                                         │
 └──────────────────────────────┴────────────────────────────────────────┘

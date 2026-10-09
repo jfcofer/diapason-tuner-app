@@ -35,7 +35,7 @@ on these types is the full contract.
 
 | Impl | Platform | Notes |
 |---|---|---|
-| `OboeBackend` | Android | AAudio via Oboe; the only production Android path |
+| `AAudioBackend` | Android | AAudio through raw `ndk-sys` (`adr/0020`); the only production Android path |
 | `CoreAudioBackend` | iOS/iPadOS | AURemoteIO Audio Unit; the only production iOS path |
 | `CpalBackend` | macOS/Windows/Linux | Desktop dev loop only — never shipped |
 | `OfflineBackend` | any | Deterministic, faster-than-real-time; all tests |
@@ -45,14 +45,15 @@ duplex stream rather than two, so both share a clock.
 
 ## 2. Android
 
-**Stream configuration** — Oboe with `PerformanceMode::LowLatency`, `SharingMode::Exclusive` with
-automatic fallback to `Shared`, `Usage::Media`, float samples, mono in / stereo out.
+**Stream configuration** — AAudio with the low-latency performance mode, exclusive sharing (AAudio
+falls back to shared by itself), `USAGE_MEDIA`, float samples, mono in / stereo out. Duplex is two
+streams on one clock: the output callback reads the input stream without blocking (`adr/0020`).
 
-Query and *use* the device's native values rather than forcing 48 kHz/256:
-`AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE` and `PROPERTY_OUTPUT_FRAMES_PER_BUFFER`. Requesting a
-buffer the device does not want is the most common cause of the fast path silently not being
-granted. Set buffer size to a small multiple of the burst size and let Oboe's automatic latency
-tuning do the rest.
+*Use* the device's native values rather than forcing 48 kHz/256. The output leaves the rate
+unspecified, so AAudio picks the native one, and the input asks for whatever the output was
+granted. Requesting a rate or buffer the device does not want is the most common cause of the fast
+path silently not being granted. The buffer is two bursts. Read back what was granted:
+`AAudioBackend::granted_paths` reports whether low latency and exclusive mode were actually given.
 
 **Input preset matters more than anything else for tuner accuracy.** Android's default input applies
 AGC, noise suppression and a voice-band filter, all of which destroy pitch content. Request
@@ -85,8 +86,8 @@ the moment the app is not foreground, and the UI says so.
 - Predictive back must be supported and tested.
 - 16 KB, edge-to-edge and target API checks live in `just check-android-release`.
 
-**Device disconnect** — Oboe reports `ErrorDisconnected` from the callback. Do not rebuild the
-stream on the audio thread. Signal a normal-priority thread, close, reopen with backoff, and surface
+**Device disconnect** — AAudio's error callback fires, and `AAudioBackend` sets
+`StreamHandle::disconnected`. Do not rebuild the stream on the audio thread or the error thread. Signal a normal-priority thread, close, reopen with backoff, and surface
 a `route_changed` flag in the snapshot so the UI can show a brief, non-alarming indicator.
 
 ## 3. iOS / iPadOS
