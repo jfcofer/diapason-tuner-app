@@ -197,15 +197,7 @@ release-check: verify check-android-release
 # ── Agent session protocol (AGENTS.md §2) ─────────────────────────────────────
 
 session-start:
-    @echo "Read, in order:"
-    @echo "  1. AGENTS.md"
-    @echo "  2. docs/agents/STATE.md"
-    @echo "  3. the active task file named in STATE.md"
-    @echo "  4. only the reference docs that task points to"
-    @echo ""
-    @git -c color.ui=always log --oneline -8
-    @git status --short
-    @just doctor
+    @tools/session-start.sh                # [T-007] reading order, unmerged branches, open PRs, doctor
 
 session-end:
     @tools/session-end.sh                  # [T-001] verifies STATE, task and journal were updated

@@ -18,7 +18,7 @@ abstract interface class EngineHandle {
 /// The real engine, over the flutter_rust_bridge boundary.
 class AudioEngine implements EngineHandle {
   /// Creates a handle. Call [initialize] before anything else.
-  AudioEngine();
+  new();
 
   bool _initialized = false;
 

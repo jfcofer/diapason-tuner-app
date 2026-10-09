@@ -9,7 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Everything visual about it is temporary.
 class TunerScreen extends ConsumerWidget {
   /// Creates the tuner screen.
-  const TunerScreen({super.key});
+  const new({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

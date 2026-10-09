@@ -32,3 +32,8 @@ adds Claude-specific mechanics. Keep it short; if a rule matters to all agents, 
 read-only git). Anything destructive — `git push`, `rm -rf`, credential access, editing
 `android/app/build.gradle.kts` signing blocks — will ask. That boundary is deliberate; do not
 propose widening it to move faster.
+
+One recorded exception, approved by the owner on 2026-10-09 (`T-007`): `just session-start` runs
+two **read-only network** calls, `git fetch --prune` and `gh pr list`, without a prompt, even though
+`gh` on its own still asks. They are how a session sees merges that happened while no agent was
+running. They are bounded and never fatal. Anything that *writes* to GitHub still asks.

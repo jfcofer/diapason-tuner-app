@@ -7,7 +7,7 @@ import 'package:core_domain/core_domain.dart';
 /// the pinned container with no Rust build in sight (`docs/TESTING.md`).
 class FakeAudioEngine implements EngineHandle {
   /// Creates a fake reporting [status], or a stopped placeholder engine.
-  FakeAudioEngine({EngineStatus? status})
+  new({EngineStatus? status})
     : _status =
           status ??
           const EngineStatus(

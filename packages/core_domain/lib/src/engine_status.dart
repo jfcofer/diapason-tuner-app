@@ -8,11 +8,7 @@ import 'package:meta/meta.dart';
 @immutable
 class EngineStatus {
   /// Creates a status snapshot.
-  const EngineStatus({
-    required this.dspBuild,
-    required this.engineBuild,
-    required this.running,
-  });
+  const new({required this.dspBuild, required this.engineBuild, required this.running});
 
   /// Identifies the DSP crate at the bottom of the Rust stack.
   final String dspBuild;
