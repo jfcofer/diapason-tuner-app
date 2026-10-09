@@ -10,12 +10,22 @@ in `AUDIO_ENGINE.md`.
 
 ```rust
 pub trait AudioBackend {
+    fn name(&self) -> &'static str;                  // for the diagnostics overlay
     fn open(&mut self, cfg: StreamConfig, cb: Box<dyn AudioCallback>) -> Result<StreamHandle>;
-    fn actual_config(&self) -> StreamConfig;   // device may not honour the request
-    fn timestamp(&self) -> Option<StreamTimestamp>; // frame index ↔ host clock
-    fn close(&mut self) -> Result<()>;
+    fn actual_config(&self) -> Option<StreamConfig>; // device may not honour the request
+    fn timestamp(&self) -> Option<StreamTimestamp>;  // frame index ↔ host clock
+    fn close(&mut self) -> Result<()>;               // idempotent; drops the callback
+}
+
+pub trait AudioCallback: Send + 'static {            // runs on the RT thread: AGENTS.md §6
+    fn process(&mut self, input: &[f32], output: &mut [f32], info: &CallbackInfo);
 }
 ```
+
+Buffers are interleaved `f32`, and block sizes vary up to `max_block_frames`. `StreamHandle` is a
+lock-free view of the stream's counters (callbacks, frames, largest block) that never blocks either
+side. Every backend must pass the conformance suite in `audio_io/src/conformance.rs`. The rustdoc
+on these types is the full contract.
 
 | Impl | Platform | Notes |
 |---|---|---|
