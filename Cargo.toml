@@ -20,6 +20,8 @@ publish = false
 # tools/versions.env is the source of truth; tools/doctor.sh enforces the three-way match.
 flutter_rust_bridge = "=2.13.0"
 thiserror = "2"
+# Dev-only. No fork or timeout features: they pull in a process-forking runner we do not need.
+proptest = { version = "1.11", default-features = false, features = ["std"] }
 
 diapason_dsp = { path = "rust/crates/dsp" }
 diapason_engine = { path = "rust/crates/engine" }
