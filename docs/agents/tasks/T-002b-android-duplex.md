@@ -99,7 +99,7 @@ iOS (`T-002c`). Pitch detection. Latency *calibration* UI (M5).
 - The ADR, `AGENTS.md` §6 and `AUDIO_ENGINE.md` §7 no longer overclaim. The trap sees only Rust's
   allocator, and `read`/`getTimestamp` may take a platform mutex on the legacy path.
 
-**Part 2 also owes:**
+**Part 2b also owes:**
 - the §1 callback budget measured in release, from the app;
 - shedding an input backlog that builds up after start-up (use `getFramesWritten −
   getFramesRead`), since it is otherwise permanent latency;
@@ -121,7 +121,12 @@ iOS (`T-002c`). Pitch detection. Latency *calibration* UI (M5).
   point driven by an `integration_test`.
 - **Three PRs:**
   1. the ADR, the backend and on-device conformance;
-  2. session, FFI, permission and capabilities;
+  2. **split by the owner on 2026-10-09:**
+     - **2a:** a new `session` crate (the supervisor that rebuilds streams; `engine`'s RT lint
+       config cannot host it), FFI start/stop, the snapshot stream, the debug-app allocation
+       trap, and the permission;
+     - **2b:** the capabilities channel and preset choice, plus everything "Part 2b also owes"
+       lists above;
   3. the overlay (the first golden, which closes the `adr/0016` gap), lifecycle and latency.
 - **Criterion amendment:** metronome-column lifecycle rows (FGS, MediaSession, lock screen) need
   the M4 metronome and move there. They are not ticked here.

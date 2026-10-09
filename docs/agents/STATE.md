@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-09 (T-002b)
+# STATE — updated 2026-10-09 (T-009)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -12,21 +12,22 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap.
 **Status:**
 
 - **CI is green on all six jobs** (iOS on `macos-26`, Rust engine linked); `just verify` is green.
-- **T-006 and T-002a are merged** (PRs #6, #7).
-- **T-007 and T-008 are merged** (PRs #8, #9). T-007 superseded Dependabot #4.
-- **Branch in flight:** `feat/T-002b-android-backend` (T-002b part 1), rebased onto `main`. Its PR
-  state is whatever `session-start` says.
+- **Merged:** T-006, T-002a, T-007, T-008 and **T-002b part 1** (PRs #6–#9, #11).
+- **Branch in flight:** `chore/T-009-process-drift` (T-009, done). Its PR state is whatever
+  `session-start` says.
 - The dev flavour runs on the Redmi and shows a value computed in Rust.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-002b-android-duplex.md`**: part 1 of 3 is done, on its branch.
+**`docs/agents/tasks/T-002b-android-duplex.md`**: part 1 of 3 is merged (#11).
 - `AAudioBackend`, raw `ndk-sys` (`adr/0020`), passes the conformance suite on the Redmi.
 - The allocation canary proves the trap is armed.
-- **Next, part 2:** the engine session (supervisor rebuilds), FFI start/stop and the snapshot
-  stream, the permission, and the capabilities channel. Its notes hold what the Redmi showed and
-  what part 2 owes.
+- **Part 2 is split into 2a and 2b** (owner, 2026-10-09). Its Implementation notes give the
+  split, what the Redmi showed, and what 2b owes.
+- **Next, 2a** (ADR 0022 first): a `rust/crates/session` crate, a sans-IO `Supervisor` on virtual
+  time that replays desired state after each rebuild; FFI start/stop and a `StreamSink` snapshot
+  stream; `engineHandleProvider` down to `audio_engine`; the debug `AllocDisabler`; the permission.
 
 
 ## Hardware this project actually has
@@ -64,6 +65,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - `0019` minSdk is 28, the first API with AAudio input presets.
 - `0020` Android audio uses raw `ndk-sys` with our own wrapper, and `clock_gettime` is the one RT
   timing call.
+- `0021` release builds abort on panic, and nothing catches it. The FFI `api` module denies
+  `unwrap`, `expect`, `panic!` and unchecked indexing, and so must any new crate the FFI calls.
 
 ## Traps a later session will otherwise re-discover
 
@@ -94,7 +97,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
   become an error. It needs cargokit SwiftPM support or a `Package.swift`, as its own task.
 - **Rust crate licences are not in the in-app licence page.** `triple_buffer` (MPL-2.0) requires
   its notice there; `deny.toml` points here. Due by M6.
-- **Debug app builds do not trap RT allocations yet.** `T-002b` part 2 makes `AllocDisabler` the
+- **Debug app builds do not trap RT allocations yet.** `T-002b` part 2a makes `AllocDisabler` the
   debug FFI's allocator. The device tests already do.
 
 ## Open questions
@@ -105,12 +108,12 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 | Reference devices beyond the Redmi | M1+ | No iPhone, Pixel or tablet available. `T-002` criteria were amended to "every device available" |
 | Font licences confirmed for bundling | M3 | `DESIGN_SYSTEM.md` §1 assumes OFL faces |
 | Where `audio_io` puts lossy casts | `T-002c` | Android needed none (`try_from` throughout `android.rs`). Core Audio's `mSampleTime` (`f64`) does. Supersede `adr/0018` with a leaf crate, or let `audio_io` depend on `dsp` |
-| Does the app get the AAudio fast path on the Redmi? | `T-002b` part 2 | The shell user is refused (`adr/0020`); a vendor per-app policy is suspected. Read `granted_paths` from the app |
+| Does the app get the AAudio fast path on the Redmi? | `T-002b` part 2a | The shell user is refused (`adr/0020`); a vendor per-app policy is suspected. Read `granted_paths` from the app |
 
 ## Next up (in order)
 
-1. **Land T-002b part 1:** PR, six green checks, rebase-merge. The owner approves pushes and
-   merges, and also merges Dependabot #2 and #10.
-2. **`T-002b` part 2** (see Active task).
+1. **Land `T-009`** (PR, six green checks, rebase-merge; the owner approves). The owner also
+   merges Dependabot #2 and #10.
+2. **`T-002b` part 2a, then 2b, then part 3** (see Active task).
 3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
 4. `T-004` (CI reproducibility) whenever a slice is waiting on CI. `T-003-pitch-core` after T-002.
