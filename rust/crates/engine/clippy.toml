@@ -1,0 +1,31 @@
+# What the audio callback may never call (AGENTS.md §6, docs/AUDIO_ENGINE.md §7).
+#
+# Applied crate-wide on purpose, here and in dsp (a symlink to this file): these crates *are* the
+# real-time path, and their control side has no need for these either. Allocation that cannot be
+# seen in a method name (vec!, Box::new, collect) is caught at run time by the zero-allocation
+# test instead; this list catches the rest at compile time, including in code no test reaches.
+
+disallowed-methods = [
+    { path = "std::vec::Vec::push", reason = "grows the vector: allocates on the audio thread" },
+    { path = "std::vec::Vec::insert", reason = "grows the vector: allocates on the audio thread" },
+    { path = "std::vec::Vec::extend_from_slice", reason = "grows the vector: allocates on the audio thread" },
+    { path = "std::vec::Vec::resize", reason = "grows the vector: allocates on the audio thread" },
+    { path = "std::vec::Vec::reserve", reason = "allocates; size buffers in Engine::prepare" },
+    { path = "std::collections::HashMap::insert", reason = "may rehash: allocates on the audio thread" },
+    { path = "std::string::String::push_str", reason = "grows the string: allocates on the audio thread" },
+    { path = "std::time::Instant::now", reason = "a syscall, and the audio clock is the only clock" },
+    { path = "std::time::SystemTime::now", reason = "a syscall, and the audio clock is the only clock" },
+    { path = "std::sync::Mutex::lock", reason = "blocks; use the rtrb queue or the triple buffer" },
+    { path = "std::sync::RwLock::read", reason = "blocks; use the rtrb queue or the triple buffer" },
+    { path = "std::sync::RwLock::write", reason = "blocks; use the rtrb queue or the triple buffer" },
+    { path = "std::thread::sleep", reason = "blocks the audio thread" },
+]
+
+disallowed-macros = [
+    { path = "std::println", reason = "I/O on the audio thread; RT logging goes through a preallocated ring" },
+    { path = "std::eprintln", reason = "I/O on the audio thread; RT logging goes through a preallocated ring" },
+    { path = "std::print", reason = "I/O on the audio thread" },
+    { path = "std::eprint", reason = "I/O on the audio thread" },
+    { path = "std::dbg", reason = "I/O on the audio thread" },
+    { path = "std::format", reason = "allocates a String" },
+]

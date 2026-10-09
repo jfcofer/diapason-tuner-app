@@ -22,7 +22,7 @@ pub mod osc;
 /// ```
 #[must_use]
 pub fn build_id() -> String {
-    format!("diapason_dsp {}", env!("CARGO_PKG_VERSION"))
+    concat!("diapason_dsp ", env!("CARGO_PKG_VERSION")).to_owned()
 }
 
 #[cfg(test)]
@@ -33,7 +33,7 @@ mod tests {
     fn build_id_names_the_crate_and_version() {
         assert_eq!(
             build_id(),
-            format!("diapason_dsp {}", env!("CARGO_PKG_VERSION"))
+            concat!("diapason_dsp ", env!("CARGO_PKG_VERSION"))
         );
     }
 }

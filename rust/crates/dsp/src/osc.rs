@@ -223,7 +223,7 @@ mod tests {
                 split.fill(&mut actual[start..start + size]);
                 start += size;
             }
-            prop_assert_eq!(actual, expected);
+            assert_eq!(actual, expected);
         }
     }
 }
