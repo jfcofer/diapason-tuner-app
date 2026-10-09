@@ -11,7 +11,6 @@ void main() {
       status: const EngineStatus(
         dspBuild: 'diapason_dsp 9.9.9',
         engineBuild: 'diapason_engine 9.9.9',
-        running: false,
       ),
     );
 
@@ -24,6 +23,5 @@ void main() {
 
     expect(find.byKey(const Key('tuner.dspBuild')), findsOneWidget);
     expect(find.text('diapason_dsp 9.9.9'), findsOneWidget);
-    expect(find.text('no stream yet (T-002)'), findsOneWidget);
   });
 }

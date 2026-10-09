@@ -12,3 +12,10 @@
 )]
 pub mod api;
 mod frb_generated;
+
+// Debug builds of the app trap any allocation inside `assert_no_alloc`, which wraps every audio
+// callback, so an allocation on the real-time path aborts the debug app at the line that made it
+// (docs/AUDIO_ENGINE.md §7). It sees only Rust's allocator. Release builds keep the system one.
+#[cfg(debug_assertions)]
+#[global_allocator]
+static ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;

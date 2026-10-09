@@ -1,4 +1,4 @@
-import 'package:feature_tuner/src/engine_status_provider.dart';
+import 'package:audio_engine/audio_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -34,11 +34,6 @@ class TunerScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 4),
               Text(status.engineBuild, style: textTheme.bodyMedium, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              Text(
-                status.running ? 'stream running' : 'no stream yet (T-002)',
-                style: textTheme.bodySmall,
-              ),
             ],
           ),
         ),

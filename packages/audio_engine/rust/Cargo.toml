@@ -12,7 +12,10 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 flutter_rust_bridge.workspace = true
-diapason_engine.workspace = true
+# The only workspace crate this one may name (docs/adr/0022; tools/check-deps.sh enforces it).
+diapason_session.workspace = true
+# The debug app's global allocator, so a real-time allocation aborts it (AUDIO_ENGINE.md §7).
+assert_no_alloc.workspace = true
 
 # NOT `[lints] workspace = true`: the workspace forbids unsafe_code, and this crate is one of the
 # two places AGENTS.md §7 permits it, because flutter_rust_bridge's generated bindings require it.

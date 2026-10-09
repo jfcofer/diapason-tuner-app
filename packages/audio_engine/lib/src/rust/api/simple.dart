@@ -8,19 +8,17 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`
 
-/// Read the engine's current status.
-///
-/// Synchronous because it reads an in-memory snapshot and returns immediately. Once the engine owns
-/// a real stream this becomes a subscription to ~30 Hz snapshots rather than a poll.
+/// Read which builds are linked. Synchronous: it reads constants. Stream state is not here; it
+/// arrives as snapshots from [`crate::api::session::AudioSession::snapshots`].
 EngineStatus engineStatus() => RustLib.instance.api.crateApiSimpleEngineStatus();
 
-/// A snapshot of the engine, as seen from Dart.
+/// Which builds of the Rust stack are running, as seen from Dart.
 ///
-/// Built from [`diapason_engine::BuildInfo`] rather than re-exporting it, because the mapping
+/// Built from [`diapason_session::BuildInfo`] rather than re-exporting it, because the mapping
 /// across the boundary is this crate's whole job and the engine type must stay free to change
 /// shape without the FFI layer silently following it.
 class EngineStatus {
-  const new({required this.dspBuild, required this.engineBuild, required this.running});
+  const new({required this.dspBuild, required this.engineBuild});
 
   /// Identifies the DSP crate at the bottom of the Rust stack.
   final String dspBuild;
@@ -28,11 +26,8 @@ class EngineStatus {
   /// Identifies the engine crate.
   final String engineBuild;
 
-  /// Whether an audio stream is running. Always `false` until `T-002b` opens one from Dart.
-  final bool running;
-
   @override
-  int get hashCode => dspBuild.hashCode ^ engineBuild.hashCode ^ running.hashCode;
+  int get hashCode => dspBuild.hashCode ^ engineBuild.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -40,6 +35,5 @@ class EngineStatus {
       other is EngineStatus &&
           runtimeType == other.runtimeType &&
           dspBuild == other.dspBuild &&
-          engineBuild == other.engineBuild &&
-          running == other.running;
+          engineBuild == other.engineBuild;
 }

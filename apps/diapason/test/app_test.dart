@@ -12,7 +12,6 @@ void main() {
       status: const EngineStatus(
         dspBuild: 'diapason_dsp 0.1.0',
         engineBuild: 'diapason_engine 0.1.0',
-        running: false,
       ),
     );
 

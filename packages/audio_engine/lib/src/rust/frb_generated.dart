@@ -6,6 +6,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:audio_engine/src/rust/api/session.dart';
 import 'package:audio_engine/src/rust/api/simple.dart';
 import 'package:audio_engine/src/rust/frb_generated.dart';
 import 'package:audio_engine/src/rust/frb_generated.io.dart'
@@ -64,7 +65,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -999984404;
+  int get rustContentHash => 1143823011;
 
   static const kDefaultExternalLibraryLoaderConfig = ExternalLibraryLoaderConfig(
     stem: 'diapason_ffi',
@@ -74,9 +75,31 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Stream<SessionSnapshotDto> crateApiSessionAudioSessionSnapshots({required AudioSession that});
+
+  AudioSession crateApiSessionAudioSessionSpawn();
+
+  void crateApiSessionAudioSessionStart({required AudioSession that, required bool input});
+
+  void crateApiSessionAudioSessionStartTone({
+    required AudioSession that,
+    required double frequencyHz,
+    required double amplitude,
+  });
+
+  void crateApiSessionAudioSessionStop({required AudioSession that});
+
+  void crateApiSessionAudioSessionStopTone({required AudioSession that});
+
   EngineStatus crateApiSimpleEngineStatus();
 
   Future<void> crateApiSimpleInitApp();
+
+  RustArcIncrementStrongCountFnType get rust_arc_increment_strong_count_AudioSession;
+
+  RustArcDecrementStrongCountFnType get rust_arc_decrement_strong_count_AudioSession;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_AudioSessionPtr;
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -88,12 +111,179 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
+  Stream<SessionSnapshotDto> crateApiSessionAudioSessionSnapshots({required AudioSession that}) {
+    final sink = RustStreamSink<SessionSnapshotDto>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+              that,
+              serializer,
+            );
+            sse_encode_StreamSink_session_snapshot_dto_Sse(sink, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1, port: port_);
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: sse_decode_audio_session_error,
+          ),
+          constMeta: kCrateApiSessionAudioSessionSnapshotsConstMeta,
+          argValues: [that, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiSessionAudioSessionSnapshotsConstMeta =>
+      const TaskConstMeta(debugName: 'AudioSession_snapshots', argNames: ['that', 'sink']);
+
+  @override
+  AudioSession crateApiSessionAudioSessionSpawn() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession,
+          decodeErrorData: sse_decode_audio_session_error,
+        ),
+        constMeta: kCrateApiSessionAudioSessionSpawnConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionAudioSessionSpawnConstMeta =>
+      const TaskConstMeta(debugName: 'AudioSession_spawn', argNames: []);
+
+  @override
+  void crateApiSessionAudioSessionStart({required AudioSession that, required bool input}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+            that,
+            serializer,
+          );
+          sse_encode_bool(input, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_audio_session_error,
+        ),
+        constMeta: kCrateApiSessionAudioSessionStartConstMeta,
+        argValues: [that, input],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionAudioSessionStartConstMeta =>
+      const TaskConstMeta(debugName: 'AudioSession_start', argNames: ['that', 'input']);
+
+  @override
+  void crateApiSessionAudioSessionStartTone({
+    required AudioSession that,
+    required double frequencyHz,
+    required double amplitude,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+            that,
+            serializer,
+          );
+          sse_encode_f_32(frequencyHz, serializer);
+          sse_encode_f_32(amplitude, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_audio_session_error,
+        ),
+        constMeta: kCrateApiSessionAudioSessionStartToneConstMeta,
+        argValues: [that, frequencyHz, amplitude],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionAudioSessionStartToneConstMeta => const TaskConstMeta(
+    debugName: 'AudioSession_start_tone',
+    argNames: ['that', 'frequencyHz', 'amplitude'],
+  );
+
+  @override
+  void crateApiSessionAudioSessionStop({required AudioSession that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_audio_session_error,
+        ),
+        constMeta: kCrateApiSessionAudioSessionStopConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionAudioSessionStopConstMeta =>
+      const TaskConstMeta(debugName: 'AudioSession_stop', argNames: ['that']);
+
+  @override
+  void crateApiSessionAudioSessionStopTone({required AudioSession that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_audio_session_error,
+        ),
+        constMeta: kCrateApiSessionAudioSessionStopToneConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionAudioSessionStopToneConstMeta =>
+      const TaskConstMeta(debugName: 'AudioSession_stop_tone', argNames: ['that']);
+
+  @override
   EngineStatus crateApiSimpleEngineStatus() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
         },
         codec: SseCodec(decodeSuccessData: sse_decode_engine_status, decodeErrorData: null),
         constMeta: kCrateApiSimpleEngineStatusConstMeta,
@@ -112,7 +302,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2, port: port_);
+          pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8, port: port_);
         },
         codec: SseCodec(decodeSuccessData: sse_decode_unit, decodeErrorData: null),
         constMeta: kCrateApiSimpleInitAppConstMeta,
@@ -125,10 +315,67 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiSimpleInitAppConstMeta =>
       const TaskConstMeta(debugName: 'init_app', argNames: []);
 
+  RustArcIncrementStrongCountFnType get rust_arc_increment_strong_count_AudioSession => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession;
+
+  RustArcDecrementStrongCountFnType get rust_arc_decrement_strong_count_AudioSession => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession;
+
+  @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AnyhowException(raw as String);
+  }
+
+  @protected
+  AudioSession
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AudioSessionImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  AudioSession
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AudioSessionImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  int dco_decode_CastedPrimitive_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError('Not implemented in this codec, please use the other one');
+  }
+
+  @protected
+  AudioSession
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AudioSessionImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  RustStreamSink<SessionSnapshotDto> dco_decode_StreamSink_session_snapshot_dto_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
   @protected
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
+  }
+
+  @protected
+  AudioSessionError dco_decode_audio_session_error(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AudioSessionError.values[raw as int];
   }
 
   @protected
@@ -138,21 +385,173 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
+  double dco_decode_box_autoadd_f_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as double;
+  }
+
+  @protected
+  FaultDto dco_decode_box_autoadd_fault_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_fault_dto(raw);
+  }
+
+  @protected
+  int dco_decode_box_autoadd_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  InputPresetDto dco_decode_box_autoadd_input_preset_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_input_preset_dto(raw);
+  }
+
+  @protected
+  int dco_decode_box_autoadd_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
   EngineStatus dco_decode_engine_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 3) throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    if (arr.length != 2) throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
     return EngineStatus(
       dspBuild: dco_decode_String(arr[0]),
       engineBuild: dco_decode_String(arr[1]),
-      running: dco_decode_bool(arr[2]),
     );
+  }
+
+  @protected
+  double dco_decode_f_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as double;
+  }
+
+  @protected
+  FaultDto dco_decode_fault_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return FaultDto.values[raw as int];
+  }
+
+  @protected
+  int dco_decode_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  InputPresetDto dco_decode_input_preset_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return InputPresetDto.values[raw as int];
   }
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint8List;
+  }
+
+  @protected
+  String? dco_decode_opt_String(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_bool(raw);
+  }
+
+  @protected
+  double? dco_decode_opt_box_autoadd_f_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_f_32(raw);
+  }
+
+  @protected
+  FaultDto? dco_decode_opt_box_autoadd_fault_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_fault_dto(raw);
+  }
+
+  @protected
+  int? dco_decode_opt_box_autoadd_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_i_32(raw);
+  }
+
+  @protected
+  InputPresetDto? dco_decode_opt_box_autoadd_input_preset_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_input_preset_dto(raw);
+  }
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  SessionSnapshotDto dco_decode_session_snapshot_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 24) throw Exception('unexpected arr length: expect 24 but see ${arr.length}');
+    return SessionSnapshotDto(
+      state: dco_decode_session_state_dto(arr[0]),
+      backend: dco_decode_String(arr[1]),
+      sampleRate: dco_decode_u_32(arr[2]),
+      maxBlockFrames: dco_decode_opt_box_autoadd_u_32(arr[3]),
+      inputActive: dco_decode_bool(arr[4]),
+      inputRms: dco_decode_f_32(arr[5]),
+      toneHz: dco_decode_opt_box_autoadd_f_32(arr[6]),
+      frames: dco_decode_CastedPrimitive_u_64(arr[7]),
+      callbacks: dco_decode_CastedPrimitive_u_64(arr[8]),
+      worstCallbackNs: dco_decode_CastedPrimitive_u_64(arr[9]),
+      inputUnderruns: dco_decode_CastedPrimitive_u_64(arr[10]),
+      xruns: dco_decode_opt_box_autoadd_u_32(arr[11]),
+      framesPerBurst: dco_decode_opt_box_autoadd_u_32(arr[12]),
+      inputPreset: dco_decode_opt_box_autoadd_input_preset_dto(arr[13]),
+      inputPresetCode: dco_decode_opt_box_autoadd_i_32(arr[14]),
+      outputLowLatency: dco_decode_opt_box_autoadd_bool(arr[15]),
+      outputExclusive: dco_decode_opt_box_autoadd_bool(arr[16]),
+      inputLowLatency: dco_decode_opt_box_autoadd_bool(arr[17]),
+      inputExclusive: dco_decode_opt_box_autoadd_bool(arr[18]),
+      rebuilds: dco_decode_u_32(arr[19]),
+      fault: dco_decode_opt_box_autoadd_fault_dto(arr[20]),
+      inputFault: dco_decode_opt_box_autoadd_fault_dto(arr[21]),
+      lastError: dco_decode_opt_String(arr[22]),
+      commandsDropped: dco_decode_u_32(arr[23]),
+    );
+  }
+
+  @protected
+  SessionStateDto dco_decode_session_state_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return SessionStateDto.values[raw as int];
+  }
+
+  @protected
+  int dco_decode_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeU64(raw);
   }
 
   @protected
@@ -168,10 +567,81 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BigInt dco_decode_usize(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeU64(raw);
+  }
+
+  @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    final inner = sse_decode_String(deserializer);
+    return AnyhowException(inner);
+  }
+
+  @protected
+  AudioSession
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return AudioSessionImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  AudioSession
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return AudioSessionImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  int sse_decode_CastedPrimitive_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    final inner = sse_decode_u_64(deserializer);
+    return inner.toInt();
+  }
+
+  @protected
+  AudioSession
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return AudioSessionImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  RustStreamSink<SessionSnapshotDto> sse_decode_StreamSink_session_snapshot_dto_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     final inner = sse_decode_list_prim_u_8_strict(deserializer);
     return utf8.decoder.convert(inner);
+  }
+
+  @protected
+  AudioSessionError sse_decode_audio_session_error(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    final inner = sse_decode_i_32(deserializer);
+    return AudioSessionError.values[inner];
   }
 
   @protected
@@ -181,12 +651,73 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return sse_decode_bool(deserializer);
+  }
+
+  @protected
+  double sse_decode_box_autoadd_f_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return sse_decode_f_32(deserializer);
+  }
+
+  @protected
+  FaultDto sse_decode_box_autoadd_fault_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return sse_decode_fault_dto(deserializer);
+  }
+
+  @protected
+  int sse_decode_box_autoadd_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return sse_decode_i_32(deserializer);
+  }
+
+  @protected
+  InputPresetDto sse_decode_box_autoadd_input_preset_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return sse_decode_input_preset_dto(deserializer);
+  }
+
+  @protected
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return sse_decode_u_32(deserializer);
+  }
+
+  @protected
   EngineStatus sse_decode_engine_status(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     final var_dspBuild = sse_decode_String(deserializer);
     final var_engineBuild = sse_decode_String(deserializer);
-    final var_running = sse_decode_bool(deserializer);
-    return EngineStatus(dspBuild: var_dspBuild, engineBuild: var_engineBuild, running: var_running);
+    return EngineStatus(dspBuild: var_dspBuild, engineBuild: var_engineBuild);
+  }
+
+  @protected
+  double sse_decode_f_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getFloat32();
+  }
+
+  @protected
+  FaultDto sse_decode_fault_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    final inner = sse_decode_i_32(deserializer);
+    return FaultDto.values[inner];
+  }
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getInt32();
+  }
+
+  @protected
+  InputPresetDto sse_decode_input_preset_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    final inner = sse_decode_i_32(deserializer);
+    return InputPresetDto.values[inner];
   }
 
   @protected
@@ -194,6 +725,157 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     final len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return sse_decode_String(deserializer);
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return sse_decode_box_autoadd_bool(deserializer);
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  double? sse_decode_opt_box_autoadd_f_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return sse_decode_box_autoadd_f_32(deserializer);
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  FaultDto? sse_decode_opt_box_autoadd_fault_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return sse_decode_box_autoadd_fault_dto(deserializer);
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  int? sse_decode_opt_box_autoadd_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return sse_decode_box_autoadd_i_32(deserializer);
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  InputPresetDto? sse_decode_opt_box_autoadd_input_preset_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return sse_decode_box_autoadd_input_preset_dto(deserializer);
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return sse_decode_box_autoadd_u_32(deserializer);
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  SessionSnapshotDto sse_decode_session_snapshot_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    final var_state = sse_decode_session_state_dto(deserializer);
+    final var_backend = sse_decode_String(deserializer);
+    final var_sampleRate = sse_decode_u_32(deserializer);
+    final var_maxBlockFrames = sse_decode_opt_box_autoadd_u_32(deserializer);
+    final var_inputActive = sse_decode_bool(deserializer);
+    final var_inputRms = sse_decode_f_32(deserializer);
+    final var_toneHz = sse_decode_opt_box_autoadd_f_32(deserializer);
+    final var_frames = sse_decode_CastedPrimitive_u_64(deserializer);
+    final var_callbacks = sse_decode_CastedPrimitive_u_64(deserializer);
+    final var_worstCallbackNs = sse_decode_CastedPrimitive_u_64(deserializer);
+    final var_inputUnderruns = sse_decode_CastedPrimitive_u_64(deserializer);
+    final var_xruns = sse_decode_opt_box_autoadd_u_32(deserializer);
+    final var_framesPerBurst = sse_decode_opt_box_autoadd_u_32(deserializer);
+    final var_inputPreset = sse_decode_opt_box_autoadd_input_preset_dto(deserializer);
+    final var_inputPresetCode = sse_decode_opt_box_autoadd_i_32(deserializer);
+    final var_outputLowLatency = sse_decode_opt_box_autoadd_bool(deserializer);
+    final var_outputExclusive = sse_decode_opt_box_autoadd_bool(deserializer);
+    final var_inputLowLatency = sse_decode_opt_box_autoadd_bool(deserializer);
+    final var_inputExclusive = sse_decode_opt_box_autoadd_bool(deserializer);
+    final var_rebuilds = sse_decode_u_32(deserializer);
+    final var_fault = sse_decode_opt_box_autoadd_fault_dto(deserializer);
+    final var_inputFault = sse_decode_opt_box_autoadd_fault_dto(deserializer);
+    final var_lastError = sse_decode_opt_String(deserializer);
+    final var_commandsDropped = sse_decode_u_32(deserializer);
+    return SessionSnapshotDto(
+      state: var_state,
+      backend: var_backend,
+      sampleRate: var_sampleRate,
+      maxBlockFrames: var_maxBlockFrames,
+      inputActive: var_inputActive,
+      inputRms: var_inputRms,
+      toneHz: var_toneHz,
+      frames: var_frames,
+      callbacks: var_callbacks,
+      worstCallbackNs: var_worstCallbackNs,
+      inputUnderruns: var_inputUnderruns,
+      xruns: var_xruns,
+      framesPerBurst: var_framesPerBurst,
+      inputPreset: var_inputPreset,
+      inputPresetCode: var_inputPresetCode,
+      outputLowLatency: var_outputLowLatency,
+      outputExclusive: var_outputExclusive,
+      inputLowLatency: var_inputLowLatency,
+      inputExclusive: var_inputExclusive,
+      rebuilds: var_rebuilds,
+      fault: var_fault,
+      inputFault: var_inputFault,
+      lastError: var_lastError,
+      commandsDropped: var_commandsDropped,
+    );
+  }
+
+  @protected
+  SessionStateDto sse_decode_session_state_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    final inner = sse_decode_i_32(deserializer);
+    return SessionStateDto.values[inner];
+  }
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint32();
+  }
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getBigUint64();
   }
 
   @protected
@@ -208,9 +890,67 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer) {
+  BigInt sse_decode_usize(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getInt32();
+    return deserializer.buffer.getBigUint64();
+  }
+
+  @protected
+  void sse_encode_AnyhowException(AnyhowException self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+    AudioSession self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize((self as AudioSessionImpl).frbInternalSseEncode(move: true), serializer);
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+    AudioSession self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize((self as AudioSessionImpl).frbInternalSseEncode(move: false), serializer);
+  }
+
+  @protected
+  void sse_encode_CastedPrimitive_u_64(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(sseEncodeCastedPrimitiveU64(self), serializer);
+  }
+
+  @protected
+  void sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+    AudioSession self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize((self as AudioSessionImpl).frbInternalSseEncode(), serializer);
+  }
+
+  @protected
+  void sse_encode_StreamSink_session_snapshot_dto_Sse(
+    RustStreamSink<SessionSnapshotDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_session_snapshot_dto,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
   }
 
   @protected
@@ -220,9 +960,51 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_audio_session_error(AudioSessionError self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self ? 1 : 0);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_f_32(double self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_f_32(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_fault_dto(FaultDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_fault_dto(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_i_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_input_preset_dto(InputPresetDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_input_preset_dto(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self, serializer);
   }
 
   @protected
@@ -230,7 +1012,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.dspBuild, serializer);
     sse_encode_String(self.engineBuild, serializer);
-    sse_encode_bool(self.running, serializer);
+  }
+
+  @protected
+  void sse_encode_f_32(double self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putFloat32(self);
+  }
+
+  @protected
+  void sse_encode_fault_dto(FaultDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putInt32(self);
+  }
+
+  @protected
+  void sse_encode_input_preset_dto(InputPresetDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
   }
 
   @protected
@@ -238,6 +1043,123 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);
+  }
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_String(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_bool(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_f_32(double? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_f_32(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_fault_dto(FaultDto? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_fault_dto(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_i_32(int? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_i_32(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_input_preset_dto(InputPresetDto? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_input_preset_dto(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_u_32(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_session_snapshot_dto(SessionSnapshotDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_session_state_dto(self.state, serializer);
+    sse_encode_String(self.backend, serializer);
+    sse_encode_u_32(self.sampleRate, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.maxBlockFrames, serializer);
+    sse_encode_bool(self.inputActive, serializer);
+    sse_encode_f_32(self.inputRms, serializer);
+    sse_encode_opt_box_autoadd_f_32(self.toneHz, serializer);
+    sse_encode_CastedPrimitive_u_64(self.frames, serializer);
+    sse_encode_CastedPrimitive_u_64(self.callbacks, serializer);
+    sse_encode_CastedPrimitive_u_64(self.worstCallbackNs, serializer);
+    sse_encode_CastedPrimitive_u_64(self.inputUnderruns, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.xruns, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.framesPerBurst, serializer);
+    sse_encode_opt_box_autoadd_input_preset_dto(self.inputPreset, serializer);
+    sse_encode_opt_box_autoadd_i_32(self.inputPresetCode, serializer);
+    sse_encode_opt_box_autoadd_bool(self.outputLowLatency, serializer);
+    sse_encode_opt_box_autoadd_bool(self.outputExclusive, serializer);
+    sse_encode_opt_box_autoadd_bool(self.inputLowLatency, serializer);
+    sse_encode_opt_box_autoadd_bool(self.inputExclusive, serializer);
+    sse_encode_u_32(self.rebuilds, serializer);
+    sse_encode_opt_box_autoadd_fault_dto(self.fault, serializer);
+    sse_encode_opt_box_autoadd_fault_dto(self.inputFault, serializer);
+    sse_encode_opt_String(self.lastError, serializer);
+    sse_encode_u_32(self.commandsDropped, serializer);
+  }
+
+  @protected
+  void sse_encode_session_state_dto(SessionStateDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint32(self);
+  }
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putBigUint64(self);
   }
 
   @protected
@@ -252,8 +1174,63 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_i_32(int self, SseSerializer serializer) {
+  void sse_encode_usize(BigInt self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putInt32(self);
+    serializer.buffer.putBigUint64(self);
   }
+}
+
+@sealed
+class AudioSessionImpl extends RustOpaque implements AudioSession {
+  // Not to be used by end users
+  new frbInternalDcoDecode(List<dynamic> wire) : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  new frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final RustArcStaticData<dynamic> _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount: RustLib.instance.api.rust_arc_increment_strong_count_AudioSession,
+    rustArcDecrementStrongCount: RustLib.instance.api.rust_arc_decrement_strong_count_AudioSession,
+    rustArcDecrementStrongCountPtr:
+        RustLib.instance.api.rust_arc_decrement_strong_count_AudioSessionPtr,
+  );
+
+  /// Deliver a snapshot to `sink` about 30 times a second, replacing any earlier subscriber.
+  /// Delivery stops when Dart cancels the stream.
+  ///
+  /// # Errors
+  /// [`AudioSessionError::Gone`] if the session has shut down.
+  Stream<SessionSnapshotDto> snapshots() =>
+      RustLib.instance.api.crateApiSessionAudioSessionSnapshots(that: this);
+
+  /// Run the stream, with the microphone if `input`. Returns at once.
+  ///
+  /// # Errors
+  /// [`AudioSessionError::Gone`] if the session has shut down.
+  void start({required bool input}) =>
+      RustLib.instance.api.crateApiSessionAudioSessionStart(that: this, input: input);
+
+  /// Play a test tone, kept across stream rebuilds until stopped.
+  ///
+  /// # Errors
+  /// [`AudioSessionError::Gone`] if the session has shut down.
+  void startTone({required double frequencyHz, required double amplitude}) =>
+      RustLib.instance.api.crateApiSessionAudioSessionStartTone(
+        that: this,
+        frequencyHz: frequencyHz,
+        amplitude: amplitude,
+      );
+
+  /// Close the stream. Returns at once.
+  ///
+  /// # Errors
+  /// [`AudioSessionError::Gone`] if the session has shut down.
+  void stop() => RustLib.instance.api.crateApiSessionAudioSessionStop(that: this);
+
+  /// Stop the test tone.
+  ///
+  /// # Errors
+  /// [`AudioSessionError::Gone`] if the session has shut down.
+  void stopTone() => RustLib.instance.api.crateApiSessionAudioSessionStopTone(that: this);
 }
