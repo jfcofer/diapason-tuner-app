@@ -1,20 +1,45 @@
 //! Platform audio backends behind one trait.
 //!
 //! This is one of only two crates permitted to contain `unsafe` (`AGENTS.md` §7), because the
-//! platform APIs it wraps require it. Every `unsafe` block carries a `// SAFETY:` comment. `T-001`
-//! ships the trait and its error type only — no backend, no stream, no microphone.
+//! platform APIs it wraps require it. Every `unsafe` block carries a `// SAFETY:` comment.
+//!
+//! The engine knows only [`AudioBackend`] and [`AudioCallback`] (`docs/PLATFORM_AUDIO.md` §1).
+//! [`OfflineBackend`] drives a stream from buffers with no device and no clock, so everything above
+//! this crate is testable on any host; platform backends arrive in `T-002b` and `T-002c`.
 
 #![warn(clippy::pedantic)]
 #![warn(missing_docs)]
 
+mod callback;
+mod config;
+mod handle;
+mod offline;
+
+pub use callback::{AudioCallback, CallbackInfo};
+pub use config::{MAX_BLOCK_FRAMES, MAX_CHANNELS, StreamConfig, StreamTimestamp};
+pub use handle::StreamHandle;
+pub use offline::{BlockPattern, OfflineBackend};
+
 use thiserror::Error;
 
-/// Why a backend could not start or continue.
-#[derive(Debug, Error)]
+/// Why a backend could not open, run or close a stream.
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum AudioError {
-    /// The platform refused the requested configuration.
+    /// The request is out of range for any backend. Names the offending field.
+    #[error("invalid stream configuration: {0}")]
+    InvalidConfig(&'static str),
+    /// The platform refused a configuration that was valid in principle.
     #[error("unsupported stream configuration: {0}")]
     UnsupportedConfiguration(String),
+    /// `open` was called on a backend that already has a stream.
+    #[error("a stream is already open")]
+    AlreadyOpen,
+    /// The operation needs an open stream and there is none.
+    #[error("no stream is open")]
+    NotOpen,
+    /// Buffers handed to a backend do not match the open stream's channel counts.
+    #[error("buffer lengths do not match the stream: {0}")]
+    BufferMismatch(&'static str),
     /// The device went away mid-stream. Oboe reports this from the callback.
     #[error("audio device disconnected")]
     Disconnected,
@@ -23,25 +48,41 @@ pub enum AudioError {
     PermissionDenied,
 }
 
-/// A duplex audio backend.
+/// Result type for every backend operation.
+pub type Result<T> = std::result::Result<T, AudioError>;
+
+/// A duplex audio backend: one stream, input and output on one clock (`PLATFORM_AUDIO.md` §1).
 ///
-/// Implementations are added in `T-002`: Oboe on Android, Core Audio on iOS, and an offline backend
-/// that drives the engine from fixture buffers so the whole pipeline is testable without hardware.
+/// Every implementation must pass the shared conformance suite (`src/conformance.rs`), so that the
+/// engine relies on this contract rather than on any one platform's behaviour.
 pub trait AudioBackend {
     /// Human-readable backend name, for the diagnostics overlay.
     fn name(&self) -> &'static str;
 
-    /// Start the stream. Every buffer the real-time path needs must be preallocated before this
-    /// returns — the callback thread may not allocate (`AGENTS.md` §6).
+    /// Open a stream and start calling `callback` on the real-time thread.
+    ///
+    /// The callback is moved to that thread and dropped when the stream closes. Every buffer it
+    /// needs must already be allocated: it may not allocate (`AGENTS.md` §6).
     ///
     /// # Errors
-    /// Returns [`AudioError`] if the platform rejects the configuration or the microphone
-    /// permission has not been granted.
-    fn start(&mut self) -> Result<(), AudioError>;
+    /// [`AudioError::AlreadyOpen`] if a stream is open, [`AudioError::InvalidConfig`] if `config`
+    /// fails [`StreamConfig::validate`], or a platform error.
+    fn open(
+        &mut self,
+        config: StreamConfig,
+        callback: Box<dyn AudioCallback>,
+    ) -> Result<StreamHandle>;
 
-    /// Stop the stream and release the device.
+    /// What the device actually granted, which may differ from the request. `None` when closed.
+    fn actual_config(&self) -> Option<StreamConfig>;
+
+    /// The stream clock at the most recent block. `None` before the first block, and when closed.
+    fn timestamp(&self) -> Option<StreamTimestamp>;
+
+    /// Stop the stream, release the device and drop the callback. Closing a closed backend is a
+    /// no-op, so lifecycle code never has to track whether it already did.
     ///
     /// # Errors
-    /// Returns [`AudioError`] if the platform reports a failure while tearing the stream down.
-    fn stop(&mut self) -> Result<(), AudioError>;
+    /// A platform error while tearing the stream down. The stream is closed either way.
+    fn close(&mut self) -> Result<()>;
 }
