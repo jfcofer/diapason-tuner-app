@@ -86,7 +86,7 @@ lint: lint-dart lint-rust
 lint-dart:
     flutter analyze --fatal-infos
 
-lint-rust:
+lint-rust: && lint-rust-android
     cargo clippy --workspace --all-targets -- -D warnings
 
 # Advisories, licences, bans, sources - configured in deny.toml.
@@ -188,6 +188,16 @@ ios-project-check: ios-project
         || (git status --short -- {{ios_generated}}; echo "iOS project drifted. Run: just ios-project" && exit 1)
 
 # targetSdk 36, 16 KB page alignment, size budget. See docs/PLATFORM_AUDIO.md §2.
+# audio_io's conformance suite and allocation canary on a connected Android device (T-002b).
+test-android-device *serial:
+    @tools/test-android-device.sh {{serial}}
+
+# Clippy for the Android-only code, which a host build never compiles. Type-checking needs no NDK
+# (nothing is linked), only the target that rust-toolchain.toml installs.
+lint-rust-android:
+    cargo clippy --target aarch64-linux-android -p diapason_audio_io --all-targets \
+        --features conformance -- -D warnings
+
 check-android-release:
     @tools/check-android-release.sh        # [T-001]
 
