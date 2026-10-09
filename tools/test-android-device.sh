@@ -1,24 +1,32 @@
 #!/usr/bin/env bash
 # Run audio_io's on-device tests on a connected Android device over adb (T-002b).
 #
-# Builds the test binaries for arm64-v8a at the minSdk with the pinned NDK, pushes them to the
-# device and runs them as the shell user, which holds RECORD_AUDIO. Two verdicts:
+# Builds the tests for arm64-v8a at the minSdk with the pinned NDK. cargo-ndk's own runner
+# (cargo-ndk-runner, installed with cargo-ndk 4) pushes the exact binary cargo built and runs it on
+# the device as the shell user, which holds RECORD_AUDIO. It passes the exit status back, and
+# honours ANDROID_SERIAL. Two verdicts:
 #   - android_conformance must pass: AAudioBackend honours the AudioBackend contract on hardware;
-#   - android_alloc_canary must die of SIGABRT: proof the allocation trap is armed, so the clean
-#     conformance run means the audio thread really never allocated.
+#   - android_alloc_canary must die of SIGABRT with the allocator's message: proof the allocation
+#     trap is armed, so the clean conformance run means Rust never allocated on the audio thread.
 #
-# Usage: tools/test-android-device.sh [adb-serial]. CARGO_BUILD_JOBS defaults to 4, because a cold
-# build at full parallelism has exhausted the 14 GB dev host (docs/agents/STATE.md, Traps).
+# Usage: tools/test-android-device.sh [--release] [adb-serial]
+#   --release  measures callback timing without debug overhead. There is no allocation trap in
+#              release builds, so the canary is skipped.
+# CARGO_BUILD_JOBS defaults to 4: a cold build at full parallelism has exhausted the 14 GB dev host
+# (docs/agents/STATE.md, Traps).
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # shellcheck disable=SC1091
 source tools/versions.env
 
-serial="${1:-${ANDROID_SERIAL:-}}"
-adb=(adb)
-[[ -n "$serial" ]] && adb+=(-s "$serial")
-if ! "${adb[@]}" get-state >/dev/null 2>&1; then
+profile=()
+if [[ "${1:-}" == --release ]]; then
+    profile=(--release)
+    shift
+fi
+[[ -n "${1:-}" ]] && export ANDROID_SERIAL="$1"
+if ! adb get-state >/dev/null 2>&1; then
     echo "✗ no Android device reachable over adb (pass a serial, or set ANDROID_SERIAL)" >&2
     exit 1
 fi
@@ -30,55 +38,37 @@ if [[ ! -d "$ANDROID_NDK_HOME" ]]; then
     exit 1
 fi
 
-echo "Building audio_io device tests (arm64-v8a, API $ANDROID_MIN_SDK, $CARGO_BUILD_JOBS jobs)"
-cargo ndk -t arm64-v8a -P "$ANDROID_MIN_SDK" test -p diapason_audio_io --features conformance --no-run
-# cargo-ndk swallows both --message-format=json and cargo's "Executable" lines, so take the newest
-# build of each device test from the target directory: the one just built.
-deps=target/aarch64-linux-android/debug/deps
-binaries=""
-for name in android_conformance android_alloc_canary; do
-    newest="$(find "$deps" -maxdepth 1 -type f -perm -u+x -name "$name-*" -printf '%T@ %p\n' \
-        | sort -n | tail -1 | cut -d' ' -f2)"
-    [[ -n "$newest" ]] && binaries+="$name $newest"$'\n'
-done
-binaries="${binaries%$'\n'}"
-if [[ -z "$binaries" ]]; then
-    echo "✗ no device test binaries were built" >&2
-    exit 1
+# One test at a time: the device has one speaker, and parallel streams would measure each other.
+device_test() {
+    cargo ndk -t arm64-v8a -P "$ANDROID_MIN_SDK" test -p diapason_audio_io --features conformance \
+        ${profile[@]+"${profile[@]}"} --test "$1" -- --test-threads=1 --nocapture
+}
+
+echo "── android_conformance (arm64-v8a, API $ANDROID_MIN_SDK, ${profile[*]:-debug}, $CARGO_BUILD_JOBS jobs)"
+failures=0
+if device_test android_conformance; then
+    echo "✓ android_conformance passed"
+else
+    echo "✗ android_conformance failed"
+    failures=$((failures + 1))
 fi
 
-dir=/data/local/tmp/diapason-audio-io
-exit_file="$(mktemp)"
-trap 'rm -f "$exit_file"' EXIT
-"${adb[@]}" shell "mkdir -p $dir"
-failures=0
-while read -r name path; do
-    "${adb[@]}" push "$path" "$dir/$name" >/dev/null </dev/null
-    "${adb[@]}" shell -n "chmod 755 $dir/$name"
+if [[ ${#profile[@]} -eq 0 ]]; then
     echo
-    echo "── $name"
+    echo "── android_alloc_canary"
+    log="$(mktemp)"
+    trap 'rm -f "$log"' EXIT
     set +e
-    # --nocapture shows report_what_the_device_grants; --test-threads=1 because the device has one
-    # audio output, and parallel streams would measure each other.
-    "${adb[@]}" shell -n "$dir/$name --test-threads=1 --nocapture; echo exit=\$?" | tee /dev/stderr \
-        | grep -o 'exit=[0-9]*' | tail -1 > "$exit_file"
+    device_test android_alloc_canary 2>&1 | tee "$log"
     set -e
-    code="$(cut -d= -f2 < "$exit_file")"
-    case "$name" in
-        android_alloc_canary)
-            # 134 = 128 + SIGABRT. Anything else means the trap did not fire.
-            if [[ "$code" == 134 ]]; then
-                echo "✓ canary aborted: the allocation trap is armed"
-            else
-                echo "✗ canary exited $code: the allocation trap is NOT armed"; failures=$((failures + 1))
-            fi ;;
-        *)
-            if [[ "$code" == 0 ]]; then
-                echo "✓ $name passed"
-            else
-                echo "✗ $name exited $code"; failures=$((failures + 1))
-            fi ;;
-    esac
-done <<<"$binaries"
+    # 134 = 128 + SIGABRT, and the message is the allocation trap's own: an abort from anything
+    # else is not proof that the trap fired.
+    if grep -q "memory allocation of" "$log" && grep -q "exit status: 134" "$log"; then
+        echo "✓ canary aborted in the allocation trap: the trap is armed"
+    else
+        echo "✗ canary did not abort in the allocation trap: the trap is NOT proven armed"
+        failures=$((failures + 1))
+    fi
+fi
 
 exit "$failures"
