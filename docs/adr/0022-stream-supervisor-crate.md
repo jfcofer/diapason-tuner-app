@@ -73,4 +73,8 @@ diapason_ffi → session → engine → dsp
 - Whatever the engine learns to do (tuner, metronome), the desired state grows to match. A command
   the supervisor does not replay is lost on the first route change. Every new `Command` needs a
   replay test.
-- `ARCHITECTURE.md` §2 and `REPO_LAYOUT.md` list the crate.
+- `ARCHITECTURE.md` §2 and `REPO_LAYOUT.md` list the crate. §4 gains the session thread, and its
+  backpressure note now covers the hop to Dart. §7 names the session's `Fault` variants.
+- `Session` is dropped by joining its thread, which first stops the stream: up to AAudio's 500 ms
+  stop timeout. The app holds one session for its lifetime. Anything that ever drops one must not
+  do it on a thread that cannot wait.
