@@ -5,3 +5,4 @@
 library;
 
 export 'src/microphone_permission.dart';
+export 'src/platform_microphone_permission.dart' show PlatformMicrophonePermission;
