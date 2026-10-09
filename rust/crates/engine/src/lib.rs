@@ -33,7 +33,7 @@ pub use command::Command;
 pub use processor::Processor;
 pub use snapshot::EngineSnapshot;
 
-use diapason_audio_io::MAX_BLOCK_FRAMES;
+use diapason_audio_io::{MAX_BLOCK_FRAMES, SAMPLE_RATES};
 use diapason_dsp::level::RmsMeter;
 use diapason_dsp::osc::SineOscillator;
 use thiserror::Error;
@@ -45,6 +45,11 @@ pub const COMMAND_CAPACITY: usize = 64;
 
 /// Input-meter windows per second: 50 ms, fast enough to look live at ~30 Hz.
 const METER_WINDOWS_PER_SECOND: u32 = 20;
+
+/// Samples in one input-meter window at `sample_rate`.
+pub(crate) fn meter_window(sample_rate: u32) -> u32 {
+    sample_rate / METER_WINDOWS_PER_SECOND
+}
 
 /// Why the control side could not do what it asked.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -70,7 +75,8 @@ impl Engine {
     ///
     /// # Errors
     /// [`EngineError::InvalidConfig`] if `max_block_size` is outside `1..=MAX_BLOCK_FRAMES` or
-    /// `sample_rate` is zero.
+    /// `sample_rate` is outside [`SAMPLE_RATES`]. The rate is only where the engine starts: if the
+    /// device grants another, the [`Processor`] follows it on the first callback.
     pub fn prepare(
         max_block_size: usize,
         sample_rate: u32,
@@ -78,8 +84,8 @@ impl Engine {
         if !(1..=MAX_BLOCK_FRAMES).contains(&max_block_size) {
             return Err(EngineError::InvalidConfig("max block size outside 1–8192"));
         }
-        if sample_rate == 0 {
-            return Err(EngineError::InvalidConfig("sample rate is zero"));
+        if !SAMPLE_RATES.contains(&sample_rate) {
+            return Err(EngineError::InvalidConfig("sample rate outside 8–384 kHz"));
         }
 
         let (producer, consumer) = rtrb::RingBuffer::new(COMMAND_CAPACITY);
@@ -93,7 +99,8 @@ impl Engine {
             snapshots: input,
             snapshot,
             tone: SineOscillator::new(sample_rate),
-            meter: RmsMeter::new(sample_rate / METER_WINDOWS_PER_SECOND),
+            tone_request: None,
+            meter: RmsMeter::new(meter_window(sample_rate)),
             mono: vec![0.0; max_block_size].into_boxed_slice(),
         };
         Ok((
@@ -166,7 +173,7 @@ mod tests {
             Err(EngineError::InvalidConfig(_))
         ));
         assert!(matches!(
-            Engine::prepare(256, 0),
+            Engine::prepare(256, 7_999),
             Err(EngineError::InvalidConfig(_))
         ));
     }

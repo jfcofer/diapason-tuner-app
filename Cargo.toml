@@ -23,8 +23,9 @@ thiserror = "2"
 # Real-time plumbing (docs/AUDIO_ENGINE.md §7): the only cross-thread primitives the engine may use.
 rtrb = "0.4"
 triple_buffer = "9"
-# Traps allocation on the audio thread in debug builds; compiled out of release builds.
-assert_no_alloc = "1.1"
+# Traps allocation on the audio thread in debug builds. disable_release is its default, written out
+# because release builds depend on it compiling the check out.
+assert_no_alloc = { version = "1.1", default-features = false, features = ["disable_release"] }
 # Dev-only. No fork or timeout features: they pull in a process-forking runner we do not need.
 proptest = { version = "1.11", default-features = false, features = ["std"] }
 
