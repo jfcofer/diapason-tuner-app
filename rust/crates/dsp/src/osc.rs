@@ -4,7 +4,8 @@ use std::f64::consts::TAU;
 
 use crate::convert::to_f32;
 
-/// How long a level change takes. Long enough that switching the tone on or off does not click,
+/// How long a full-scale level change (silence to amplitude 1) takes; smaller changes are
+/// proportionally quicker. Long enough that switching the tone on or off does not click,
 /// short enough to feel instant.
 pub const RAMP_SECONDS: f64 = 0.005;
 
@@ -23,7 +24,10 @@ pub const RAMP_SECONDS: f64 = 0.005;
 /// tone.set_amplitude(0.5);
 /// let mut block = [0.0_f32; 480];
 /// tone.fill(&mut block);
-/// assert_eq!(block[0], 0.0); // the level ramps up from silence
+/// let peak = |samples: &[f32]| samples.iter().fold(0.0_f32, |max, s| max.max(s.abs()));
+/// // The first quarter period (~27 samples) rises under the ramp, far below the level reached
+/// // later: the tone fades in rather than clicking on.
+/// assert!(peak(&block[..28]) < peak(&block[370..]) / 2.0);
 /// assert!(block.iter().all(|s| s.abs() <= 0.5));
 /// ```
 #[derive(Debug, Clone)]
