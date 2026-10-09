@@ -158,8 +158,11 @@ it flashes late and jittery. Correct approach:
 
 The rules are in `AGENTS.md` §6; this is how they are enforced rather than merely intended:
 
-- `#[cfg(debug_assertions)]` wraps the callback body in `assert_no_alloc`. A unit test drives 10 s
-  of audio through the offline backend with allocation trapping on and fails on a single allocation.
+- The callback body runs inside `assert_no_alloc`, which is compiled out of release builds (its
+  `disable_release` feature). It traps wherever its allocator is the global one. Today that is the
+  `engine/tests/no_alloc.rs` integration test: it drives 10 s of audio through the offline backend
+  and fails on a single allocation, and a canary proves the trap fires. From `T-002b` it is also
+  the debug app.
 - Clippy lints denied on the RT path: `disallowed-methods` (`Vec::push`, `HashMap::insert`,
   `Instant::now`, `Mutex::lock`, …) and `disallowed-macros` (`println!`, `format!`, …), listed
   once in `rust/crates/engine/clippy.toml`; `dsp` links to the same file.

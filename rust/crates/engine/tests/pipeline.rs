@@ -132,6 +132,45 @@ fn stopping_the_tone_fades_it_to_silence() {
 }
 
 #[test]
+fn the_engine_follows_the_rate_the_device_grants() {
+    // Prepared for 48 kHz, but the device runs at 44.1 kHz (PLATFORM_AUDIO.md §2).
+    let granted = StreamConfig {
+        sample_rate: 44_100,
+        ..CONFIG
+    };
+    let (mut engine, processor) = Engine::prepare(MAX_BLOCK, RATE).expect("prepare");
+    engine
+        .send(Command::StartTone {
+            frequency_hz: 440.0,
+            amplitude: 0.8,
+        })
+        .expect("send");
+    let mut backend = OfflineBackend::new(irregular());
+    backend.open(granted, Box::new(processor)).expect("open");
+    let input = vec![0.0; 44_100];
+    let mut output = vec![0.0; 88_200];
+    backend.render(&input, &mut output).expect("render");
+
+    let measured = measured_hz(&left(&output)) * 44_100.0 / f64::from(RATE);
+    assert!(
+        (measured - 440.0).abs() < 1e-3,
+        "tone is {measured} Hz at the granted rate"
+    );
+    let snapshot = engine.snapshot();
+    assert_eq!((snapshot.sample_rate, snapshot.frames), (44_100, 44_100));
+}
+
+#[test]
+fn the_snapshot_carries_the_stream_clock() {
+    let (mut engine, _) = run(BlockPattern::Fixed(500), &[], &vec![0.0; 1_200]);
+    let snapshot = engine.snapshot();
+    // Blocks of 500, 500, 200: the last one starts at frame 1000, 1000/48000 s after the first.
+    assert_eq!(snapshot.clock.frame, 1_000);
+    assert_eq!(snapshot.clock.host_time_ns, 20_833_333);
+    assert_eq!(snapshot.frames, 1_200);
+}
+
+#[test]
 fn the_processor_runs_on_another_thread() {
     let (mut engine, processor) = Engine::prepare(MAX_BLOCK, RATE).expect("prepare");
     engine
