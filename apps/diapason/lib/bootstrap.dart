@@ -1,17 +1,19 @@
 import 'dart:async';
 
 import 'package:audio_engine/audio_engine.dart';
+import 'package:core_platform/core_platform.dart';
 import 'package:diapason/app.dart';
+import 'package:feature_tuner/feature_tuner.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Starts the app inside an error-handling zone, with the engine initialised and its provider
-/// overridden.
+/// Starts the app with the engine initialised and the platform providers overridden.
 ///
 /// Every flavour entrypoint funnels through here so that initialisation order is defined in exactly
 /// one place. The engine is initialised *before* `runApp` because `engineStatusProvider` reads it
-/// synchronously during the first build.
+/// synchronously during the first build. Initialising it starts the session thread; no stream
+/// opens, and no permission is asked for, until the user chooses to.
 Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -28,7 +30,10 @@ Future<void> bootstrap() async {
 
   runApp(
     ProviderScope(
-      overrides: [engineHandleProvider.overrideWithValue(engine)],
+      overrides: [
+        engineHandleProvider.overrideWithValue(engine),
+        microphonePermissionProvider.overrideWithValue(const PlatformMicrophonePermission()),
+      ],
       child: const DiapasonApp(),
     ),
   );

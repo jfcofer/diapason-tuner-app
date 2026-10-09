@@ -1,12 +1,13 @@
 import 'package:audio_engine/audio_engine.dart';
+import 'package:feature_tuner/src/session_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// The tuner screen.
 ///
-/// In `T-001` this exists to prove one thing end to end: a value computed in `rust/crates/dsp`,
-/// carried up through `engine` and `ffi`, across the flutter_rust_bridge boundary, into a widget.
-/// Everything visual about it is temporary.
+/// Until the M3 tuner UI, this is development scaffolding for the audio spine: which Rust builds
+/// are running, the microphone permission flow, and the live session. Everything visual about it
+/// is temporary.
 class TunerScreen extends ConsumerWidget {
   /// Creates the tuner screen.
   const new({super.key});
@@ -18,23 +19,27 @@ class TunerScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Diapason')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Text('Engine reports', style: textTheme.labelLarge),
-              const SizedBox(height: 12),
-              Text(
-                status.dspBuild,
-                key: const Key('tuner.dspBuild'),
-                style: textTheme.headlineSmall,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 4),
-              Text(status.engineBuild, style: textTheme.bodyMedium, textAlign: TextAlign.center),
-            ],
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text('Engine reports', style: textTheme.labelLarge),
+                const SizedBox(height: 12),
+                Text(
+                  status.dspBuild,
+                  key: const Key('tuner.dspBuild'),
+                  style: textTheme.headlineSmall,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 4),
+                Text(status.engineBuild, style: textTheme.bodyMedium, textAlign: TextAlign.center),
+                const SizedBox(height: 32),
+                const SessionPanel(),
+              ],
+            ),
           ),
         ),
       ),
