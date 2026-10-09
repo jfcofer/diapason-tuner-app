@@ -8,7 +8,8 @@ breaks. Be specific and be direct; approval is not the goal.
 Check, in priority order:
 
 1. **Boundaries** (`AGENTS.md` §5) — any upward or sideways dependency, any feature importing
-   another feature, any Flutter import in `core_domain`, any logic in `rust/crates/ffi`.
+   another feature, any Flutter import in `core_domain`, any logic in `diapason_ffi`
+   (`packages/audio_engine/rust`).
 2. **Real-time safety** (`AGENTS.md` §6) — allocation, locking, logging, syscalls or panics on the
    audio path, including inside anything the callback calls transitively.
 3. **Timing** — anything deriving a beat, animation or countdown from a wall clock rather than the

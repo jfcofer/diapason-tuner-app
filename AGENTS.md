@@ -77,16 +77,16 @@ Full list: `just --list`. If a recipe is missing, add it in the same PR.
 apps/diapason  →  packages/feature_*  →  packages/core_ui, core_domain, core_platform
                                       →  packages/audio_engine (generated FFI facade)
                                               ↓
-                    rust/crates/ffi → engine → dsp        (dsp depends on nothing)
-                                    → audio_io (platform backends)
+                    diapason_ffi → engine → dsp           (dsp depends on nothing)
+                                 → audio_io (platform backends)
 ```
 
 - `feature_*` packages **never import each other**. Shared code moves down to `core_*`.
 - `core_domain` is pure Dart: no Flutter import, no I/O, no plugins.
 - `rust/crates/dsp` is pure computation: no allocation in hot paths, no I/O, no platform code,
   no `audio_io` dependency. It must stay testable offline with fixture buffers.
-- `rust/crates/ffi` contains **no logic** — only the flutter_rust_bridge API surface and type
-  mapping. Business rules live in `engine`/`dsp`.
+- `diapason_ffi` (`packages/audio_engine/rust`, where cargokit builds it) contains **no logic** —
+  only the flutter_rust_bridge API surface and type mapping. Business rules live in `engine`/`dsp`.
 - Dart never touches audio buffers. Dart sends commands and receives ~30 Hz state snapshots.
 - No `dart:io`/plugin calls inside `core_ui` widgets; inject via `core_platform` interfaces.
 
