@@ -227,6 +227,42 @@ mod tests {
         );
     }
 
+    struct OfflineHarness {
+        backend: OfflineBackend,
+    }
+
+    impl crate::conformance::Harness for OfflineHarness {
+        type Backend = OfflineBackend;
+
+        fn backend(&mut self) -> &mut OfflineBackend {
+            &mut self.backend
+        }
+
+        fn config(&self) -> StreamConfig {
+            CONFIG
+        }
+
+        fn advance(&mut self, frames: usize) {
+            let input = vec![0.0; frames * CONFIG.input_channels];
+            let mut output = vec![0.0; frames * CONFIG.output_channels];
+            self.backend.render(&input, &mut output).expect("render");
+        }
+    }
+
+    #[test]
+    fn passes_the_conformance_suite_with_fixed_blocks() {
+        crate::conformance::run_all(|| OfflineHarness {
+            backend: OfflineBackend::new(BlockPattern::Fixed(256)),
+        });
+    }
+
+    #[test]
+    fn passes_the_conformance_suite_with_irregular_blocks() {
+        crate::conformance::run_all(|| OfflineHarness {
+            backend: OfflineBackend::new(BlockPattern::Cycle(vec![1, 17, 96, 511, 2048])),
+        });
+    }
+
     #[test]
     fn host_time_follows_the_stream_clock_exactly() {
         assert_eq!(host_time_ns(48_000, 48_000), 1_000_000_000);

@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# Exposes the backend conformance suite to on-device test harnesses (T-002b, T-002c).
+conformance = []
+
 [dependencies]
 thiserror.workspace = true
 

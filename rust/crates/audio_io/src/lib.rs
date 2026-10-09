@@ -12,6 +12,8 @@
 
 mod callback;
 mod config;
+#[cfg(any(test, feature = "conformance"))]
+pub mod conformance;
 mod handle;
 mod offline;
 
