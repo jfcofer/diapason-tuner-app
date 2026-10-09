@@ -4,8 +4,10 @@
 #     apps/diapason  ->  packages/feature_*  ->  packages/core_ui, core_domain, core_platform
 #                                            ->  packages/audio_engine
 #                                                    |
-#                          rust/crates/ffi -> engine -> dsp     (dsp depends on nothing)
-#                                          -> audio_io
+#                      diapason_ffi -> engine -> dsp     (dsp depends on nothing)
+#                                   -> audio_io
+#
+# diapason_ffi lives in packages/audio_engine/rust, where cargokit builds it.
 #
 # These boundaries are the difference between a codebase that stays navigable and one that turns
 # into a graph. They used to be enforced by review, which is to say not enforced. This runs in
@@ -138,7 +140,7 @@ fi
 before=$VIOLATIONS
 if grep -qE '^\s*diapason_dsp' packages/audio_engine/rust/Cargo.toml 2>/dev/null; then
     violation "ffi depends on dsp directly" \
-        "rust/crates/ffi contains no logic - it maps types over engine. Go through engine."
+        "diapason_ffi contains no logic - it maps types over engine. Go through engine."
 fi
 [[ $VIOLATIONS -eq $before ]] && ok "ffi does not reach past engine into dsp"
 
