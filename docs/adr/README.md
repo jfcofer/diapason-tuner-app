@@ -38,3 +38,4 @@ agent from "improving" a deliberate choice.
 | [0018](0018-lossy-numeric-conversions.md) | Lossy numeric conversions live in one audited module | Accepted |
 | [0019](0019-min-sdk-28.md) | Raise Android minSdk to 28 | Accepted |
 | [0020](0020-android-audio-binding.md) | Android audio: AAudio through raw `ndk-sys`, with our own wrapper | Accepted |
+| [0021](0021-panic-abort.md) | Release builds abort on panic; the FFI surface is panic-free by construction | Accepted |

@@ -97,7 +97,7 @@ The audio callback thread is sacred. Inside it, and anything it calls:
 - **No** heap allocation, `Vec::push`, `String`, `format!`, `Box`, or collection growth.
 - **No** locks, `Mutex`, channel that can block, syscall, file, or log statement. The audited
   exceptions are the platform audio calls a backend must make and `clock_gettime` (`adr/0020`).
-- **No** panics: the FFI boundary wraps `catch_unwind`; the RT path must not reach it.
+- **No** panics: release builds abort on one, and nothing catches it (`adr/0021`).
 - Communicate with the rest of the app only through the lock-free SPSC ring buffers and atomic
   snapshots defined in `docs/AUDIO_ENGINE.md`.
 - Every buffer the RT path needs is preallocated at stream start, sized from the largest supported
