@@ -240,8 +240,18 @@ dependencies = [
 name = "diapason_ffi"
 version = "0.1.0"
 dependencies = [
- "diapason_engine",
+ "assert_no_alloc",
+ "diapason_session",
  "flutter_rust_bridge",
+]
+
+[[package]]
+name = "diapason_session"
+version = "0.1.0"
+dependencies = [
+ "diapason_audio_io",
+ "diapason_engine",
+ "thiserror",
 ]
 
 [[package]]

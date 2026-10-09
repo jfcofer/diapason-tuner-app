@@ -1,0 +1,18 @@
+[package]
+name = "diapason_session"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Only engine and audio_io (docs/adr/0022). tools/check-deps.sh enforces it.
+[dependencies]
+diapason_engine.workspace = true
+diapason_audio_io.workspace = true
+thiserror.workspace = true
+
+# No clippy.toml: nothing here runs on the audio thread (docs/adr/0022). The panic denials of
+# docs/adr/0021 are crate attributes in lib.rs, because Cargo cannot scope them away from tests.
+[lints]
+workspace = true

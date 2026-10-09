@@ -36,6 +36,7 @@ proptest = { version = "1.11", default-features = false, features = ["std"] }
 diapason_dsp = { path = "rust/crates/dsp" }
 diapason_engine = { path = "rust/crates/engine" }
 diapason_audio_io = { path = "rust/crates/audio_io" }
+diapason_session = { path = "rust/crates/session" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

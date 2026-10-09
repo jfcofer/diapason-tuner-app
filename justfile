@@ -197,8 +197,9 @@ test-android-device *args:
 lint-rust-android:
     cargo clippy --target aarch64-linux-android -p diapason_audio_io --all-targets \
         --features conformance -- -D warnings
+    cargo clippy --target aarch64-linux-android -p diapason_session --all-targets -- -D warnings
     RUSTDOCFLAGS="-D warnings" cargo doc --target aarch64-linux-android -p diapason_audio_io \
-        --no-deps --features conformance
+        -p diapason_session --no-deps --features diapason_audio_io/conformance
 
 # targetSdk 36, 16 KB page alignment, size budget. See docs/PLATFORM_AUDIO.md §2.
 check-android-release:
