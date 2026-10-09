@@ -3,9 +3,10 @@
 /// `feature_*` packages never import each other (`AGENTS.md` §5). Anything two features need moves
 /// **down** into `core_*`, never sideways.
 ///
-/// `T-001` ships a screen that displays one value returned from Rust across the FFI boundary. The
-/// strobe ring and everything else in `docs/DESIGN_SYSTEM.md` arrives once the audio spine works on
-/// a real device - building it first would mean rebuilding it (`docs/BOOTSTRAP.md`).
+/// Until M3 the screen is audio-spine scaffolding: build info, the microphone permission flow and
+/// the live session. The strobe ring and everything else in `docs/DESIGN_SYSTEM.md` arrives once
+/// the spine works on a real device - building it first would mean rebuilding it.
 library;
 
+export 'src/tuner_controller.dart';
 export 'src/tuner_screen.dart';
