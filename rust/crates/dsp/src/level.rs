@@ -139,8 +139,8 @@ mod tests {
                 split.process(&signal[start..start + size]);
                 start += size;
             }
-            prop_assert_eq!(split.last().to_bits(), whole.last().to_bits());
-            prop_assert_eq!(split.count, whole.count);
+            assert_eq!(split.last().to_bits(), whole.last().to_bits());
+            assert_eq!(split.count, whole.count);
         }
     }
 }
