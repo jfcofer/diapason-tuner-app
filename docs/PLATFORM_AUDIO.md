@@ -73,7 +73,8 @@ the moment the app is not foreground, and the UI says so.
 
 **2026 platform requirements (verify before every release):**
 - `targetSdk = 36` (Android 16). Google Play requires API 36 for new apps and updates from
-  **31 August 2026**; extensions run to 1 November 2026. `minSdk = 26`.
+  **31 August 2026**; extensions run to 1 November 2026. `minSdk = 28`, the first API with AAudio
+  input presets (`adr/0019`).
 - **16 KB memory page support is mandatory** for apps with native libraries on recent devices. We
   pin **NDK r28+** (`tools/versions.env`), which aligns `arm64-v8a` and `x86_64` to 16 KB *by
   default* — the old `-Wl,-z,max-page-size=16384` flag is only load-bearing on r27 and below.

@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-09 (T-007)
+# STATE — updated 2026-10-09 (T-008)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -13,17 +13,15 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap.
 
 - **CI is green on all six jobs** (iOS on `macos-26`, Rust engine linked); `just verify` is green.
 - **T-006 and T-002a are merged** (PRs #6, #7).
-- **Branches in flight** (their PR state is whatever `session-start` says):
-  - `chore/T-007-session-hygiene` supersedes Dependabot #4.
-  - `build/T-008-min-sdk-28` sits on T-007's tip with no commits of its own. Rebase it onto
-    `main` once T-007 lands.
+- **T-007 is merged** (PR #8); it superseded Dependabot #4, which Dependabot closes itself.
+- **Branch in flight:** `build/T-008-min-sdk-28`. Its PR state is whatever `session-start` says.
 - The dev flavour runs on the Redmi and shows a value computed in Rust.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-007-session-hygiene.md`**: every criterion met except CI on its PR. Once
-it merges, close it, then do **`T-008-min-sdk-28`**, then **`T-002b`**.
+**`docs/agents/tasks/T-008-min-sdk-28.md`**: every criterion met except CI on its PR. Close it once
+it merges, then start **`T-002b`**.
 
 **`T-002b` is planned** (owner-approved, 2026-10-09). It uses AAudio via `ndk`, because `oboe`
 is unmaintained, on minSdk 28 (owner's decision). The plan is in its Implementation notes.
@@ -57,7 +55,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - `0016` goldens run on the pinned ubuntu-24.04 runner.
 - `0018` lossy casts are allowed only in `dsp::convert`, and `docs-check` rejects every other
   suppression.
-- minSdk 28 was decided by the owner on 2026-10-09; its ADR, `0019`, lands with `T-008`.
+- `0019` minSdk is 28, the first API with AAudio input presets.
 
 ## Traps a later session will otherwise re-discover
 
@@ -72,8 +70,9 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - **JDK 25 breaks Flutter Android builds** (flutter#187223). Flutter uses JDK 21 via `--jdk-dir`.
 - **Compiling against a crate is not linking it.** Verify on the shipped binary, as both release
   checks do.
-- **A release build from cold exhausts this 14 GB host:** fat LTO, every ABI, no cache in a fresh
-  worktree. Build in the main checkout, one ABI locally, and nothing else running.
+- **A cold release build can exhaust this 14 GB host:** fat LTO for every ABI (cargokit ignores
+  `--target-platform`). Build in the main checkout, never a worktree, with `CARGO_BUILD_JOBS=4`
+  and nothing else running.
 - **`cargo fmt` reformats FRB's generated file.** That is why formatting is part of `just gen`.
 - **Editing a `clippy.toml` does not invalidate clippy's cache.** `touch` a source file before
   trusting a clean run. CI is unaffected.
@@ -104,9 +103,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **Land `T-007`:** PR, six green checks, rebase-merge (the owner approves pushes). Then the
-   owner merges #2 and #3.
-2. **`T-008`**, minSdk 28 with its ADR.
-3. **`T-002b`**, Android duplex on the Redmi (see Active task).
-4. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
-5. `T-004` (CI reproducibility) whenever a slice is waiting on CI. `T-003-pitch-core` after T-002.
+1. **Land `T-008`:** PR, six green checks, rebase-merge (the owner approves pushes and merges).
+   The owner also merges Dependabot #2 and #3.
+2. **`T-002b`**, Android duplex on the Redmi (see Active task).
+3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
+4. `T-004` (CI reproducibility) whenever a slice is waiting on CI. `T-003-pitch-core` after T-002.

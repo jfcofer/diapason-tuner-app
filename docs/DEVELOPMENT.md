@@ -17,7 +17,7 @@ and CI reads the same file. This table explains *why* each pin is what it is; wh
 | flutter_rust_bridge | 2.13.0 | Codegen binary, Rust crate and Dart package must match **exactly** — see below |
 | Java | **21** (`21.0.12+1.1-tem`) | AGP is validated on 17 / partially 21. Flutter Android builds **fail on JDK 25** ([flutter#187223](https://github.com/flutter/flutter/issues/187223)) |
 | Android NDK | r30 (`30.0.16138531`) | r28+ aligns shared libraries to 16 KB **by default**, so the old manual linker flag is no longer load-bearing |
-| Android compile/target SDK | 36 · min 26 | targetSdk 36 required for Play submissions from 2026-08-31 |
+| Android compile/target SDK | 36 · min 28 | targetSdk 36 required for Play submissions from 2026-08-31. min 28: first API with AAudio input presets (`adr/0019`) |
 | iOS deployment target | 15.0 | Flutter 3.47's own iOS minimum |
 | Xcode | the `macos-26` runner image default (**not pinned**) | `.github/workflows/ci.yml`; iOS is built only on CI (see §2) |
 | Melos | 8.5.0 | Workspace dev_dependency, run as `dart run melos`; `pubspec.lock` is the pin. No `melos.yaml` (`adr/0006`) |
