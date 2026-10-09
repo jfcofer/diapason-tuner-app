@@ -94,7 +94,8 @@ apps/diapason  →  packages/feature_*  →  packages/core_ui, core_domain, core
 The audio callback thread is sacred. Inside it, and anything it calls:
 
 - **No** heap allocation, `Vec::push`, `String`, `format!`, `Box`, or collection growth.
-- **No** locks, `Mutex`, channel that can block, syscall, file, or log statement.
+- **No** locks, `Mutex`, channel that can block, syscall, file, or log statement. The one timing
+  call allowed is `clock_gettime(CLOCK_MONOTONIC)`, served by the vDSO (`adr/0020`).
 - **No** panics: the FFI boundary wraps `catch_unwind`; the RT path must not reach it.
 - Communicate with the rest of the app only through the lock-free SPSC ring buffers and atomic
   snapshots defined in `docs/AUDIO_ENGINE.md`.
