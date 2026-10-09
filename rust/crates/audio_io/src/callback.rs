@@ -7,6 +7,8 @@ use crate::StreamTimestamp;
 pub struct CallbackInfo {
     /// Frames in this block. Never more than the stream's `max_block_frames`, and not constant.
     pub frames: usize,
+    /// The rate the stream is actually running at, which may differ from the one requested.
+    pub sample_rate: u32,
     /// Interleaved channels in `input`; zero when the microphone is not in use.
     pub input_channels: usize,
     /// Interleaved channels in `output`.

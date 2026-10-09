@@ -165,6 +165,7 @@ fn an_oversized_block_is_rendered_in_prepared_slices() {
         engine.send(start).expect("send");
         let info = CallbackInfo {
             frames: 700,
+            sample_rate: RATE,
             input_channels: 1,
             output_channels: 2,
             timestamp: StreamTimestamp {
