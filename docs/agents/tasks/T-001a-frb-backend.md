@@ -38,18 +38,21 @@ Both backends are built and measured against all five. Results recorded in "Veri
 with the actual commands and output, not a summary.
 
 - [ ] **1. Runs on the device.** `flutter run` puts the Rust-returned string on the physical phone
-      (Xiaomi 23117RA68G, Android 16 / API 36, arm64)
-- [ ] **2. 16 KB aligned.** Release build's `.so` is 16 KB-aligned for every ABI, checked with
+      (Xiaomi 23117RA68G, Android 16 / API 36, arm64) — **closed**: blocked here (see below); verified
+      for cargokit by `T-001` (`just run android`), never for native assets
+- [x] **2. 16 KB aligned.** Release build's `.so` is 16 KB-aligned for every ABI, checked with
       `llvm-readelf -l` — not assumed from the NDK version
-- [ ] **3. `oboe` still links.** Adding the `oboe` crate to the Rust side still builds and runs on
+- [x] **3. `oboe` still links.** Adding the `oboe` crate to the Rust side still builds and runs on
       the device. **Decisive criterion**
 - [ ] **4. iOS archives on CI.** Both device and simulator arches. Deferred if no macOS runner is
-      wired yet — record as deferred, do not silently drop
-- [ ] **5. Iteration cost.** Cold and warm rebuild times; whether a Rust edit is picked up by
+      wired yet — record as deferred, do not silently drop — **closed**: deferred here; cargokit's
+      device build is green in CI since `T-001`, the simulator arch arrives with `T-002c`
+- [x] **5. Iteration cost.** Cold and warm rebuild times; whether a Rust edit is picked up by
       `flutter run` without a manual clean
-- [ ] `adr/0012` written, either confirming `adr/0003` or superseding it. `adr/0003`'s status line
+- [x] `adr/0012` written, either confirming `adr/0003` or superseding it. `adr/0003`'s status line
       updated if superseded — its body is immutable (`adr/README.md`)
-- [ ] Losing spike deleted; scratchpad left clean
+- [ ] Losing spike deleted; scratchpad left clean — **closed** as unverifiable after the fact: the
+      spikes lived in a session scratchpad that no longer exists, and none of them is in the repo
 
 ## Out of scope
 
