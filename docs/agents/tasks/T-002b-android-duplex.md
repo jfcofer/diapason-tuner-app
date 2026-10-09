@@ -49,6 +49,8 @@ timing; emulated audio says nothing about real devices.
       rows covered by an integration test
 - [ ] Stream rebuilds off the RT thread on route change and device disconnect
 - [ ] Round-trip latency on the Redmi recorded in the journal
+- [ ] The RT clock exception (`clock_gettime` in the callback) has its ADR, and `AGENTS.md` §6
+      cites it, so the documented RT rule stays true
 - [ ] `just verify` green; `build-android` CI green
 
 ## Out of scope

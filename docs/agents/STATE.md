@@ -13,16 +13,17 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap.
 
 - **CI is green on all six jobs** (iOS on `macos-26`, Rust engine linked); `just verify` is green.
 - **T-006 and T-002a are merged** (PRs #6, #7).
-- **`chore/T-007-session-hygiene` awaits push and PR** (the owner approves). It also supersedes
-  Dependabot #4 (very_good_analysis 11). Dependabot #2 and #3 were green at last check; the owner
-  merges them.
+- **Branches in flight** (their PR state is whatever `session-start` says):
+  - `chore/T-007-session-hygiene` supersedes Dependabot #4.
+  - `build/T-008-min-sdk-28` sits on T-007's tip with no commits of its own. Rebase it onto
+    `main` once T-007 lands.
 - The dev flavour runs on the Redmi and shows a value computed in Rust.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
 **`docs/agents/tasks/T-007-session-hygiene.md`**: every criterion met except CI on its PR. Once
-the PR is green and merged, close it and move to **`T-008-min-sdk-28`**, then **`T-002b`**.
+it merges, close it, then do **`T-008-min-sdk-28`**, then **`T-002b`**.
 
 **`T-002b` is planned** (owner-approved, 2026-10-09). It uses AAudio via `ndk`, because `oboe`
 is unmaintained, on minSdk 28 (owner's decision). The plan is in its Implementation notes.
@@ -49,39 +50,30 @@ is unmaintained, on minSdk 28 (owner's decision). The plan is in its Implementat
 
 ## Decisions already made (do not re-litigate without an ADR)
 
-| ADR | Decision |
-|---|---|
-| `0001` | Rust owns all audio; Dart never sees a sample |
-| `0002` | `AGENTS.md` canonical, `CLAUDE.md` imports it |
-| `0003`/`0012` | flutter_rust_bridge v2 + cargokit |
-| `0004` | Riverpod 3 code-gen for discrete state, `Listenable` for continuous |
-| `0005` | MPM/NSDF pitch detection |
-| `0006` | Pub workspaces + Melos (run as `dart run melos`) |
-| `0007` | Note math duplicated in Rust and Dart, shared fixture |
-| `0008` | Procedural clicks |
-| `0010` | No telemetry, no network |
-| `0011` | Pins live in `tools/versions.env` |
-| `0013` | Name and bundle ID |
-| `0014` | No `custom_lint` |
-| `0015` | **Rust pinned to an exact release (1.98.0)**, not `stable` |
-| `0016` | **Goldens on the pinned ubuntu-24.04 runner**; regeneration mechanism decided in M3 |
-| `0009`/`0017` | Permissive dependencies only; **project licence FSL-1.1-ALv2** |
-| `0018` | **Lossy casts only in `dsp::convert`**; `docs-check` rejects any other lint suppression |
+The index is `docs/adr/README.md`. The ones a session most often runs into:
+- `0001` Rust owns all audio, and Dart never sees a sample.
+- `0011` pins live in `tools/versions.env`.
+- `0015` Rust is pinned to an exact release.
+- `0016` goldens run on the pinned ubuntu-24.04 runner.
+- `0018` lossy casts are allowed only in `dsp::convert`, and `docs-check` rejects every other
+  suppression.
+- minSdk 28 was decided by the owner on 2026-10-09; its ADR, `0019`, lands with `T-008`.
 
 ## Traps a later session will otherwise re-discover
 
 - **A clean checkout has no `*.g.dart`.** Riverpod codegen output is not committed. Run
   `just deps` (pub get plus codegen) before analyze, test or build. CI does. A local tree that
   already has them hides the problem, so test CI-shaped changes in a fresh clone.
-- **`flutter build ipa` fails without a development team**, even with `--no-codesign`, after the
-  archive succeeds. CI uses `just build-ios-unsigned`; `build-ios` is for signed M7 releases.
+- **`flutter build ipa` fails without a development team**, even with `--no-codesign`. CI uses
+  `just build-ios-unsigned`; `build-ios` is for signed M7 releases.
 - **cargokit's vendored `build_tool` is not our code.** It is excluded from format and analysis.
   In a fresh checkout it cannot even be parsed by Dart 3.13.
-- **`doctor` uses GNU grep `-P`**, so it does not run on macOS runners.
-  `tools/check-ios-release.sh` is bash 3.2/BSD-portable on purpose.
+- **`doctor` uses GNU grep `-P`**, so not on macOS; `check-ios-release.sh` is bash 3.2-portable.
 - **JDK 25 breaks Flutter Android builds** (flutter#187223). Flutter uses JDK 21 via `--jdk-dir`.
-- **Compiling against a crate is not linking it.** Verify on the shipped binary. Both release
+- **Compiling against a crate is not linking it.** Verify on the shipped binary, as both release
   checks do.
+- **A release build from cold exhausts this 14 GB host:** fat LTO, every ABI, no cache in a fresh
+  worktree. Build in the main checkout, one ABI locally, and nothing else running.
 - **`cargo fmt` reformats FRB's generated file.** That is why formatting is part of `just gen`.
 - **Editing a `clippy.toml` does not invalidate clippy's cache.** `touch` a source file before
   trusting a clean run. CI is unaffected.
@@ -112,8 +104,8 @@ is unmaintained, on minSdk 28 (owner's decision). The plan is in its Implementat
 
 ## Next up (in order)
 
-1. **Push `chore/T-007-session-hygiene` and open its PR** (owner's approval). Rebase-merge it, and
-   #2/#3, then close `T-007`.
+1. **Land `T-007`:** PR, six green checks, rebase-merge (the owner approves pushes). Then the
+   owner merges #2 and #3.
 2. **`T-008`**, minSdk 28 with its ADR.
 3. **`T-002b`**, Android duplex on the Redmi (see Active task).
 4. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
