@@ -123,8 +123,10 @@ while IFS= read -r hit; do
     fail "lint suppressed; fix the cause (adr/0018 names the one exception)" "$hit"
     suppressed=1
 done < <(
-    git grep -n -E '#!?\[(allow|expect)\(' -- '*.rs' \
+    git grep -n -E '#!?\[(allow|expect)\(|cfg_attr\(.*\b(allow|expect)\(' -- '*.rs' \
         ':!rust/crates/dsp/src/convert.rs' ':!**/frb_generated*.rs' 2>/dev/null
+    # A [lints] level of "allow" switches a lint off for a whole crate: the option adr/0018 rejected.
+    git grep -n -E '"(allow|expect)"' -- '*Cargo.toml' ':!**/cargokit/**' 2>/dev/null
     git grep -n -E '//[[:space:]]*ignore(_for_file)?:' -- '*.dart' \
         ':!*.g.dart' ':!*.freezed.dart' ':!*frb_generated*' \
         ':!packages/audio_engine/lib/src/rust/**' ':!packages/audio_engine/cargokit/**' 2>/dev/null
