@@ -163,8 +163,10 @@ The rules are in `AGENTS.md` §6; this is how they are enforced rather than mere
   `engine/tests/no_alloc.rs` integration test: it drives 10 s of audio through the offline backend
   and fails on a single allocation, and a canary proves the trap fires. On Android the AAudio
   trampoline also runs every callback inside it, and `just test-android-device` proves that on
-  hardware with its own canary (`adr/0020`). From `T-002b` part 2 it is also the debug app. It
-  sees only Rust's allocator, not allocations inside the platform's audio libraries.
+  hardware with its own canary (`adr/0020`). Debug builds of the app install it as
+  `diapason_ffi`'s global allocator, so `just test-integration-android` runs the real engine with
+  the trap armed. It sees only Rust's allocator, not allocations inside the platform's audio
+  libraries.
 - Clippy lints denied on the RT path: `disallowed-methods` (`Vec::push`, `HashMap::insert`,
   `Instant::now`, `Mutex::lock`, …) and `disallowed-macros` (`println!`, `format!`, …), listed
   once in `rust/crates/engine/clippy.toml`; `dsp` links to the same file. `audio_io` does not:
