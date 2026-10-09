@@ -35,3 +35,4 @@ agent from "improving" a deliberate choice.
 | [0015](0015-pin-rust-toolchain.md) | Pin the Rust toolchain to an exact release | Accepted |
 | [0016](0016-goldens-environment.md) | Goldens on the pinned Ubuntu runner, no third-party container | Accepted |
 | [0017](0017-project-licence.md) | Project licence: FSL-1.1-ALv2 (Apache-2.0 after two years) | Accepted |
+| [0018](0018-lossy-numeric-conversions.md) | Lossy numeric conversions live in one audited module | Accepted |

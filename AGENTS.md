@@ -37,7 +37,8 @@ Rationale and the full memory model → `docs/agents/CONTEXT_SYSTEM.md`.
    file exists for what you are about to do, write one first (`docs/agents/tasks/TEMPLATE.md`).
 2. **`just verify` is the gate.** It must pass before you claim anything is done. Never weaken a
    lint, skip a test, or add `// ignore:` / `#[allow]` to get it green — fix the cause or escalate
-   in STATE.md.
+   in STATE.md. The one audited exception is lossy numeric casts in `dsp::convert` (`adr/0018`);
+   `docs-check` enforces both.
 3. **Never invent an API.** If unsure of a crate, package, or platform API, check the pinned docs or
    say so in STATE.md under "Open questions". Guessing wastes more of my time than asking.
 4. **Small, reversible commits.** Conventional Commits, imperative mood, one concern each,
