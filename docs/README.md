@@ -31,7 +31,6 @@ find the same rule stated in two places, delete one and link to the other.
 | [`DEVELOPMENT.md`](DEVELOPMENT.md) | Toolchain versions, setup, `just` recipes, troubleshooting |
 | [`CI_RELEASE.md`](CI_RELEASE.md) | Pipelines, flavors, signing, store submission, versioning |
 | [`ROADMAP.md`](ROADMAP.md) | Milestones M0–M7 with exit criteria |
-| [`BOOTSTRAP.md`](BOOTSTRAP.md) | How this repo was created and what session one does. **Delete after M0** |
 
 ## Tier 3 — decisions
 
