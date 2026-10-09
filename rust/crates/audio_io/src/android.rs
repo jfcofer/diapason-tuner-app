@@ -211,6 +211,13 @@ struct Running {
     closed: bool,
 }
 
+// SAFETY: `Running` is not `Send` only because of its two raw pointers.
+// - `state` is dereferenced only in `shutdown`, after the output stream that calls into it has
+//   been closed, so moving `Running` to another thread cannot race the audio thread.
+// - `input` is used only for `AAudioStream_get*` calls, which AAudio documents as thread-safe.
+// Everything else it holds (`Stream`, `Arc<Shared>`, plain data) is `Send`.
+unsafe impl Send for Running {}
+
 impl Running {
     fn open(
         requested: StreamConfig,
@@ -270,6 +277,7 @@ impl Running {
                 .common(requested.input_channels)?
                 .sample_rate(rate)?
                 .input_preset(preset)
+                .error_callback(&running.shared)
                 .open("open the input stream")?;
             expect_channels(
                 &input,
@@ -319,23 +327,34 @@ impl Running {
     /// callback can be running when the input stream it reads is closed and its state is freed.
     fn shutdown(&mut self) -> Result<()> {
         let mut result = Ok(());
+        let mut output_closed = true;
         if !self.closed {
             self.closed = true;
             result = stop(&self.output, "stop the output stream");
-            result = result.and(self.output.close());
+            let close = self.output.close();
+            output_closed = close.is_ok();
+            result = result.and(close);
         }
-        if let Some(state) = self.state.take() {
-            // SAFETY: `state` came from `Box::leak` in `open`, and the output stream that called
-            // into it is closed, so this is the only reference left.
-            let mut state = unsafe { Box::from_raw(state.as_ptr()) };
+        let Some(state) = self.state.take() else {
+            return result;
+        };
+        if !output_closed {
+            // AAudio refuses to close a stream it is still calling back from, so a failed close
+            // means the callback may yet run. Freeing its state would be a use-after-free;
+            // leaking it, input stream included, is the safe failure.
             self.input = None;
-            if let Some(mut input) = state.input.take() {
-                result = result.and(stop(&input, "stop the input stream"));
-                result = result.and(input.close());
-            }
-            // Dropping the state drops the callback, as the `close` contract requires.
-            drop(state);
+            return result;
         }
+        // SAFETY: `state` came from `Box::leak` in `open`, and the output stream that called into
+        // it is closed, so this is the only reference left.
+        let mut state = unsafe { Box::from_raw(state.as_ptr()) };
+        self.input = None;
+        if let Some(mut input) = state.input.take() {
+            result = result.and(stop(&input, "stop the input stream"));
+            result = result.and(input.close());
+        }
+        // Dropping the state drops the callback, as the `close` contract requires.
+        drop(state);
         result
     }
 }
@@ -361,8 +380,11 @@ struct CallbackState {
 
 impl CallbackState {
     /// One AAudio callback: cut into blocks of at most `max_block_frames`, each handed to the
-    /// engine with its slice of the microphone. Real-time thread: no allocation, lock or panic.
-    fn render(&mut self, output: &mut [f32]) {
+    /// engine with its slice of the microphone. Real-time thread: no allocation or panic.
+    ///
+    /// `output_stream` is the stream that called back. Only this thread may ask it for a
+    /// timestamp, because `getTimestamp` is the one AAudio getter that is not thread-safe.
+    fn render(&mut self, output_stream: *mut aaudio::AAudioStream, output: &mut [f32]) {
         let started_ns = now_ns();
         let StreamConfig {
             sample_rate,
@@ -370,26 +392,41 @@ impl CallbackState {
             input_channels,
             output_channels,
         } = self.config;
-        if !self.drained {
+        // The first callback also drains the microphone's backlog, so its duration says nothing
+        // about steady state and is left out of the worst case.
+        let first = !self.drained;
+        if first {
             self.drained = true;
             if let Some(input) = &self.input {
-                drain(input, &mut self.input_buffer, max_block_frames);
+                drain(
+                    input,
+                    &mut self.input_buffer,
+                    max_block_frames,
+                    &self.shared.handle,
+                );
             }
         }
+        let anchor = presentation_anchor(output_stream);
 
         let mut offset_frames: u64 = 0;
         for block in output.chunks_mut(max_block_frames * output_channels) {
             let frames = block.len() / output_channels;
             let input = &mut self.input_buffer[..frames * input_channels];
-            if let Some(stream) = &self.input
-                && !read_input(stream, input, frames)
-            {
-                self.shared.handle.record_input_underrun();
+            if let Some(stream) = &self.input {
+                match read_input(stream, input, frames) {
+                    Input::Full => {}
+                    Input::Short => self.shared.handle.record_input_underrun(),
+                    Input::Broken => self.shared.handle.mark_disconnected(),
+                }
             }
-            // Where the block's first frame falls after the callback began, kept strictly rising
-            // even when AAudio delivers callbacks in a burst.
-            let host_time_ns = started_ns
-                .saturating_add(frames_to_ns(offset_frames, sample_rate))
+            // When the block's first frame reaches the speaker (AUDIO_ENGINE.md §6), extrapolated
+            // from the frame AAudio last reported as presented. Until it has presented one, the
+            // best estimate is when the block is rendered. Kept strictly rising either way.
+            let host_time_ns = anchor
+                .map_or_else(
+                    || started_ns.saturating_add(frames_to_ns(offset_frames, sample_rate)),
+                    |anchor| anchor.presented_at(self.next_frame, sample_rate),
+                )
                 .max(self.last_host_ns.saturating_add(1));
             let timestamp = StreamTimestamp {
                 frame: self.next_frame,
@@ -409,43 +446,103 @@ impl CallbackState {
             self.last_host_ns = host_time_ns;
             offset_frames += frames as u64;
         }
-        self.shared
-            .handle
-            .record_duration(now_ns().saturating_sub(started_ns));
+        if !first {
+            self.shared
+                .handle
+                .record_duration(now_ns().saturating_sub(started_ns));
+        }
     }
 }
 
-/// Read one block of microphone input without waiting. Pads with silence and returns `false` if
-/// the microphone had not delivered all of it yet.
-fn read_input(stream: &Stream, input: &mut [f32], frames: usize) -> bool {
+/// A frame of the output stream and the host time at which it reached the speaker.
+#[derive(Clone, Copy)]
+struct Anchor {
+    frame: i64,
+    presented_ns: i64,
+}
+
+impl Anchor {
+    /// When `frame` reaches the speaker, by extrapolating from this anchor at `sample_rate`.
+    fn presented_at(self, frame: u64, sample_rate: u32) -> u64 {
+        let ahead = i128::from(frame) - i128::from(self.frame);
+        let ns =
+            i128::from(self.presented_ns) + ahead * 1_000_000_000 / i128::from(sample_rate.max(1));
+        u64::try_from(ns.max(0)).unwrap_or(u64::MAX)
+    }
+}
+
+/// The output's latest presented frame, or `None` before it has presented any. Audio thread only.
+fn presentation_anchor(stream: *mut aaudio::AAudioStream) -> Option<Anchor> {
+    let (mut frame, mut presented_ns) = (0_i64, 0_i64);
+    // SAFETY: `stream` is the open output stream that is calling back, and this is its callback
+    // thread, the only one that calls `getTimestamp` on it. Both out-pointers are valid.
+    let result = unsafe {
+        aaudio::AAudioStream_getTimestamp(
+            stream,
+            libc::CLOCK_MONOTONIC,
+            &raw mut frame,
+            &raw mut presented_ns,
+        )
+    };
+    (result == aaudio::AAUDIO_OK).then_some(Anchor {
+        frame,
+        presented_ns,
+    })
+}
+
+/// What one non-blocking microphone read produced.
+#[derive(PartialEq, Eq)]
+enum Input {
+    /// Every frame asked for.
+    Full,
+    /// Fewer frames than asked for; the rest is silence.
+    Short,
+    /// The input stream failed, typically because the microphone went away. All silence.
+    Broken,
+}
+
+/// Read one block of microphone input without waiting, padding with silence whatever did not
+/// arrive. A failed read is how the input stream reports that its device is gone, since its error
+/// callback is not guaranteed to fire before the next read.
+fn read_input(stream: &Stream, input: &mut [f32], frames: usize) -> Input {
     let wanted = i32::try_from(frames).unwrap_or(0);
     // SAFETY: `input` holds `frames` frames at the stream's channel count and float format, both
-    // checked at open. A zero timeout makes AAudio return at once with whatever it has.
+    // checked at open. A zero timeout makes AAudio return at once with whatever it has. Only the
+    // audio thread reads this stream.
     let got =
         unsafe { aaudio::AAudioStream_read(stream.ptr(), input.as_mut_ptr().cast(), wanted, 0) };
-    let got = usize::try_from(got).unwrap_or(0).min(frames);
+    let Ok(got) = usize::try_from(got) else {
+        input.fill(0.0);
+        return Input::Broken;
+    };
+    let got = got.min(frames);
     if got == frames {
-        return true;
+        return Input::Full;
     }
     let channels = input.len() / frames.max(1);
     input[got * channels..].fill(0.0);
-    false
+    Input::Short
 }
 
 /// Discard whatever the microphone has buffered, so input reaches the callback with the least
 /// delay. Bounded, because a device that delivers faster than this reads must not hang the stream.
-fn drain(stream: &Stream, buffer: &mut [f32], max_block_frames: usize) {
+/// The read that comes up short is where the backlog ended, so it is not an underrun.
+fn drain(stream: &Stream, buffer: &mut [f32], max_block_frames: usize, handle: &StreamHandle) {
     for _ in 0..MAX_DRAIN_READS {
-        if read_input(stream, buffer, max_block_frames) {
-            continue;
+        match read_input(stream, buffer, max_block_frames) {
+            Input::Full => {}
+            Input::Short => return,
+            Input::Broken => {
+                handle.mark_disconnected();
+                return;
+            }
         }
-        return;
     }
 }
 
 /// The AAudio data callback.
 unsafe extern "C" fn on_audio(
-    _stream: *mut aaudio::AAudioStream,
+    stream: *mut aaudio::AAudioStream,
     user_data: *mut c_void,
     audio_data: *mut c_void,
     num_frames: i32,
@@ -460,18 +557,19 @@ unsafe extern "C" fn on_audio(
     // count, in the float format requested at open, valid for the length of this call.
     let output = unsafe { std::slice::from_raw_parts_mut(audio_data.cast::<f32>(), samples) };
     // Traps any allocation on this thread in debug builds; compiled out of release.
-    assert_no_alloc::assert_no_alloc(|| state.render(output));
+    assert_no_alloc::assert_no_alloc(|| state.render(stream, output));
     raw(aaudio::AAUDIO_CALLBACK_RESULT_CONTINUE)
 }
 
-/// The AAudio error callback. Runs on a thread AAudio creates for it, never the audio thread.
+/// The AAudio error callback, registered on both streams. AAudio may call it on its own thread or
+/// on the data-callback thread; either way it only stores an atomic.
 unsafe extern "C" fn on_error(
     _stream: *mut aaudio::AAudioStream,
     user_data: *mut c_void,
     _error: aaudio::aaudio_result_t,
 ) {
     // SAFETY: `user_data` is the `Shared` inside `Running::shared`'s `Arc`, which lives until after
-    // the output stream is closed, and AAudio stops calling back once it is.
+    // both streams are closed, and AAudio stops calling back once a stream is.
     let shared = unsafe { &*user_data.cast::<Shared>() };
     // Any error means the stream has stopped for good. AAudio forbids reopening from here.
     shared.handle.mark_disconnected();
@@ -506,8 +604,13 @@ impl StampCell {
         self.seq.store(seq.wrapping_add(2), Ordering::Release);
     }
 
+    /// Control side only. Spins briefly, then yields: if the audio thread was preempted
+    /// mid-publish, it needs this core back to finish.
     fn read(&self) -> Option<StreamTimestamp> {
-        loop {
+        for attempt in 0_u32.. {
+            if attempt >= 64 {
+                std::thread::yield_now();
+            }
             let before = self.seq.load(Ordering::Acquire);
             if before == 0 {
                 return None;
@@ -522,6 +625,7 @@ impl StampCell {
             }
             std::hint::spin_loop();
         }
+        None
     }
 }
 
@@ -742,8 +846,12 @@ fn stop(stream: &Stream, operation: &'static str) -> Result<()> {
                 STOP_TIMEOUT_NS,
             )
         };
-        check("wait for the stream to stop", waited)?;
-        state = next;
+        match check("wait for the stream to stop", waited) {
+            Ok(()) => state = next,
+            // A stream the platform disconnected has stopped as far as closing it is concerned.
+            Err(AudioError::Disconnected) => return Ok(()),
+            Err(error) => return Err(error),
+        }
     }
     if running.contains(&state) {
         Err(AudioError::Platform {
