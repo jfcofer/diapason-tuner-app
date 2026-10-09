@@ -9,6 +9,10 @@ publish.workspace = true
 [dependencies]
 diapason_dsp.workspace = true
 diapason_audio_io.workspace = true
+assert_no_alloc.workspace = true
+rtrb.workspace = true
+thiserror.workspace = true
+triple_buffer.workspace = true
 
 [lints]
 workspace = true
