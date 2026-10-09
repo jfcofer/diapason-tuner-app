@@ -1,9 +1,9 @@
 ---
 id: T-002a
 title: Engine real-time core, proven offline
-status: todo
+status: in-progress
 milestone: M1
-owner: unassigned
+owner: claude
 created: 2026-10-04
 ---
 
