@@ -20,8 +20,9 @@ Flutter owns the UI; **Rust owns all audio and DSP**. Offline-first, zero teleme
 2. `docs/agents/STATE.md` — the current truth: milestone, WIP, blockers, next action.
 3. The active task file named in STATE.md (`docs/agents/tasks/T-###-*.md`).
 4. Only the reference docs the task points to. Do not bulk-read `docs/`.
-5. Reconcile STATE.md with what `session-start` printed (merged or open PRs, unmerged branches,
-   red checks). Those change between sessions; report every contradiction before starting work.
+5. Reconcile STATE.md and the task files with what `session-start` printed (merged or open PRs,
+   unmerged branches, red checks, open tasks whose PR merged). Those change between sessions;
+   report every contradiction before starting work.
 
 **At session end — write, in order:**
 1. Update the task file: check off acceptance criteria, record deviations.
