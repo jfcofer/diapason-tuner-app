@@ -114,6 +114,23 @@ if [[ -n "$active" && -f "docs/agents/tasks/$active" ]]; then
 fi
 [[ $taskbad -eq 0 ]] && ok "task front matter valid, done means done, active task is open"
 
+# ── Lint suppressions (AGENTS.md §3.2, adr/0018) ─────────────────────────────
+# The gate means nothing if a lint can be switched off where it fires. The single audited home for
+# unavoidable lossy casts is dsp/src/convert.rs; generated and vendored code is not ours to judge.
+printf '\n%sLint suppressions%s\n' "$BOLD" "$OFF"
+suppressed=0
+while IFS= read -r hit; do
+    fail "lint suppressed; fix the cause (adr/0018 names the one exception)" "$hit"
+    suppressed=1
+done < <(
+    git grep -n -E '#!?\[(allow|expect)\(' -- '*.rs' \
+        ':!rust/crates/dsp/src/convert.rs' ':!**/frb_generated*.rs' 2>/dev/null
+    git grep -n -E '//[[:space:]]*ignore(_for_file)?:' -- '*.dart' \
+        ':!*.g.dart' ':!*.freezed.dart' ':!*frb_generated*' \
+        ':!packages/audio_engine/lib/src/rust/**' ':!packages/audio_engine/cargokit/**' 2>/dev/null
+)
+[[ $suppressed -eq 0 ]] && ok "no #[allow]/#[expect] or // ignore: outside the audited module"
+
 # ── Task IDs referenced in code must exist ───────────────────────────────────
 printf '\n%sTask references%s\n' "$BOLD" "$OFF"
 unknown=0
