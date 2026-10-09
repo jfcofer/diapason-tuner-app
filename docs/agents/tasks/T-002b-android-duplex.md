@@ -1,9 +1,9 @@
 ---
 id: T-002b
 title: Android duplex stream on the budget reference device
-status: todo
+status: in-progress
 milestone: M1
-owner: unassigned
+owner: claude
 created: 2026-10-04
 ---
 
@@ -34,8 +34,8 @@ timing; emulated audio says nothing about real devices.
 
 ## Acceptance criteria
 
-- [ ] ADR for the Android audio binding, with the measurements above
-- [ ] The Android backend passes the `T-002a` conformance suite (on device, via an integration
+- [x] ADR for the Android audio binding, with the measurements above
+- [x] The Android backend passes the `T-002a` conformance suite (on device, via an integration
       test)
 - [ ] Duplex: mic in and output out on one stream and one clock, on the Redmi
 - [ ] Input preset per `PLATFORM_AUDIO.md` (Unprocessed if supported, else VoiceRecognition), and
@@ -49,7 +49,7 @@ timing; emulated audio says nothing about real devices.
       rows covered by an integration test
 - [ ] Stream rebuilds off the RT thread on route change and device disconnect
 - [ ] Round-trip latency on the Redmi recorded in the journal
-- [ ] The RT clock exception (`clock_gettime` in the callback) has its ADR, and `AGENTS.md` §6
+- [x] The RT clock exception (`clock_gettime` in the callback) has its ADR, and `AGENTS.md` §6
       cites it, so the documented RT rule stays true
 - [ ] `just verify` green; `build-android` CI green
 
@@ -58,6 +58,31 @@ timing; emulated audio says nothing about real devices.
 iOS (`T-002c`). Pitch detection. Latency *calibration* UI (M5).
 
 ## Implementation notes
+
+**Part 1 of 3, done 2026-10-09:** the binding, the backend and on-device conformance.
+`adr/0020` has the full evidence. Deviations from the plan below:
+
+- **`ndk-sys` with our own wrapper, not `ndk`.** The owner chose this after `ndk` 0.9's source
+  showed `AudioStream` is not `Send` and its Drop unwraps `AAudioStream_close` (an abort under
+  `panic = "abort"`).
+- **No `clippy.toml` symlink for `audio_io`.** Its device tests must sleep and read the clock, and
+  clippy cannot scope the list per target. Instead the trampoline runs inside `assert_no_alloc`,
+  and `android_alloc_canary` proves on device that the trap fires.
+- **The ADR's shipped-`.so` figures wait for part 2.** Nothing calls the backend yet, so the linker
+  strips it. Linking is proven on the device test binary instead (only `libaaudio`, `libdl`,
+  `libc`).
+
+**Found on the Redmi, for part 2:**
+
+- **The output is refused the fast path** as the shell user: AudioFlinger's "mismatch between
+  requested flags (00000104) and output flags (00000002)". `USAGE_GAME` makes no difference. The
+  log points at a per-app vendor policy (`UseAAudioApp`). **Measure `granted_paths` from the
+  app.**
+- **Input underruns:** 10–16 at start-up, then 0. The engine should treat a rising
+  `input_underruns` as "input warming up" and not analyse those blocks.
+- **cargo-ndk 4.1.2** swallows `--message-format=json` and the `Executable` lines.
+  `test-android-device.sh` takes the newest build of each test from `target/` instead.
+- **`adb shell` reads stdin**, which ends a `while read` loop after one pass. Use `adb shell -n`.
 
 **Plan, approved by the owner on 2026-10-09.** It replaces the binding choice in Context.
 
@@ -96,4 +121,7 @@ iOS (`T-002c`). Pitch detection. Latency *calibration* UI (M5).
 
 ## Verification performed
 
-_Fill in during the work._
+- **Part 1:** `just test-android-device` on the Redmi 23117RA68G (Android 16, API 36):
+  - `android_conformance`: 4/4 (duplex, output-only, forced block cutting, and the device report);
+  - `android_alloc_canary`: exit 134 (SIGABRT), so the trap is armed.
+- `just lint-rust`, now including `lint-rust-android`, and `just verify`: green.
