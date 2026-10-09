@@ -44,6 +44,9 @@ UI is a *subscriber* to a state snapshot, never a participant in timing.
 ┌────────────────────────────────────▼─────────────────────────────────┐
 │ diapason_ffi             API surface only — no logic                  │
 ├───────────────────────────────────────────────────────────────────────┤
+│ rust/crates/session      stream supervisor: opens, rebuilds with       │
+│                          backoff, replays desired state (adr/0022)     │
+├───────────────────────────────────────────────────────────────────────┤
 │ rust/crates/engine       RT graph, command queue, snapshot publisher,  │
 │                          metronome scheduler, tuner pipeline, state    │
 ├──────────────────────────────┬────────────────────────────────────────┤

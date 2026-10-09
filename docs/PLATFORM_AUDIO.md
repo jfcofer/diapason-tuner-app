@@ -87,9 +87,11 @@ the moment the app is not foreground, and the UI says so.
 - 16 KB, edge-to-edge and target API checks live in `just check-android-release`.
 
 **Device disconnect** — AAudio's error callback fires on either stream, or the input's read fails,
-and `AAudioBackend` sets `StreamHandle::disconnected`. Do not rebuild the stream on the audio
-thread or the error thread. Signal a normal-priority thread, close, reopen with backoff, and surface
-a `route_changed` flag in the snapshot so the UI can show a brief, non-alarming indicator.
+and `AAudioBackend` sets `StreamHandle::disconnected`. Nothing is rebuilt on the audio thread or
+the error thread: the `session` crate's supervisor sees the flag on its own thread, closes, reopens
+with backoff (50 ms doubling to 2 s, giving up after 10 s), replays the desired state, and counts
+the rebuild in the snapshot's `rebuilds` so the UI can show a brief, non-alarming indicator
+(`adr/0022`).
 
 ## 3. iOS / iPadOS
 
