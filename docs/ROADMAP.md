@@ -17,6 +17,10 @@ system in place.
 dependency-direction check enforced · dev/stg/prod flavours install side by side · `just rename`
 works.
 
+**Closed 2026-10-09.** Every criterion holds except clean-clone `setup` on **macOS**, which is
+unverifiable without a macOS host; CI's macOS `build-ios` job builds the app on that toolchain
+instead (`T-001`, `T-006`).
+
 ## M1 — Audio spine
 The riskiest 200 lines in the project. One duplex stream on both platforms, through the real
 backends, with a trivial payload: input RMS out, a sine in.
