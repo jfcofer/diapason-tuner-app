@@ -161,11 +161,18 @@ The rules are in `AGENTS.md` §6; this is how they are enforced rather than mere
 - The callback body runs inside `assert_no_alloc`, which is compiled out of release builds (its
   `disable_release` feature). It traps wherever its allocator is the global one. Today that is the
   `engine/tests/no_alloc.rs` integration test: it drives 10 s of audio through the offline backend
-  and fails on a single allocation, and a canary proves the trap fires. From `T-002b` it is also
-  the debug app.
+  and fails on a single allocation, and a canary proves the trap fires. On Android the AAudio
+  trampoline also runs every callback inside it, and `just test-android-device` proves that on
+  hardware with its own canary (`adr/0020`). From `T-002b` part 2 it is also the debug app. It
+  sees only Rust's allocator, not allocations inside the platform's audio libraries.
 - Clippy lints denied on the RT path: `disallowed-methods` (`Vec::push`, `HashMap::insert`,
   `Instant::now`, `Mutex::lock`, …) and `disallowed-macros` (`println!`, `format!`, …), listed
-  once in `rust/crates/engine/clippy.toml`; `dsp` links to the same file.
+  once in `rust/crates/engine/clippy.toml`; `dsp` links to the same file. `audio_io` does not:
+  its callback path is small and held to the rules at run time instead (`adr/0020`).
+- The platform calls the backend must make on the RT path are audited, not banned:
+  - AAudio's non-blocking `AAudioStream_read` and its `getTimestamp`. On the legacy (non-MMAP)
+    path each takes a short platform mutex, the cost Oboe's `FullDuplexStream` also accepts;
+  - `clock_gettime(CLOCK_MONOTONIC)` (`adr/0020`).
 - Command queue: `rtrb` SPSC. Snapshot publishing: `triple_buffer`. No other cross-thread primitive
   is permitted in `engine`.
 - All buffers are allocated in `Engine::prepare(max_block_size, sample_rate)` — the same lifecycle
