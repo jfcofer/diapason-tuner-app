@@ -32,7 +32,7 @@ abstract interface class MicrophonePermission {
 /// should never reach a real platform channel.
 class FakeMicrophonePermission implements MicrophonePermission {
   /// Creates a fake that reports [initial] and, when asked, moves to [onRequest].
-  FakeMicrophonePermission({
+  new({
     MicrophonePermissionStatus initial = MicrophonePermissionStatus.notDetermined,
     this.onRequest = MicrophonePermissionStatus.granted,
   }) : _status = initial;

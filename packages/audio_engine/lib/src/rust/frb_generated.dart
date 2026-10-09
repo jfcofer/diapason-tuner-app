@@ -14,7 +14,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 /// Main entrypoint of the Rust API
 class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
-  RustLib._();
+  new _();
   @internal
   static final instance = RustLib._();
 
@@ -35,12 +35,8 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 
   /// Initialize flutter_rust_bridge in mock mode.
   /// No libraries for FFI are loaded.
-  static void initMock({
-    required RustLibApi api,
-  }) {
-    instance.initMockImpl(
-      api: api,
-    );
+  static void initMock({required RustLibApi api}) {
+    instance.initMockImpl(api: api);
   }
 
   /// Dispose flutter_rust_bridge
@@ -84,7 +80,7 @@ abstract class RustLibApi extends BaseApi {
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
-  RustLibApiImpl({
+  new({
     required super.handler,
     required super.wire,
     required super.generalizedFrbRustBinding,
@@ -99,10 +95,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
         },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_engine_status,
-          decodeErrorData: null,
-        ),
+        codec: SseCodec(decodeSuccessData: sse_decode_engine_status, decodeErrorData: null),
         constMeta: kCrateApiSimpleEngineStatusConstMeta,
         argValues: [],
         apiImpl: this,
@@ -110,10 +103,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleEngineStatusConstMeta => const TaskConstMeta(
-    debugName: 'engine_status',
-    argNames: [],
-  );
+  TaskConstMeta get kCrateApiSimpleEngineStatusConstMeta =>
+      const TaskConstMeta(debugName: 'engine_status', argNames: []);
 
   @override
   Future<void> crateApiSimpleInitApp() {
@@ -121,17 +112,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 2,
-            port: port_,
-          );
+          pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2, port: port_);
         },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: null,
-        ),
+        codec: SseCodec(decodeSuccessData: sse_decode_unit, decodeErrorData: null),
         constMeta: kCrateApiSimpleInitAppConstMeta,
         argValues: [],
         apiImpl: this,
@@ -139,10 +122,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleInitAppConstMeta => const TaskConstMeta(
-    debugName: 'init_app',
-    argNames: [],
-  );
+  TaskConstMeta get kCrateApiSimpleInitAppConstMeta =>
+      const TaskConstMeta(debugName: 'init_app', argNames: []);
 
   @protected
   String dco_decode_String(dynamic raw) {
@@ -205,11 +186,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     final var_dspBuild = sse_decode_String(deserializer);
     final var_engineBuild = sse_decode_String(deserializer);
     final var_running = sse_decode_bool(deserializer);
-    return EngineStatus(
-      dspBuild: var_dspBuild,
-      engineBuild: var_engineBuild,
-      running: var_running,
-    );
+    return EngineStatus(dspBuild: var_dspBuild, engineBuild: var_engineBuild, running: var_running);
   }
 
   @protected
@@ -257,10 +234,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_list_prim_u_8_strict(
-    Uint8List self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_list_prim_u_8_strict(Uint8List self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);

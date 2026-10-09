@@ -10,7 +10,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 /// (`docs/REPO_LAYOUT.md`); anything that looks like a feature belongs in a `feature_*` package.
 class DiapasonApp extends StatelessWidget {
   /// Creates the app.
-  const DiapasonApp({super.key});
+  const new({super.key});
 
   @override
   Widget build(BuildContext context) => MaterialApp.router(
