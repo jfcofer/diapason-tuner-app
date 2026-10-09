@@ -11,7 +11,8 @@ use diapason_session::{
 
 use crate::frb_generated::StreamSink;
 
-/// The app's one audio session. Dropping it on the Dart side stops the stream.
+/// The app's one audio session, held for the app's lifetime. Dropping it stops the stream and
+/// waits for the platform to confirm, up to half a second (`diapason_session::Session`).
 #[flutter_rust_bridge::frb(opaque)]
 pub struct AudioSession {
     session: Session,
@@ -138,7 +139,7 @@ pub struct SessionSnapshotDto {
     pub state: SessionStateDto,
     /// Backend name.
     pub backend: String,
-    /// The rate the stream runs at, or the rate the engine was prepared for.
+    /// The rate the stream runs at. Zero while no stream is open.
     pub sample_rate: u32,
     /// Largest block the callback may be given. `None` with no stream open.
     pub max_block_frames: Option<u32>,

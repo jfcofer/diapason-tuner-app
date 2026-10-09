@@ -195,7 +195,7 @@ class SessionSnapshot {
   /// Where the session is in its lifecycle.
   final SessionState state;
 
-  /// The rate the stream runs at, in hertz.
+  /// The rate the stream runs at, in hertz. Zero while no stream is open.
   final int sampleRate;
 
   /// Whether the stream has the microphone.

@@ -63,8 +63,12 @@ Future<void> verifyEngineContract(
     ..startTone(frequencyHz: 220, amplitude: 0.1)
     ..stop();
   await until(
-    'the stream stopped, with no tone',
-    (s) => s.state == SessionState.stopped && s.toneHz == null,
+    'the stream stopped, with no tone, no rate and no stale microphone fault',
+    (s) =>
+        s.state == SessionState.stopped &&
+        s.toneHz == null &&
+        s.sampleRate == 0 &&
+        s.inputFault == null,
   );
   engine.start(input: false);
   await until(
