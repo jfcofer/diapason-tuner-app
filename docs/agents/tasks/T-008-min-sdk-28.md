@@ -1,7 +1,7 @@
 ---
 id: T-008
 title: Raise Android minSdk from 26 to 28
-status: in-progress
+status: done
 milestone: M1
 owner: claude
 created: 2026-10-09
@@ -38,7 +38,7 @@ Read: `tools/versions.env`, `docs/PLATFORM_AUDIO.md` §2, `docs/DEVELOPMENT.md` 
 - [x] `ANDROID_MIN_SDK=28` in `tools/versions.env`, the only place the number is written
 - [x] `PLATFORM_AUDIO.md` §2 and `DEVELOPMENT.md` §1 updated; `T-002b`'s Context no longer says 26
 - [x] `just check-android-release` on a built release APK reports `minSdk 28`
-- [ ] `just verify` green; `build-android` CI green
+- [x] `just verify` green; `build-android` CI green
 
 ## Out of scope
 
@@ -65,3 +65,5 @@ The audio binding itself (`T-002b`). `targetSdk`, which stays 36.
   - 16 KB `LOAD` alignment on arm64-v8a and x86_64 `libdiapason_ffi.so`;
   - 17 MB of the 60 MB budget.
 - The AAB that CI builds goes through the same checks in `build-android`.
+- **Merged as #9** on 2026-10-09, rebase-merged with all six CI jobs green, including
+  `build-android`.

@@ -13,11 +13,9 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap.
 
 - **CI is green on all six jobs** (iOS on `macos-26`, Rust engine linked); `just verify` is green.
 - **T-006 and T-002a are merged** (PRs #6, #7).
-- **T-007 is merged** (PR #8); it superseded Dependabot #4, which Dependabot closes itself.
-- **Branches in flight** (their PR state is whatever `session-start` says):
-  - `build/T-008-min-sdk-28` (T-008);
-  - `feat/T-002b-android-backend` (T-002b part 1), stacked on it. Rebase it onto `main` once
-    T-008 lands.
+- **T-007 and T-008 are merged** (PRs #8, #9). T-007 superseded Dependabot #4.
+- **Branch in flight:** `feat/T-002b-android-backend` (T-002b part 1), rebased onto `main`. Its PR
+  state is whatever `session-start` says.
 - The dev flavour runs on the Redmi and shows a value computed in Rust.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
@@ -30,7 +28,6 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap.
   stream, the permission, and the capabilities channel. Its notes hold what the Redmi showed and
   what part 2 owes.
 
-`T-008` is complete except CI on its PR (#9). Close it once it merges.
 
 ## Hardware this project actually has
 
@@ -112,8 +109,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **Land `T-008`, then T-002b part 1:** PR, six green checks, rebase-merge (the owner approves
-   pushes and merges), each rebased onto `main` first. The owner also merges Dependabot #2 and #3.
+1. **Land T-002b part 1:** PR, six green checks, rebase-merge. The owner approves pushes and
+   merges, and also merges Dependabot #2 and #10.
 2. **`T-002b` part 2** (see Active task).
 3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
 4. `T-004` (CI reproducibility) whenever a slice is waiting on CI. `T-003-pitch-core` after T-002.
