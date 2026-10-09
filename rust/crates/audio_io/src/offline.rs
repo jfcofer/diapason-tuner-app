@@ -142,6 +142,17 @@ impl OfflineBackend {
     }
 }
 
+impl OfflineBackend {
+    /// Break the open stream as a device going away would: [`StreamHandle::disconnected`] becomes
+    /// true, and the stream stays open until it is closed. Lets code above this crate test its
+    /// recovery path without a device. A no-op when closed.
+    pub fn simulate_disconnect(&mut self) {
+        if let Some(stream) = &self.stream {
+            stream.handle.mark_disconnected();
+        }
+    }
+}
+
 /// The synthetic host clock: exactly where `frame` falls at `sample_rate`, from a zero epoch.
 fn host_time_ns(frame: u64, sample_rate: u32) -> u64 {
     let ns = u128::from(frame) * 1_000_000_000 / u128::from(sample_rate);
@@ -208,6 +219,20 @@ mod tests {
                 frame.fill(u16::try_from(index).map_or(f32::NAN, f32::from));
             }
         }
+    }
+
+    #[test]
+    fn a_simulated_disconnect_breaks_the_open_stream_until_it_is_reopened() {
+        let mut backend = OfflineBackend::new(BlockPattern::Fixed(64));
+        backend.simulate_disconnect(); // closed: a no-op, not a panic
+        let handle = backend.open(CONFIG, Box::new(FrameIndex)).expect("open");
+        assert!(!handle.disconnected());
+        backend.simulate_disconnect();
+        assert!(handle.disconnected());
+
+        backend.close().expect("close");
+        let reopened = backend.open(CONFIG, Box::new(FrameIndex)).expect("reopen");
+        assert!(!reopened.disconnected(), "a new stream starts healthy");
     }
 
     #[test]

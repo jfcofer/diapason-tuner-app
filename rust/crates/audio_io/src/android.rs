@@ -13,8 +13,8 @@ use std::sync::atomic::{AtomicU64, Ordering, fence};
 use ndk_sys as aaudio;
 
 use crate::{
-    AudioBackend, AudioCallback, AudioError, CallbackInfo, Result, SAMPLE_RATES, StreamConfig,
-    StreamHandle, StreamTimestamp,
+    AudioBackend, AudioCallback, AudioError, BackendReport, CallbackInfo, GrantedPath, InputPreset,
+    Result, SAMPLE_RATES, StreamConfig, StreamHandle, StreamTimestamp,
 };
 
 /// How long `close` waits for AAudio to confirm a stop before closing anyway.
@@ -23,21 +23,6 @@ const STOP_TIMEOUT_NS: i64 = 500_000_000;
 /// Input reads discarded on the first callback, at most. The microphone starts before the speaker,
 /// so a backlog builds up that would otherwise sit between them as latency.
 const MAX_DRAIN_READS: usize = 32;
-
-/// Which processing Android applies to the microphone before the app sees it.
-///
-/// This decides tuner accuracy more than anything else on Android: the default source applies
-/// automatic gain, noise suppression and a voice-band filter (`docs/PLATFORM_AUDIO.md` §2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InputPreset {
-    /// No processing at all. Request it only where the device advertises
-    /// `PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED`.
-    Unprocessed,
-    /// Turns off automatic gain on most devices. The fallback when unprocessed is not supported.
-    VoiceRecognition,
-    /// A preset this backend never requests, as the device reported it.
-    Other(i32),
-}
 
 impl InputPreset {
     fn to_raw(self) -> aaudio::aaudio_input_preset_t {
@@ -57,17 +42,6 @@ impl InputPreset {
             Self::Other(code)
         }
     }
-}
-
-/// Which AAudio path one stream was actually given. Requesting low latency and exclusive mode is
-/// only a request; budget devices often refuse one or both, and that refusal is where most of their
-/// latency comes from (`docs/PLATFORM_AUDIO.md` §2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GrantedPath {
-    /// The low-latency performance mode was granted.
-    pub low_latency: bool,
-    /// Exclusive (MMAP) sharing was granted, rather than the shared mixer.
-    pub exclusive: bool,
 }
 
 impl GrantedPath {
@@ -185,6 +159,17 @@ impl AudioBackend for AAudioBackend {
         self.stream
             .as_ref()
             .and_then(|running| running.shared.stamp.read())
+    }
+
+    fn report(&self) -> BackendReport {
+        let paths = self.granted_paths();
+        BackendReport {
+            xruns: self.xruns(),
+            frames_per_burst: self.frames_per_burst(),
+            input_preset: self.obtained_input_preset(),
+            output_path: paths.map(|(output, _)| output),
+            input_path: paths.and_then(|(_, input)| input),
+        }
     }
 
     fn close(&mut self) -> Result<()> {

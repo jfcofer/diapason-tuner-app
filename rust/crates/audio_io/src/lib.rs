@@ -19,13 +19,15 @@ mod config;
 pub mod conformance;
 mod handle;
 mod offline;
+mod report;
 
 #[cfg(target_os = "android")]
-pub use android::{AAudioBackend, GrantedPath, InputPreset};
+pub use android::AAudioBackend;
 pub use callback::{AudioCallback, CallbackInfo};
 pub use config::{MAX_BLOCK_FRAMES, MAX_CHANNELS, SAMPLE_RATES, StreamConfig, StreamTimestamp};
 pub use handle::StreamHandle;
 pub use offline::{BlockPattern, OfflineBackend};
+pub use report::{BackendReport, GrantedPath, InputPreset};
 
 use thiserror::Error;
 
@@ -95,6 +97,12 @@ pub trait AudioBackend {
 
     /// The stream clock at the most recent block. `None` before the first block, and when closed.
     fn timestamp(&self) -> Option<StreamTimestamp>;
+
+    /// What the platform granted beyond the config: path, preset, burst, xruns. Every field is
+    /// `None` when closed. The default reports nothing, for backends with no such notions.
+    fn report(&self) -> BackendReport {
+        BackendReport::default()
+    }
 
     /// Stop the stream, release the device and drop the callback. Closing a closed backend is a
     /// no-op, so lifecycle code never has to track whether it already did.

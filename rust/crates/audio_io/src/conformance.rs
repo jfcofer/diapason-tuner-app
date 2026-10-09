@@ -8,7 +8,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
-use crate::{AudioBackend, AudioCallback, AudioError, CallbackInfo, StreamConfig, StreamHandle};
+use crate::{
+    AudioBackend, AudioCallback, AudioError, BackendReport, CallbackInfo, StreamConfig,
+    StreamHandle,
+};
 
 /// How the suite drives one backend.
 pub trait Harness {
@@ -163,6 +166,11 @@ fn a_closed_backend_reports_nothing<H: Harness>(harness: &mut H) {
         backend.timestamp(),
         None,
         "{name}: timestamp reported before open"
+    );
+    assert_eq!(
+        backend.report(),
+        BackendReport::default(),
+        "{name}: report filled in before open"
     );
     assert_eq!(
         backend.close(),
@@ -379,6 +387,11 @@ fn close_drops_the_callback_and_is_idempotent<H: Harness>(harness: &mut H) {
         backend.timestamp(),
         None,
         "{name}: timestamp reported after close"
+    );
+    assert_eq!(
+        backend.report(),
+        BackendReport::default(),
+        "{name}: report filled in after close"
     );
     assert_eq!(
         backend.close(),
