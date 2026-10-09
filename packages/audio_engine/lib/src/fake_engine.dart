@@ -10,11 +10,13 @@ import 'package:core_domain/core_domain.dart';
 /// contract as the real engine (`verifyEngineContract`), and applies commands at once.
 class FakeAudioEngine implements EngineHandle {
   /// Creates a fake reporting [status]. With [microphoneWorks] false, asking for the microphone
-  /// runs the stream without it and reports [inputFaultWhenBroken], as the real engine does.
+  /// runs the stream without it and reports [inputFaultWhenBroken], as the real engine does. The
+  /// default is what Android reports for a refused microphone until `T-002b` part 2b maps it to
+  /// [AudioFault.permissionDenied].
   new({
     EngineStatus? status,
     this.microphoneWorks = true,
-    this.inputFaultWhenBroken = AudioFault.permissionDenied,
+    this.inputFaultWhenBroken = AudioFault.deviceUnavailable,
   }) : _status =
            status ??
            const EngineStatus(
@@ -34,10 +36,11 @@ class FakeAudioEngine implements EngineHandle {
   /// How many times [initialize] has been called.
   int initializeCount = 0;
 
-  /// The latest snapshot, which every new listener of [snapshots] receives first.
+  /// The latest snapshot, which every new listener of [snapshots] receives first. The real engine
+  /// publishes every ~33 ms, so its listeners get the current state almost as promptly.
   SessionSnapshot current = const SessionSnapshot(
     state: SessionState.stopped,
-    sampleRate: 48000,
+    sampleRate: 0,
     diagnostics: StreamDiagnostics(backend: 'fake'),
   );
 
@@ -62,7 +65,7 @@ class FakeAudioEngine implements EngineHandle {
     _publish(
       SessionSnapshot(
         state: SessionState.running,
-        sampleRate: current.sampleRate,
+        sampleRate: 48000,
         inputActive: micOpen,
         toneHz: _toneHz,
         rebuilds: current.rebuilds,
@@ -76,7 +79,7 @@ class FakeAudioEngine implements EngineHandle {
   void stop() => _publish(
     SessionSnapshot(
       state: SessionState.stopped,
-      sampleRate: current.sampleRate,
+      sampleRate: 0,
       rebuilds: current.rebuilds,
       diagnostics: const StreamDiagnostics(backend: 'fake'),
     ),

@@ -28,6 +28,14 @@ class SessionPanel extends ConsumerWidget {
       children: <Widget>[
         _Microphone(permission: permission, controller: controller),
         if (snapshot != null) ...[const SizedBox(height: 24), _Readout(snapshot: snapshot)],
+        if (snapshot?.inputFault != null && permission == MicrophonePermissionStatus.granted) ...[
+          const SizedBox(height: 12),
+          FilledButton(
+            key: const Key('tuner.retryMic'),
+            onPressed: controller.retryMicrophone,
+            child: const Text('Retry microphone'),
+          ),
+        ],
         const SizedBox(height: 24),
         OutlinedButton(
           key: const Key('tuner.testTone'),

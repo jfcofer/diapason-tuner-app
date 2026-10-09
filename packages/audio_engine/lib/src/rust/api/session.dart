@@ -122,7 +122,7 @@ class SessionSnapshotDto {
   /// Backend name.
   final String backend;
 
-  /// The rate the stream runs at, or the rate the engine was prepared for.
+  /// The rate the stream runs at. Zero while no stream is open.
   final int sampleRate;
 
   /// Largest block the callback may be given. `None` with no stream open.

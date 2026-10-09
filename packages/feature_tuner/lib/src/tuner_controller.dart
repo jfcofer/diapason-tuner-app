@@ -38,6 +38,10 @@ class TunerController extends _$TunerController {
     }
   }
 
+  /// Ask for the microphone again after the engine reported an input fault, with the permission
+  /// already granted: a device that was busy or briefly gone may be back.
+  void retryMicrophone() => ref.read(engineHandleProvider).start(input: true);
+
   /// Open the system settings, the only way back from a permanent refusal.
   Future<void> openSettings() => ref.read(microphonePermissionProvider).openSettings();
 

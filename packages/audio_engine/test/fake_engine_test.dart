@@ -12,7 +12,7 @@ void main() {
     await verifyEngineContract(FakeAudioEngine(microphoneWorks: false), microphoneGranted: false);
   });
 
-  test('a new listener gets the current state first, as from a live engine', () async {
+  test('a new listener gets the current state at once', () async {
     final engine = FakeAudioEngine()..start(input: true);
     final first = await engine.snapshots.first;
     expect(first.state, SessionState.running);

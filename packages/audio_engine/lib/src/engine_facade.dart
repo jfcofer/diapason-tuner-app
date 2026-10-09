@@ -20,8 +20,8 @@ abstract interface class EngineHandle {
   /// Which builds are running.
   EngineStatus status();
 
-  /// The session about 30 times a second while the engine runs. Broadcast; a new listener gets
-  /// the next snapshot, not a replay.
+  /// The session about 30 times a second, whether or not a stream is open. Broadcast: a new
+  /// listener gets the current state within one period (the fake replays its latest at once).
   Stream<SessionSnapshot> get snapshots;
 
   /// Run the stream, with the microphone if [input]. Asking for the microphone again retries it

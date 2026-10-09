@@ -129,4 +129,19 @@ void main() {
     expect(find.text('Microphone unavailable: deviceUnavailable'), findsOneWidget);
     expect(find.text('Audio route changed 2×'), findsOneWidget);
   });
+
+  testWidgets('a microphone fault with the permission granted offers a retry', (tester) async {
+    final engine = await pumpTuner(
+      tester,
+      permission: FakeMicrophonePermission(),
+      engine: FakeAudioEngine(microphoneWorks: false),
+    );
+    await tapAndSettle(tester, const Key('tuner.micAction'));
+    expect(engine.current.inputFault, AudioFault.deviceUnavailable);
+
+    engine.microphoneWorks = true;
+    await tapAndSettle(tester, const Key('tuner.retryMic'));
+    expect(engine.current.inputActive, isTrue);
+    expect(find.byKey(const Key('tuner.retryMic')), findsNothing);
+  });
 }
