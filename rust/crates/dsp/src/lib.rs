@@ -1,13 +1,17 @@
 //! Pure computation. No I/O, no allocation in hot paths, no platform code, no dependency on
 //! `audio_io`. Everything here must stay testable offline against fixture buffers.
 //!
-//! `T-001` deliberately ships **no DSP**. This crate exists now so that the workspace, the lint
-//! configuration and the test harness are real and enforced from the first commit; the pitch
-//! detection it is named for arrives in `T-003` (`docs/adr/0005`).
+//! What exists so far is what the audio spine needs (`T-002a`): a phase-continuous test tone and an
+//! input level meter. Pitch detection arrives in `T-003` (`docs/adr/0005`). Every lossy numeric
+//! conversion in the project lives in [`convert`] (`docs/adr/0018`).
 
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 #![warn(missing_docs)]
+
+pub mod convert;
+pub mod level;
+pub mod osc;
 
 /// Identifies the DSP build, so the value crossing the FFI boundary in `T-001` originates from the
 /// bottom of the Rust stack rather than from the binding layer. Replaced by real signal processing
