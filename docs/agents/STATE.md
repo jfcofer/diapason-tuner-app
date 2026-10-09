@@ -1,11 +1,12 @@
-# STATE — updated 2026-10-04
+# STATE — updated 2026-10-09
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: read this, then the active task file, then begin.
 
 ## Where we are
 
-**Milestone:** M0 — Foundations (`docs/ROADMAP.md`): work complete; PR #1 merged 2026-10-04.
+**Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
+unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap.
 **Status:**
 
 - **CI is green on all six jobs.** That includes the first-ever iOS compile, on a `macos-26`
@@ -17,12 +18,13 @@
 
 ## Active task
 
-`T-001` and `T-005` (licence, repo policy) are **done**. Two `T-001` criteria are closed as
-unverifiable, since there is no macOS host; see the task file.
+**`docs/agents/tasks/T-002a-engine-rt-core.md`**: the engine RT core with `OfflineBackend`.
+It is host-only and fully verifiable here. `CLAUDE.md` requires plan mode before engine work.
+`T-002` is an umbrella over the slices a/b/c.
 
-**Next active task:** `docs/agents/tasks/T-002a-engine-rt-core.md`. `T-002` is now an umbrella
-over three slices (a/b/c), each verifiable with the hardware that exists. `CLAUDE.md` requires
-plan mode before engine work, so present a plan first.
+`T-001`, `T-001a`, `T-005` and `T-006` are done. `docs-check` now enforces task hygiene: the front
+matter must be valid; a `done` task may leave a box open only if it says "closed"; the active task
+must be open.
 
 ## Hardware this project actually has
 
@@ -106,10 +108,8 @@ plan mode before engine work, so present a plan first.
 
 ## Next up (in order)
 
-1. Close M0 against `docs/ROADMAP.md`, then delete `docs/BOOTSTRAP.md`.
-2. **`T-002a`**, the engine RT core with `OfflineBackend`. It is host-only and fully verifiable
+1. **`T-002a`**, the engine RT core with `OfflineBackend`. It is host-only and fully verifiable
    here.
-3. **`T-002b`**, Android duplex on the Redmi. Its binding ADR (`oboe` vs `ndk` AAudio) comes first.
-4. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
-5. `T-004` (CI reproducibility) whenever a slice is waiting on CI. `T-003-pitch-core` after T-002.
-
+2. **`T-002b`**, Android duplex on the Redmi. Its binding ADR (`oboe` vs `ndk` AAudio) comes first.
+3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
+4. `T-004` (CI reproducibility) whenever a slice is waiting on CI. `T-003-pitch-core` after T-002.
