@@ -71,7 +71,7 @@ impl StreamConfig {
 /// clock starts elsewhere (Core Audio's `mSampleTime`) subtracts its origin. It is the only clock the
 /// engine trusts (`AGENTS.md` §6); `host_time_ns` pairs it with the host clock, so the UI can turn a
 /// frame into a moment to animate against, and strictly increases from block to block.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct StreamTimestamp {
     /// Index of the first frame of the block, counted from the start of the stream.
     pub frame: u64,

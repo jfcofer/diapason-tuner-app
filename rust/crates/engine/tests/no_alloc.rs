@@ -48,7 +48,9 @@ fn ten_seconds(callback: Box<dyn AudioCallback>, mut between: impl FnMut(usize))
 
 #[test]
 fn ten_seconds_of_audio_never_allocate() {
-    let (mut engine, processor) = Engine::prepare(MAX_BLOCK, RATE).expect("prepare");
+    // Prepared for 44.1 kHz against a 48 kHz stream, so the first callback also follows the
+    // granted rate with the trap armed.
+    let (mut engine, processor) = Engine::prepare(MAX_BLOCK, 44_100).expect("prepare");
     let frames = ten_seconds(Box::new(processor), |chunk| {
         let command = match chunk {
             10 => Command::StartTone {
