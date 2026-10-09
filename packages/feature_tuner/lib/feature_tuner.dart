@@ -8,5 +8,4 @@
 /// a real device - building it first would mean rebuilding it (`docs/BOOTSTRAP.md`).
 library;
 
-export 'src/engine_status_provider.dart';
 export 'src/tuner_screen.dart';

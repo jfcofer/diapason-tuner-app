@@ -4,8 +4,8 @@
 #     apps/diapason  ->  packages/feature_*  ->  packages/core_ui, core_domain, core_platform
 #                                            ->  packages/audio_engine
 #                                                    |
-#                      diapason_ffi -> engine -> dsp     (dsp depends on nothing)
-#                                   -> audio_io
+#     diapason_ffi -> session -> engine -> dsp          (dsp depends on nothing)
+#                             -> audio_io
 #
 # diapason_ffi lives in packages/audio_engine/rust, where cargokit builds it.
 #
@@ -134,15 +134,41 @@ if grep -q "diapason_audio_io" rust/crates/dsp/Cargo.toml 2>/dev/null; then
     violation "dsp depends on audio_io" "dsp must stay testable offline with fixture buffers."
 fi
 
-# ── Rust: ffi contains no logic ───────────────────────────────────────────────
-# A proxy, not a proof: the FFI crate should be type mapping over `engine`, so it has no business
-# depending on dsp directly or growing modules beyond the api surface.
+# The workspace crates a manifest depends on, in any [dependencies] table (target-specific ones
+# included, dev-dependencies not), one per line.
+first_party_deps() {
+    awk '/^\[/ { deps = ($0 ~ /dependencies\]$/ && $0 !~ /dev-dependencies/) }
+         deps && match($0, /^[[:space:]]*diapason_[a-z_]+/) {
+             name = substr($0, RSTART, RLENGTH); gsub(/[[:space:]]/, "", name); print name
+         }' "$1" | sort -u
+}
+
+# Fail unless every workspace crate $1 depends on is in the allowed list that follows.
+only_depends_on() {
+    local manifest="$1" crate="$2"; shift 2
+    local dep allowed
+    for dep in $(first_party_deps "$manifest"); do
+        for allowed in "$@"; do [[ "$dep" == "$allowed" ]] && continue 2; done
+        violation "$crate depends on $dep" "$crate may depend only on: $*. See docs/adr/0022."
+    done
+}
+
+# ── Rust: the session sits between ffi and the engine (adr/0022) ─────────────
 before=$VIOLATIONS
-if grep -qE '^\s*diapason_dsp' packages/audio_engine/rust/Cargo.toml 2>/dev/null; then
-    violation "ffi depends on dsp directly" \
-        "diapason_ffi contains no logic - it maps types over engine. Go through engine."
-fi
-[[ $VIOLATIONS -eq $before ]] && ok "ffi does not reach past engine into dsp"
+only_depends_on rust/crates/session/Cargo.toml session diapason_engine diapason_audio_io
+for crate in dsp engine audio_io; do
+    if first_party_deps "rust/crates/$crate/Cargo.toml" | grep -qx diapason_session; then
+        violation "$crate depends on session" "session sits above $crate, never beneath it."
+    fi
+done
+[[ $VIOLATIONS -eq $before ]] && ok "session depends only on engine and audio_io, and nothing below it on session"
+
+# ── Rust: ffi contains no logic ───────────────────────────────────────────────
+# A proxy, not a proof: the FFI crate is type mapping over `session`, so it has no business
+# depending on any other workspace crate or growing modules beyond the api surface.
+before=$VIOLATIONS
+only_depends_on packages/audio_engine/rust/Cargo.toml diapason_ffi diapason_session
+[[ $VIOLATIONS -eq $before ]] && ok "ffi reaches Rust only through session"
 
 printf '\n'
 if [[ $VIOLATIONS -gt 0 ]]; then

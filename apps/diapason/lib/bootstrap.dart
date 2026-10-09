@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:audio_engine/audio_engine.dart';
 import 'package:diapason/app.dart';
-import 'package:feature_tuner/feature_tuner.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
