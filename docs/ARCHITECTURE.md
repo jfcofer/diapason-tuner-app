@@ -80,7 +80,7 @@ fixture file (`fixtures/note_table.json`) that both test suites assert against. 
 
 ## 4. Threading and data flow
 
-Four threads matter:
+Five threads matter:
 
 1. **Audio RT thread** (owned by the platform, entered by `audio_io`) — runs the callback. Reads
    commands from a lock-free SPSC queue, writes results into a triple-buffered snapshot slot and
@@ -88,17 +88,22 @@ Four threads matter:
 2. **Analysis thread** (Rust, normal priority) — for work too heavy for the callback: FFT-based
    NSDF over the largest windows. Consumes the ring buffer, produces pitch estimates. Deliberately
    *not* in the callback so that a slow frame drops an analysis update rather than glitching audio.
-3. **Dart UI isolate** — subscribes to the snapshot stream, renders. Sends commands.
-4. **Dart platform/lifecycle** — permissions, session activation, background transitions.
+3. **Session thread** (Rust, normal priority, `rust/crates/session`, `adr/0022`) — owns the stream:
+   takes Dart's commands from an `mpsc` channel and forwards them to the SPSC queue, rebuilds the
+   stream when the platform breaks it, and reads the triple buffer ~30 times a second to publish a
+   snapshot to Dart.
+4. **Dart UI isolate** — subscribes to the snapshot stream, renders. Sends commands.
+5. **Dart platform/lifecycle** — permissions, session activation, background transitions.
 
 ```
 mic ──▶ [RT callback] ──▶ ring buffer ──▶ [analysis thread] ──▶ triple-buffered
           │  metronome                                            EngineSnapshot
           │  render                                                     │
-          ▼                                                    ~30 Hz poll/stream
-       speaker                                                          ▼
+          ▼                                                     [session thread]
+       speaker                                                    ~30 Hz stream
+                                                                        ▼
                                                               Riverpod ──▶ widgets
-   Dart commands ──▶ SPSC command queue ──▶ consumed at top of RT callback
+   Dart commands ──▶ [session thread] ──▶ SPSC queue ──▶ consumed at top of RT callback
 ```
 
 **Snapshot, not events.** The engine publishes an immutable `EngineSnapshot` (current frequency,
@@ -107,8 +112,11 @@ reads the latest and never queues up. A dropped snapshot is invisible; a queued 
 *onsets* additionally carry the sample index and a converted host timestamp so the UI can animate
 ahead of the click rather than reacting to it (`AUDIO_ENGINE.md` §6).
 
-**Backpressure:** the stream is throttled in Rust, not Dart. If the UI thread stalls, the engine
-notices the unread slot and simply overwrites it.
+**Backpressure:** the stream is throttled in Rust, not Dart. Between the audio thread and the
+session thread, the triple buffer is latest-wins: an unread snapshot is simply overwritten. The
+session thread posts one snapshot per ~33 ms to Dart's port, so if the UI isolate stalls, those
+posts wait in its port and are drained when it resumes. That costs a few cheap mappings, not
+frames: widgets rebuild at most once per frame, from the latest value.
 
 ## 5. Flutter-side architecture
 
@@ -150,9 +158,9 @@ mode. Behaviour for each: `PLATFORM_AUDIO.md` §5.
 - Rust returns `Result` across FFI, and a panic is never how an error is reported. Release builds
   abort on panic, so the FFI surface denies `unwrap`, `expect`, `panic!` and unchecked indexing at
   compile time (`adr/0021`).
-- Errors are typed and *actionable at the UI*: `PermissionDenied`, `DeviceUnavailable`,
-  `SampleRateUnsupported`, `Interrupted`. The UI maps each to a specific recovery affordance —
-  never a generic snackbar.
+- Errors are typed and *actionable at the UI*: the session's `Fault` is `PermissionDenied`,
+  `DeviceUnavailable`, `ConfigurationUnsupported` or `Internal`; iOS adds `Interrupted` in
+  `T-002c`. The UI maps each to a specific recovery affordance — never a generic snackbar.
 - The engine self-heals on stream disconnect (device change, route change) by rebuilding the
   stream on a non-RT thread with exponential backoff, and reports the transition in the snapshot.
 
