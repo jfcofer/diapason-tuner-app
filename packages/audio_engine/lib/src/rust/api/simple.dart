@@ -20,11 +20,7 @@ EngineStatus engineStatus() => RustLib.instance.api.crateApiSimpleEngineStatus()
 /// across the boundary is this crate's whole job and the engine type must stay free to change
 /// shape without the FFI layer silently following it.
 class EngineStatus {
-  const EngineStatus({
-    required this.dspBuild,
-    required this.engineBuild,
-    required this.running,
-  });
+  const new({required this.dspBuild, required this.engineBuild, required this.running});
 
   /// Identifies the DSP crate at the bottom of the Rust stack.
   final String dspBuild;

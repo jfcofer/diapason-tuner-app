@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 /// Placeholder: `T-001` explicitly ships no real UI. See `docs/ROADMAP.md` for when this fills in.
 class SettingsScreen extends StatelessWidget {
   /// Creates the settings screen.
-  const SettingsScreen({super.key});
+  const new({super.key});
 
   @override
   Widget build(BuildContext context) => Scaffold(
