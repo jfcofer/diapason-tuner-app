@@ -160,8 +160,9 @@ The rules are in `AGENTS.md` §6; this is how they are enforced rather than mere
 
 - `#[cfg(debug_assertions)]` wraps the callback body in `assert_no_alloc`. A unit test drives 10 s
   of audio through the offline backend with allocation trapping on and fails on a single allocation.
-- Clippy lints denied on the RT path: `clippy::disallowed_methods` with a project list that includes
-  `Vec::push`, `HashMap::insert`, `println!`, `Instant::now`, `Mutex::lock`.
+- Clippy lints denied on the RT path: `disallowed-methods` (`Vec::push`, `HashMap::insert`,
+  `Instant::now`, `Mutex::lock`, …) and `disallowed-macros` (`println!`, `format!`, …), listed
+  once in `rust/crates/engine/clippy.toml`; `dsp` links to the same file.
 - Command queue: `rtrb` SPSC. Snapshot publishing: `triple_buffer`. No other cross-thread primitive
   is permitted in `engine`.
 - All buffers are allocated in `Engine::prepare(max_block_size, sample_rate)` — the same lifecycle
