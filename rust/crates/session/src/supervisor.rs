@@ -91,7 +91,7 @@ pub struct SessionSnapshot {
     /// The most recent error from the backend, verbatim, for support reports.
     pub last_error: Option<AudioError>,
     /// Commands the audio thread could not take because its queue was full. They are not lost:
-    /// desired state is replayed on the next rebuild.
+    /// the desired state is sent again on every tick until the queue takes it.
     pub commands_dropped: u32,
 }
 
@@ -132,6 +132,8 @@ pub struct Supervisor<B> {
     input_fault: Option<Fault>,
     last_error: Option<AudioError>,
     commands_dropped: u32,
+    /// A command was dropped; send the desired state again on the next tick.
+    resend: bool,
 }
 
 impl<B: AudioBackend> Supervisor<B> {
@@ -148,6 +150,7 @@ impl<B: AudioBackend> Supervisor<B> {
             input_fault: None,
             last_error: None,
             commands_dropped: 0,
+            resend: false,
         }
     }
 
@@ -177,6 +180,7 @@ impl<B: AudioBackend> Supervisor<B> {
         self.state = SessionState::Stopped;
         self.retry = Retry::default();
         self.fault = None;
+        self.input_fault = None;
     }
 
     /// Play a test tone, now and after every rebuild.
@@ -214,6 +218,8 @@ impl<B: AudioBackend> Supervisor<B> {
                 } else if live.input != self.wants_input() {
                     self.close_stream();
                     self.open_or_retry(now_ns, false);
+                } else if self.resend {
+                    self.resend_desired();
                 }
             }
             SessionState::Recovering if now_ns >= self.retry.next_at_ns => {
@@ -299,30 +305,29 @@ impl<B: AudioBackend> Supervisor<B> {
 
     /// Open with the microphone if it is wanted, falling back to output only if the microphone
     /// fails, so the metronome never depends on it (`docs/PLATFORM_AUDIO.md` §2).
+    ///
+    /// The microphone is blamed only when the output opens without it. If both fail, the device
+    /// failed, so the microphone stays wanted and the next attempt asks for it again.
     fn open_stream(&mut self) -> Result<(), AudioError> {
-        if self.wants_input() {
-            match self.try_open(true) {
-                Ok(()) => return Ok(()),
-                Err(error) => {
-                    self.input_fault = Some(Fault::from(&error));
-                    self.last_error = Some(error);
-                }
-            }
+        if !self.wants_input() {
+            return self.try_open(false);
         }
-        self.try_open(false)
+        let input_error = match self.try_open(true) {
+            Ok(()) => return Ok(()),
+            Err(error) => error,
+        };
+        self.try_open(false)?;
+        self.input_fault = Some(Fault::from(&input_error));
+        self.last_error = Some(input_error);
+        Ok(())
     }
 
     /// Build a fresh engine, replay desired state into it, and hand its processor to the backend.
     fn try_open(&mut self, input: bool) -> Result<(), AudioError> {
         let (mut engine, processor) =
             Engine::prepare(MAX_BLOCK_FRAMES, PREFERRED_SAMPLE_RATE).map_err(engine_error)?;
-        if let Some((frequency_hz, amplitude)) = self.desired.tone {
-            engine
-                .send(Command::StartTone {
-                    frequency_hz,
-                    amplitude,
-                })
-                .map_err(engine_error)?;
+        for command in desired_commands(self.desired) {
+            engine.send(command).map_err(engine_error)?;
         }
         let config = StreamConfig {
             sample_rate: PREFERRED_SAMPLE_RATE,
@@ -336,6 +341,8 @@ impl<B: AudioBackend> Supervisor<B> {
             handle,
             input,
         });
+        // The new engine was given the whole desired state, so nothing is owed to it.
+        self.resend = false;
         Ok(())
     }
 
@@ -352,8 +359,33 @@ impl<B: AudioBackend> Supervisor<B> {
             && live.engine.send(command).is_err()
         {
             self.commands_dropped = self.commands_dropped.saturating_add(1);
+            self.resend = true;
         }
     }
+
+    /// A command was dropped on a full queue. Every command sets state rather than changing it, so
+    /// sending the whole desired state again restores whatever was lost; until the queue has room,
+    /// keep trying on every tick.
+    fn resend_desired(&mut self) {
+        let Some(live) = &mut self.live else {
+            return;
+        };
+        self.resend = desired_commands(self.desired)
+            .into_iter()
+            .any(|command| live.engine.send(command).is_err());
+    }
+}
+
+/// The commands that put a fresh engine into the desired state. Every new kind of desired state
+/// adds its command here, and a replay test (`docs/adr/0022`).
+fn desired_commands(desired: Desired) -> [Command; 1] {
+    [match desired.tone {
+        Some((frequency_hz, amplitude)) => Command::StartTone {
+            frequency_hz,
+            amplitude,
+        },
+        None => Command::StopTone,
+    }]
 }
 
 /// An engine that refuses the session's own constants is a bug here, not a device problem.

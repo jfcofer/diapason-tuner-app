@@ -40,8 +40,11 @@ pub enum SessionError {
 /// A running audio session: a [`Supervisor`] on its own thread (`docs/adr/0022`).
 ///
 /// Every method returns at once. The thread applies the request, ticks the supervisor about every
-/// 33 ms, and publishes a snapshot to the subscriber at the same rate. Dropping the session stops
-/// the stream and joins the thread.
+/// 33 ms, and publishes a snapshot to the subscriber at the same rate.
+///
+/// Dropping the session stops the stream and joins the thread, so the drop blocks for as long as
+/// the platform takes to stop: up to half a second on Android. Drop it only where that wait is
+/// acceptable; the app holds one for its whole life.
 pub struct Session {
     control: mpsc::Sender<Control>,
     thread: Option<JoinHandle<()>>,

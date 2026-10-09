@@ -276,3 +276,68 @@ fn a_stopped_tone_stays_stopped_across_a_rebuild() {
     render(&mut supervisor, 512);
     assert_eq!(supervisor.snapshot().engine.tone_hz, None);
 }
+
+#[test]
+fn a_device_lost_for_a_moment_keeps_the_microphone_wanted() {
+    // Found in review: both opens failing used to be blamed on the microphone, so recovery came
+    // back output-only and the tuner stayed deaf until restart.
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.start(true, 0);
+    supervisor.backend_mut().inner.simulate_disconnect();
+    supervisor.tick(0);
+
+    supervisor.backend_mut().fail_all = Some(platform_error());
+    supervisor.tick(FIRST_RETRY_NS);
+    assert_eq!(supervisor.snapshot().state, SessionState::Recovering);
+    assert_eq!(
+        supervisor.snapshot().input_fault,
+        None,
+        "the device failed, not the microphone"
+    );
+
+    supervisor.backend_mut().fail_all = None;
+    supervisor.tick(FIRST_RETRY_NS + 100 * MS);
+    let snapshot = supervisor.snapshot();
+    assert_eq!(snapshot.state, SessionState::Running);
+    assert!(
+        snapshot.input_active,
+        "the microphone came back with the device"
+    );
+    assert_eq!(snapshot.rebuilds, 1);
+}
+
+#[test]
+fn a_command_dropped_on_a_full_queue_is_restored_on_the_next_tick() {
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.start(false, 0);
+    // No callbacks run, so nothing drains the queue: fill it, then lose the StopTone.
+    while supervisor.snapshot().commands_dropped == 0 {
+        supervisor.start_tone(440.0, 0.5);
+    }
+    let dropped = supervisor.snapshot().commands_dropped;
+    supervisor.stop_tone();
+    assert_eq!(
+        supervisor.snapshot().commands_dropped,
+        dropped + 1,
+        "the StopTone was dropped"
+    );
+
+    render(&mut supervisor, 256); // the audio thread drains the queue: the tone is on
+    supervisor.tick(33 * MS); // the supervisor sends the desired state again
+    render(&mut supervisor, 256);
+    assert_eq!(
+        supervisor.snapshot().engine.tone_hz,
+        None,
+        "the lost StopTone was restored"
+    );
+}
+
+#[test]
+fn stopping_clears_a_microphone_fault() {
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.backend_mut().fail_input = Some(AudioError::PermissionDenied);
+    supervisor.start(true, 0);
+    assert!(supervisor.snapshot().input_fault.is_some());
+    supervisor.stop();
+    assert_eq!(supervisor.snapshot().input_fault, None);
+}
