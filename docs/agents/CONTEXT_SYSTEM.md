@@ -68,9 +68,13 @@ it cannot be answered.
 
 Written out in `AGENTS.md` §2 because that is the file every agent loads. The mechanics are wrapped
 in `just session-start` and `just session-end` (and `.claude/commands/` for Claude Code) so that
-compliance does not depend on an agent remembering — the recipe prints the reading list, shows repo
-status, and on exit runs `just verify` and checks that STATE, the task file and the journal were all
-touched.
+compliance does not depend on an agent remembering. On entry the recipe prints the reading list,
+the working tree, branches not merged into `main` and open PRs with their check verdicts. On exit
+it runs `just verify` and checks that STATE, the task file and the journal were all touched.
+
+**STATE goes stale between sessions, not only within them.** Merges, Dependabot and CI happen while
+no agent is running, so STATE records PRs by number and never asserts merge state as settled.
+`session-start` prints that state and the agent reconciles the two before working (`T-007`).
 
 ## 5. Rules that keep it from rotting
 
