@@ -42,7 +42,7 @@ UI is a *subscriber* to a state snapshot, never a participant in timing.
 └────────────────────────────────────┬─────────────────────────────────┘
                                      │  FFI (flutter_rust_bridge v2)
 ┌────────────────────────────────────▼─────────────────────────────────┐
-│ rust/crates/ffi          API surface only — no logic                  │
+│ diapason_ffi             API surface only — no logic                  │
 ├───────────────────────────────────────────────────────────────────────┤
 │ rust/crates/engine       RT graph, command queue, snapshot publisher,  │
 │                          metronome scheduler, tuner pipeline, state    │
@@ -144,8 +144,9 @@ mode. Behaviour for each: `PLATFORM_AUDIO.md` §5.
 
 ## 7. Error handling
 
-- Rust returns `Result` across FFI; `ffi` wraps every entry point in `catch_unwind` so a panic
-  becomes an error rather than a process abort.
+- Rust returns `Result` across FFI, and a panic is never how an error is reported. Release builds
+  abort on panic, so the FFI surface denies `unwrap`, `expect`, `panic!` and unchecked indexing at
+  compile time (`adr/0021`).
 - Errors are typed and *actionable at the UI*: `PermissionDenied`, `DeviceUnavailable`,
   `SampleRateUnsupported`, `Interrupted`. The UI maps each to a specific recovery affordance —
   never a generic snackbar.
