@@ -75,6 +75,45 @@ done < <(
 )
 [[ $broken -eq 0 ]] && ok "all relative links resolve"
 
+# ── Task files: front matter, and what "done" may leave open ─────────────────
+# tasks/README.md defines the statuses. A done task may keep an unticked criterion only when the
+# line says why it was closed; otherwise "done" means less than it claims.
+printf '\n%sTask files%s\n' "$BOLD" "$OFF"
+taskbad=0
+front_matter() { awk 'NR==1 && $0=="---" {f=1; next} f && $0=="---" {exit} f' "$1"; }
+for task in docs/agents/tasks/T-*.md; do
+    base="$(basename "$task")"
+    fm="$(front_matter "$task")"
+    id="$(sed -n 's/^id: *//p' <<<"$fm")"
+    status="$(sed -n 's/^status: *//p' <<<"$fm")"
+    [[ "$base" == "${id}-"* ]] || { fail "$base: front matter id '${id}' does not match the file name"; taskbad=1; }
+    case "$status" in
+        todo|in-progress|blocked|done|abandoned) ;;
+        *) fail "$base: status '${status}' is not one of todo|in-progress|blocked|done|abandoned"; taskbad=1 ;;
+    esac
+    if [[ "$status" == "done" ]]; then
+        # A criterion wraps onto indented lines; judge the whole item, report its first line.
+        while read -r open; do
+            fail "$base is done but leaves a criterion open without saying it was closed" "$open"
+            taskbad=1
+        done < <(awk '
+            function flush() { if (item != "" && tolower(item) !~ /closed/) print head; item = "" }
+            /^- \[ \]/      { flush(); head = $0; item = $0; next }
+            item != "" && /^  +[^ ]/ { item = item " " $0; next }
+                            { flush() }
+            END             { flush() }' "$task")
+    fi
+done
+active="$(grep -oP 'docs/agents/tasks/\KT-[0-9a-z-]+\.md' docs/agents/STATE.md 2>/dev/null | head -1)"
+if [[ -n "$active" && -f "docs/agents/tasks/$active" ]]; then
+    active_status="$(front_matter "docs/agents/tasks/$active" | sed -n 's/^status: *//p')"
+    if [[ "$active_status" == "done" || "$active_status" == "abandoned" ]]; then
+        fail "STATE.md names $active as active, but it is $active_status" "Point STATE.md at the next task."
+        taskbad=1
+    fi
+fi
+[[ $taskbad -eq 0 ]] && ok "task front matter valid, done means done, active task is open"
+
 # ── Task IDs referenced in code must exist ───────────────────────────────────
 printf '\n%sTask references%s\n' "$BOLD" "$OFF"
 unknown=0
