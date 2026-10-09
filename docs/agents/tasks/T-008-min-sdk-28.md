@@ -1,9 +1,9 @@
 ---
 id: T-008
 title: Raise Android minSdk from 26 to 28
-status: todo
+status: in-progress
 milestone: M1
-owner: unassigned
+owner: claude
 created: 2026-10-09
 ---
 
