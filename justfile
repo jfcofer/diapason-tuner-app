@@ -192,6 +192,11 @@ ios-project-check: ios-project
 test-android-device *args:
     @tools/test-android-device.sh {{args}}
 
+# The engine contract against the real engine, through the FFI, on a connected Android device: once
+# with the microphone revoked, once granted (T-002b, docs/TESTING.md §1).
+test-integration-android *args:
+    @tools/test-integration-android.sh {{args}}
+
 # No NDK needed: nothing is linked, and rust-toolchain.toml installs the target.
 # Clippy and rustdoc for the Android-only code, which no host build compiles.
 lint-rust-android:
