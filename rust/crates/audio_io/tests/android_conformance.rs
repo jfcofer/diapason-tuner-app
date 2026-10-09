@@ -107,6 +107,30 @@ fn blocks_larger_than_the_maximum_are_cut_to_fit() {
     });
 }
 
+#[test]
+fn the_microphone_keeps_up_once_warmed_up() {
+    // A backend whose every read failed would pass the contract checks, which never look at
+    // input. This one does: after start-up, every block must get all of its microphone frames.
+    let mut backend = AAudioBackend::new(InputPreset::VoiceRecognition);
+    let handle = backend.open(DUPLEX, Box::new(Silence)).expect("open");
+    thread::sleep(Duration::from_secs(2));
+    let warm = handle.input_underruns();
+    let blocks = handle.callbacks();
+    thread::sleep(Duration::from_secs(2));
+    let short = handle.input_underruns() - warm;
+    let ran = handle.callbacks() - blocks;
+    backend.close().expect("close");
+    assert!(ran > 0, "aaudio: the stream stopped running");
+    assert!(
+        !handle.disconnected(),
+        "aaudio: the stream reported a disconnect"
+    );
+    assert_eq!(
+        short, 0,
+        "aaudio: {short} of {ran} blocks were short of input after warm-up"
+    );
+}
+
 /// Writes silence and does nothing else, so the stream's own numbers are what gets measured.
 struct Silence;
 
@@ -123,7 +147,7 @@ fn report_what_the_device_grants() {
         let mut backend = AAudioBackend::new(preset);
         let handle = backend.open(DUPLEX, Box::new(Silence)).expect("open");
         thread::sleep(Duration::from_secs(2));
-        // Underruns in the first second are start-up; any after it are steady state.
+        // Underruns in the first 2 s are start-up; any after them are steady state.
         let warm = handle.input_underruns();
         thread::sleep(Duration::from_secs(3));
         println!(

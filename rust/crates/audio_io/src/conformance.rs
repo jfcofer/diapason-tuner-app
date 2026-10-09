@@ -304,6 +304,10 @@ fn blocks_honour_the_granted_config<H: Harness>(harness: &mut H) {
     }
     // Read after the probe, so on a running stream the handle can only have seen more.
     let handle_largest = handle.max_block_frames_seen();
+    assert!(
+        handle_largest <= granted.max_block_frames,
+        "{name}: handle reports a block of {handle_largest}, above the granted maximum"
+    );
     if H::REALTIME {
         assert!(
             handle_largest >= largest,

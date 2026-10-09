@@ -187,17 +187,20 @@ ios-project-check: ios-project
     @test -z "$(git status --porcelain -- {{ios_generated}})" \
         || (git status --short -- {{ios_generated}}; echo "iOS project drifted. Run: just ios-project" && exit 1)
 
-# targetSdk 36, 16 KB page alignment, size budget. See docs/PLATFORM_AUDIO.md §2.
+# `--release` measures callback timing instead; it has no allocation trap, so no canary.
 # audio_io's conformance suite and allocation canary on a connected Android device (T-002b).
-test-android-device *serial:
-    @tools/test-android-device.sh {{serial}}
+test-android-device *args:
+    @tools/test-android-device.sh {{args}}
 
-# Clippy for the Android-only code, which a host build never compiles. Type-checking needs no NDK
-# (nothing is linked), only the target that rust-toolchain.toml installs.
+# No NDK needed: nothing is linked, and rust-toolchain.toml installs the target.
+# Clippy and rustdoc for the Android-only code, which no host build compiles.
 lint-rust-android:
     cargo clippy --target aarch64-linux-android -p diapason_audio_io --all-targets \
         --features conformance -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc --target aarch64-linux-android -p diapason_audio_io \
+        --no-deps --features conformance
 
+# targetSdk 36, 16 KB page alignment, size budget. See docs/PLATFORM_AUDIO.md §2.
 check-android-release:
     @tools/check-android-release.sh        # [T-001]
 
