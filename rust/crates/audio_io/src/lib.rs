@@ -5,11 +5,14 @@
 //!
 //! The engine knows only [`AudioBackend`] and [`AudioCallback`] (`docs/PLATFORM_AUDIO.md` §1).
 //! [`OfflineBackend`] drives a stream from buffers with no device and no clock, so everything above
-//! this crate is testable on any host; platform backends arrive in `T-002b` and `T-002c`.
+//! this crate is testable on any host. `AAudioBackend` is Android's (`docs/adr/0020`); Core Audio
+//! arrives in `T-002c`.
 
 #![warn(clippy::pedantic)]
 #![warn(missing_docs)]
 
+#[cfg(target_os = "android")]
+mod android;
 mod callback;
 mod config;
 #[cfg(any(test, feature = "conformance"))]
@@ -17,6 +20,8 @@ pub mod conformance;
 mod handle;
 mod offline;
 
+#[cfg(target_os = "android")]
+pub use android::{AAudioBackend, GrantedPath, InputPreset};
 pub use callback::{AudioCallback, CallbackInfo};
 pub use config::{MAX_BLOCK_FRAMES, MAX_CHANNELS, SAMPLE_RATES, StreamConfig, StreamTimestamp};
 pub use handle::StreamHandle;
@@ -48,6 +53,15 @@ pub enum AudioError {
     /// Recording was attempted without the microphone permission having been granted.
     #[error("microphone permission not granted")]
     PermissionDenied,
+    /// A platform audio call failed. Carries the platform's own code, so a support report can be
+    /// looked up in its documentation. Allocates nothing to build.
+    #[error("{operation} failed with platform error {code}")]
+    Platform {
+        /// What was being attempted, such as `"open the output stream"`.
+        operation: &'static str,
+        /// The platform's result code, such as an `aaudio_result_t`.
+        code: i32,
+    },
 }
 
 /// Result type for every backend operation.

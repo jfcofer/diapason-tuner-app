@@ -1,0 +1,7 @@
+# Platform API names that clippy's doc_markdown would otherwise ask to put in backticks in every
+# sentence that mentions them. ".." keeps clippy's default list.
+#
+# Deliberately not the real-time list that engine and dsp share: most of this crate is control-side
+# code, and its device tests must sleep and read the clock. The callback path is held to the
+# real-time rules at run time instead, inside assert_no_alloc (docs/adr/0020).
+doc-valid-idents = ["AAudio", "CoreAudio", ".."]

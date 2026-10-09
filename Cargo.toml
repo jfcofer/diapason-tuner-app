@@ -26,6 +26,10 @@ triple_buffer = "9"
 # Traps allocation on the audio thread in debug builds. disable_release is its default, written out
 # because release builds depend on it compiling the check out.
 assert_no_alloc = { version = "1.1", default-features = false, features = ["disable_release"] }
+# Android audio (docs/adr/0020): the raw AAudio bindings, not the `ndk` wrapper, whose stream is
+# not Send and whose Drop unwraps AAudioStream_close. libc is for clock_gettime on the RT path.
+ndk-sys = { version = "0.6", features = ["audio"] }
+libc = "0.2"
 # Dev-only. No fork or timeout features: they pull in a process-forking runner we do not need.
 proptest = { version = "1.11", default-features = false, features = ["std"] }
 

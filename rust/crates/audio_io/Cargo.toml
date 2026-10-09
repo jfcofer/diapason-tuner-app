@@ -12,9 +12,18 @@ conformance = []
 
 [dependencies]
 thiserror.workspace = true
+# Proves on device that the AAudio trampoline never allocates. disable_release compiles it out of
+# release builds (AUDIO_ENGINE.md §7).
+assert_no_alloc.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-sys.workspace = true
+libc.workspace = true
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }
+# AGENTS.md §7: every unsafe block carries a SAFETY comment. Enforced, not remembered.
+undocumented_unsafe_blocks = "deny"
