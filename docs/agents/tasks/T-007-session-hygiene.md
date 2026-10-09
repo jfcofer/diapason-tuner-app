@@ -1,7 +1,7 @@
 ---
 id: T-007
 title: Reconcile out-of-band repo state at every session start
-status: in-progress
+status: done
 milestone: M1
 owner: claude
 created: 2026-10-09
@@ -34,7 +34,7 @@ Read: `AGENTS.md` §2, `docs/agents/CONTEXT_SYSTEM.md`, `justfile` (`session-sta
 - [x] `STATE.md` states the rule: PRs by number, merge state is reconciled at session start
 - [x] `STATE.md` matches the live repo (merged PRs, the Dependabot gap answered)
 - [x] Dependabot #4's drift fixed by formatting, with no lint weakened and no `// ignore`
-- [ ] `just verify` green; six CI jobs green on the PR (local gate green; PR not yet pushed)
+- [x] `just verify` green; six CI jobs green on the PR (#8, merged 2026-10-09)
 
 ## Out of scope
 
@@ -88,5 +88,7 @@ Merging the Dependabot PRs (the owner merges). `minSdk` (`T-008`). Any audio wor
 - Scratch repos: a rebase-merged branch (a cherry-picked patch with a new SHA) reports "merged
   into main" while an open one reports "1 commit(s) not in main". With `origin` removed, both
   failures are named.
+- PR #8: all six CI jobs green, including `check-drift` on a fresh clone, so the regenerated FRB
+  bindings are reproducible. Rebase-merged by the owner on 2026-10-09.
 - Verdict jq against synthetic data: null rollup → pending, legacy `ERROR` → failing,
   `STARTUP_FAILURE` → failing, in progress → pending, mixed check/status success → green.

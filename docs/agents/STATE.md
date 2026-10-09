@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-09 (T-007)
+# STATE — updated 2026-10-09 (T-008)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -13,17 +13,15 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap.
 
 - **CI is green on all six jobs** (iOS on `macos-26`, Rust engine linked); `just verify` is green.
 - **T-006 and T-002a are merged** (PRs #6, #7).
-- **Branches in flight** (their PR state is whatever `session-start` says):
-  - `chore/T-007-session-hygiene` supersedes Dependabot #4.
-  - `build/T-008-min-sdk-28` is stacked on it. Merge T-007 first, then rebase T-008 onto `main`.
+- **T-007 is merged** (PR #8); it superseded Dependabot #4, which Dependabot closes itself.
+- **Branch in flight:** `build/T-008-min-sdk-28`. Its PR state is whatever `session-start` says.
 - The dev flavour runs on the Redmi and shows a value computed in Rust.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-008-min-sdk-28.md`**: every criterion met except CI on its PR. It needs
-`T-007` merged first; `T-007` is likewise waiting only on its PR's CI. Close both once they merge,
-then start **`T-002b`**.
+**`docs/agents/tasks/T-008-min-sdk-28.md`**: every criterion met except CI on its PR. Close it once
+it merges, then start **`T-002b`**.
 
 **`T-002b` is planned** (owner-approved, 2026-10-09). It uses AAudio via `ndk`, because `oboe`
 is unmaintained, on minSdk 28 (owner's decision). The plan is in its Implementation notes.
@@ -105,9 +103,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **Land `T-007`:** PR, six green checks, rebase-merge (the owner approves pushes). Then the
-   owner merges #2 and #3.
-2. **Land `T-008`** the same way, after rebasing it onto `main`.
-3. **`T-002b`**, Android duplex on the Redmi (see Active task).
-4. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
-5. `T-004` (CI reproducibility) whenever a slice is waiting on CI. `T-003-pitch-core` after T-002.
+1. **Land `T-008`:** PR, six green checks, rebase-merge (the owner approves pushes and merges).
+   The owner also merges Dependabot #2 and #3.
+2. **`T-002b`**, Android duplex on the Redmi (see Active task).
+3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
+4. `T-004` (CI reproducibility) whenever a slice is waiting on CI. `T-003-pitch-core` after T-002.
