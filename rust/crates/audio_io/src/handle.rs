@@ -85,8 +85,8 @@ impl StreamHandle {
         self.stats.input_underruns.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Record that the platform broke the stream. Called from the platform's error thread.
-    #[cfg(target_os = "android")]
+    /// Record that the platform broke the stream. Called from the platform's error thread, or by
+    /// [`crate::OfflineBackend::simulate_disconnect`].
     pub(crate) fn mark_disconnected(&self) {
         self.stats.disconnected.store(true, Ordering::Relaxed);
     }
