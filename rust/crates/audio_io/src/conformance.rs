@@ -2,17 +2,23 @@
 //!
 //! The engine relies on the contract, not on any one platform, so every backend runs this same
 //! suite: `OfflineBackend` in `cargo test`, the platform backends on a device from `T-002b` on.
-//! Compiled for this crate's tests, and for anyone enabling the `conformance` feature.
+//! Compiled for this crate's tests, and for anyone enabling the `conformance` feature. The suite
+//! is itself tested against deliberately broken backends in `offline.rs`.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
-use crate::{AudioBackend, AudioCallback, AudioError, CallbackInfo, StreamConfig};
+use crate::{AudioBackend, AudioCallback, AudioError, CallbackInfo, StreamConfig, StreamHandle};
 
 /// How the suite drives one backend.
 pub trait Harness {
     /// The backend under test.
     type Backend: AudioBackend;
+
+    /// Whether the stream runs on its own thread, independently of [`advance`](Self::advance).
+    /// A device harness sets this, which relaxes the one check that cannot be exact while audio
+    /// keeps flowing: `timestamp()` may then be newer than the last block the suite observed.
+    const REALTIME: bool = false;
 
     /// The backend, closed until the suite opens it.
     fn backend(&mut self) -> &mut Self::Backend;
@@ -29,13 +35,13 @@ pub trait Harness {
 /// broken rule.
 pub fn run_all<H: Harness>(mut make: impl FnMut() -> H) {
     a_closed_backend_reports_nothing(&mut make());
-    an_invalid_config_is_rejected_and_leaves_it_closed(&mut make());
+    invalid_configs_are_rejected_and_leave_it_closed(&mut make());
     open_grants_a_valid_config_with_the_requested_channels(&mut make());
     a_second_open_is_rejected_and_the_first_stream_survives(&mut make());
     blocks_honour_the_granted_config(&mut make());
-    the_stream_clock_never_runs_backwards(&mut make());
+    the_stream_clock_is_contiguous_and_paired_with_a_rising_host_clock(&mut make());
     close_drops_the_callback_and_is_idempotent(&mut make());
-    a_closed_backend_reopens(&mut make());
+    a_reopened_stream_starts_a_new_clock(&mut make());
 }
 
 /// What the probe callback saw, written from the audio thread with atomics only.
@@ -46,22 +52,30 @@ struct Observed {
     largest_block: AtomicUsize,
     empty_blocks: AtomicU64,
     bad_lengths: AtomicU64,
-    input_channels: AtomicUsize,
-    output_channels: AtomicUsize,
-    clock_regressions: AtomicU64,
+    channel_mismatches: AtomicU64,
+    sample_rate: AtomicU32,
+    rate_changes: AtomicU64,
+    clock_breaks: AtomicU64,
+    host_regressions: AtomicU64,
     next_frame: AtomicU64,
+    last_frame: AtomicU64,
     last_host_ns: AtomicU64,
     dropped: AtomicBool,
 }
 
 /// A callback that writes silence and records everything it is handed.
-struct Probe(Arc<Observed>);
+struct Probe {
+    seen: Arc<Observed>,
+    channels: (usize, usize),
+}
 
 impl AudioCallback for Probe {
     fn process(&mut self, input: &[f32], output: &mut [f32], info: &CallbackInfo) {
         output.fill(0.0);
-        let seen = &self.0;
+        let seen = &self.seen;
         let relaxed = Ordering::Relaxed;
+        let first = seen.callbacks.load(relaxed) == 0;
+
         if info.frames == 0 {
             seen.empty_blocks.fetch_add(1, relaxed);
         }
@@ -70,38 +84,66 @@ impl AudioCallback for Probe {
         {
             seen.bad_lengths.fetch_add(1, relaxed);
         }
-        seen.input_channels.store(info.input_channels, relaxed);
-        seen.output_channels.store(info.output_channels, relaxed);
+        if (info.input_channels, info.output_channels) != self.channels {
+            seen.channel_mismatches.fetch_add(1, relaxed);
+        }
+        if !first && info.sample_rate != seen.sample_rate.load(relaxed) {
+            seen.rate_changes.fetch_add(1, relaxed);
+        }
+        seen.sample_rate.store(info.sample_rate, relaxed);
+
+        // Contiguous from zero: the first block starts at frame 0 and each later one exactly where
+        // the previous one ended. Host time rises with every block.
         let stamp = info.timestamp;
-        if stamp.frame < seen.next_frame.load(relaxed)
-            || stamp.host_time_ns < seen.last_host_ns.load(relaxed)
-        {
-            seen.clock_regressions.fetch_add(1, relaxed);
+        if stamp.frame != seen.next_frame.load(relaxed) {
+            seen.clock_breaks.fetch_add(1, relaxed);
+        }
+        if !first && stamp.host_time_ns <= seen.last_host_ns.load(relaxed) {
+            seen.host_regressions.fetch_add(1, relaxed);
         }
         seen.next_frame
             .store(stamp.frame + info.frames as u64, relaxed);
+        seen.last_frame.store(stamp.frame, relaxed);
         seen.last_host_ns.store(stamp.host_time_ns, relaxed);
-        seen.callbacks.fetch_add(1, relaxed);
+
         seen.frames.fetch_add(info.frames as u64, relaxed);
         seen.largest_block.fetch_max(info.frames, relaxed);
+        seen.callbacks.fetch_add(1, relaxed);
     }
 }
 
 impl Drop for Probe {
     fn drop(&mut self) {
-        self.0.dropped.store(true, Ordering::Relaxed);
+        self.seen.dropped.store(true, Ordering::Relaxed);
     }
 }
 
-fn open_probe<H: Harness>(harness: &mut H) -> (Arc<Observed>, crate::StreamHandle) {
+fn probe_for(config: StreamConfig) -> (Arc<Observed>, Box<Probe>) {
     let seen = Arc::new(Observed::default());
+    let probe = Probe {
+        seen: Arc::clone(&seen),
+        channels: (config.input_channels, config.output_channels),
+    };
+    (seen, Box::new(probe))
+}
+
+fn open_probe<H: Harness>(harness: &mut H) -> (Arc<Observed>, StreamHandle) {
     let config = harness.config();
-    let name = harness.backend().name();
-    let handle = harness
-        .backend()
-        .open(config, Box::new(Probe(Arc::clone(&seen))))
+    let (seen, probe) = probe_for(config);
+    let backend = harness.backend();
+    let name = backend.name();
+    let handle = backend
+        .open(config, probe)
         .unwrap_or_else(|error| panic!("{name}: open failed: {error}"));
     (seen, handle)
+}
+
+fn granted<H: Harness>(harness: &mut H) -> StreamConfig {
+    let backend = harness.backend();
+    let name = backend.name();
+    backend
+        .actual_config()
+        .unwrap_or_else(|| panic!("{name}: a stream is open but no config is reported"))
 }
 
 fn get(counter: &AtomicU64) -> u64 {
@@ -128,33 +170,45 @@ fn a_closed_backend_reports_nothing<H: Harness>(harness: &mut H) {
     );
 }
 
-fn an_invalid_config_is_rejected_and_leaves_it_closed<H: Harness>(harness: &mut H) {
-    let config = StreamConfig {
-        output_channels: 0,
-        ..harness.config()
-    };
-    let backend = harness.backend();
-    let name = backend.name();
-    let result = backend.open(config, Box::new(Probe(Arc::default())));
-    assert!(
-        matches!(result, Err(AudioError::InvalidConfig(_))),
-        "{name}: a stream with no output must be rejected as invalid"
-    );
-    assert_eq!(
-        backend.actual_config(),
-        None,
-        "{name}: a rejected open left a stream behind"
-    );
+fn invalid_configs_are_rejected_and_leave_it_closed<H: Harness>(harness: &mut H) {
+    let valid = harness.config();
+    let invalid = [
+        StreamConfig {
+            output_channels: 0,
+            ..valid
+        },
+        StreamConfig {
+            sample_rate: 0,
+            ..valid
+        },
+        StreamConfig {
+            max_block_frames: 0,
+            ..valid
+        },
+    ];
+    for config in invalid {
+        let backend = harness.backend();
+        let name = backend.name();
+        let (_, probe) = probe_for(config);
+        let result = backend.open(config, probe);
+        assert!(
+            matches!(result, Err(AudioError::InvalidConfig(_))),
+            "{name}: {config:?} must be rejected as invalid, got {result:?}"
+        );
+        assert_eq!(
+            backend.actual_config(),
+            None,
+            "{name}: a rejected open left a stream behind"
+        );
+    }
 }
 
 fn open_grants_a_valid_config_with_the_requested_channels<H: Harness>(harness: &mut H) {
     let requested = harness.config();
     open_probe(harness);
+    let granted = granted(harness);
     let backend = harness.backend();
     let name = backend.name();
-    let granted = backend
-        .actual_config()
-        .unwrap_or_else(|| panic!("{name}: open but no config"));
     assert_eq!(
         granted.validate(),
         Ok(()),
@@ -177,7 +231,8 @@ fn a_second_open_is_rejected_and_the_first_stream_survives<H: Harness>(harness: 
     let config = harness.config();
     let backend = harness.backend();
     let name = backend.name();
-    let second = backend.open(config, Box::new(Probe(Arc::default())));
+    let (_, second_probe) = probe_for(config);
+    let second = backend.open(config, second_probe);
     assert!(
         matches!(second, Err(AudioError::AlreadyOpen)),
         "{name}: second open was not rejected"
@@ -191,11 +246,8 @@ fn a_second_open_is_rejected_and_the_first_stream_survives<H: Harness>(harness: 
 
 fn blocks_honour_the_granted_config<H: Harness>(harness: &mut H) {
     let (seen, handle) = open_probe(harness);
+    let granted = granted(harness);
     let name = harness.backend().name();
-    let granted = harness
-        .backend()
-        .actual_config()
-        .unwrap_or_else(|| panic!("{name}: no config"));
     let wanted = 10 * granted.max_block_frames + 7;
     harness.advance(wanted);
 
@@ -213,30 +265,39 @@ fn blocks_honour_the_granted_config<H: Harness>(harness: &mut H) {
         0,
         "{name}: buffer lengths disagree with the block info"
     );
+    assert_eq!(
+        get(&seen.channel_mismatches),
+        0,
+        "{name}: callback channel counts are wrong"
+    );
+    assert_eq!(
+        seen.sample_rate.load(Ordering::Relaxed),
+        granted.sample_rate,
+        "{name}: callback sample rate disagrees with the granted config"
+    );
+    assert_eq!(
+        get(&seen.rate_changes),
+        0,
+        "{name}: sample rate changed mid-stream"
+    );
     let largest = seen.largest_block.load(Ordering::Relaxed);
     assert!(
         largest <= granted.max_block_frames,
         "{name}: block of {largest} frames exceeds the granted maximum {}",
         granted.max_block_frames
     );
-    assert_eq!(
-        (
-            seen.input_channels.load(Ordering::Relaxed),
-            seen.output_channels.load(Ordering::Relaxed)
-        ),
-        (granted.input_channels, granted.output_channels),
-        "{name}: callback channel counts disagree with the granted config"
-    );
-    assert_eq!(
-        handle.frames(),
-        get(&seen.frames),
-        "{name}: handle frame count is wrong"
-    );
-    assert_eq!(
-        handle.callbacks(),
-        get(&seen.callbacks),
-        "{name}: handle callback count is wrong"
-    );
+    if !H::REALTIME {
+        assert_eq!(
+            handle.frames(),
+            get(&seen.frames),
+            "{name}: handle frame count is wrong"
+        );
+        assert_eq!(
+            handle.callbacks(),
+            get(&seen.callbacks),
+            "{name}: handle callback count is wrong"
+        );
+    }
     assert_eq!(
         handle.max_block_frames_seen(),
         largest,
@@ -244,23 +305,42 @@ fn blocks_honour_the_granted_config<H: Harness>(harness: &mut H) {
     );
 }
 
-fn the_stream_clock_never_runs_backwards<H: Harness>(harness: &mut H) {
-    let (seen, handle) = open_probe(harness);
+fn the_stream_clock_is_contiguous_and_paired_with_a_rising_host_clock<H: Harness>(harness: &mut H) {
+    let (seen, _handle) = open_probe(harness);
     let name = harness.backend().name();
     harness.advance(4096);
+
     assert_eq!(
-        get(&seen.clock_regressions),
+        get(&seen.clock_breaks),
         0,
-        "{name}: the stream clock went backwards"
+        "{name}: stream clock not contiguous from zero (a block started anywhere but where the last ended)"
     );
+    assert_eq!(
+        get(&seen.host_regressions),
+        0,
+        "{name}: host time did not rise between blocks"
+    );
+
+    // Read what the callback saw before asking the backend, so a running stream can only have
+    // moved the backend's answer forward.
+    let last_frame = get(&seen.last_frame);
+    let last_host = get(&seen.last_host_ns);
     let stamp = harness
         .backend()
         .timestamp()
         .unwrap_or_else(|| panic!("{name}: no timestamp"));
-    assert!(
-        stamp.frame < handle.frames(),
-        "{name}: timestamp is ahead of the audio"
-    );
+    if H::REALTIME {
+        assert!(
+            stamp.frame >= last_frame,
+            "{name}: timestamp() is behind the audio"
+        );
+    } else {
+        assert_eq!(
+            (stamp.frame, stamp.host_time_ns),
+            (last_frame, last_host),
+            "{name}: timestamp() is not the stamp of the most recent block"
+        );
+    }
 }
 
 fn close_drops_the_callback_and_is_idempotent<H: Harness>(harness: &mut H) {
@@ -269,6 +349,7 @@ fn close_drops_the_callback_and_is_idempotent<H: Harness>(harness: &mut H) {
     let backend = harness.backend();
     let name = backend.name();
     assert_eq!(backend.close(), Ok(()), "{name}: close failed");
+    // A dropped callback can no longer be called, so this also proves the stream has stopped.
     assert!(
         seen.dropped.load(Ordering::Relaxed),
         "{name}: close kept the callback alive"
@@ -290,8 +371,9 @@ fn close_drops_the_callback_and_is_idempotent<H: Harness>(harness: &mut H) {
     );
 }
 
-fn a_closed_backend_reopens<H: Harness>(harness: &mut H) {
+fn a_reopened_stream_starts_a_new_clock<H: Harness>(harness: &mut H) {
     open_probe(harness);
+    harness.advance(256);
     let name = harness.backend().name();
     assert_eq!(harness.backend().close(), Ok(()), "{name}: close failed");
     let (seen, _handle) = open_probe(harness);
@@ -299,5 +381,10 @@ fn a_closed_backend_reopens<H: Harness>(harness: &mut H) {
     assert!(
         get(&seen.callbacks) > 0,
         "{name}: a reopened stream never ran"
+    );
+    assert_eq!(
+        get(&seen.clock_breaks),
+        0,
+        "{name}: a reopened stream's clock did not restart at 0"
     );
 }

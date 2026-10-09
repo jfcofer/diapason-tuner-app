@@ -122,6 +122,7 @@ impl OfflineBackend {
             };
             let info = CallbackInfo {
                 frames: block,
+                sample_rate: stream.config.sample_rate,
                 input_channels,
                 output_channels,
                 timestamp,
@@ -261,6 +262,137 @@ mod tests {
         crate::conformance::run_all(|| OfflineHarness {
             backend: OfflineBackend::new(BlockPattern::Cycle(vec![1, 17, 96, 511, 2048])),
         });
+    }
+
+    /// One way a backend can break the contract while still producing audio.
+    #[derive(Clone, Copy)]
+    enum Fault {
+        /// `timestamp()` keeps returning the first block's stamp.
+        StuckTimestamp,
+        /// Blocks are stamped with the frame at their end, not their start.
+        EndStamped,
+        /// The host clock never moves.
+        FrozenHostClock,
+        /// The callback is told a different rate from the one the backend reports granting.
+        MisreportedRate,
+    }
+
+    /// `OfflineBackend` with one [`Fault`] injected: the suite's own negative tests.
+    struct Faulty {
+        inner: OfflineBackend,
+        fault: Fault,
+    }
+
+    struct FaultyCallback {
+        inner: Box<dyn AudioCallback>,
+        fault: Fault,
+    }
+
+    impl AudioCallback for FaultyCallback {
+        fn process(&mut self, input: &[f32], output: &mut [f32], info: &CallbackInfo) {
+            let mut info = *info;
+            match self.fault {
+                Fault::EndStamped => info.timestamp.frame += info.frames as u64,
+                Fault::FrozenHostClock => info.timestamp.host_time_ns = 0,
+                Fault::MisreportedRate => info.sample_rate += 1,
+                Fault::StuckTimestamp => {}
+            }
+            self.inner.process(input, output, &info);
+        }
+    }
+
+    impl AudioBackend for Faulty {
+        fn name(&self) -> &'static str {
+            "faulty"
+        }
+
+        fn open(
+            &mut self,
+            config: StreamConfig,
+            callback: Box<dyn AudioCallback>,
+        ) -> Result<crate::StreamHandle> {
+            let fault = self.fault;
+            self.inner.open(
+                config,
+                Box::new(FaultyCallback {
+                    inner: callback,
+                    fault,
+                }),
+            )
+        }
+
+        fn actual_config(&self) -> Option<StreamConfig> {
+            self.inner.actual_config()
+        }
+
+        fn timestamp(&self) -> Option<StreamTimestamp> {
+            let now = self.inner.timestamp();
+            match self.fault {
+                // Latched on the first block, which on the offline stream is frame 0 at time 0.
+                Fault::StuckTimestamp => now.map(|_| StreamTimestamp {
+                    frame: 0,
+                    host_time_ns: 0,
+                }),
+                _ => now,
+            }
+        }
+
+        fn close(&mut self) -> Result<()> {
+            self.inner.close()
+        }
+    }
+
+    struct FaultyHarness(Faulty);
+
+    impl crate::conformance::Harness for FaultyHarness {
+        type Backend = Faulty;
+
+        fn backend(&mut self) -> &mut Faulty {
+            &mut self.0
+        }
+
+        fn config(&self) -> StreamConfig {
+            CONFIG
+        }
+
+        fn advance(&mut self, frames: usize) {
+            let input = vec![0.0; frames * CONFIG.input_channels];
+            let mut output = vec![0.0; frames * CONFIG.output_channels];
+            self.0.inner.render(&input, &mut output).expect("render");
+        }
+    }
+
+    fn run_faulty(fault: Fault) {
+        crate::conformance::run_all(|| {
+            FaultyHarness(Faulty {
+                inner: OfflineBackend::new(BlockPattern::Cycle(vec![1, 17, 96, 511])),
+                fault,
+            })
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "is not the stamp of the most recent block")]
+    fn the_suite_rejects_a_stuck_timestamp() {
+        run_faulty(Fault::StuckTimestamp);
+    }
+
+    #[test]
+    #[should_panic(expected = "stream clock not contiguous from zero")]
+    fn the_suite_rejects_end_of_block_stamps() {
+        run_faulty(Fault::EndStamped);
+    }
+
+    #[test]
+    #[should_panic(expected = "host time did not rise")]
+    fn the_suite_rejects_a_frozen_host_clock() {
+        run_faulty(Fault::FrozenHostClock);
+    }
+
+    #[test]
+    #[should_panic(expected = "callback sample rate disagrees")]
+    fn the_suite_rejects_a_misreported_sample_rate() {
+        run_faulty(Fault::MisreportedRate);
     }
 
     #[test]
