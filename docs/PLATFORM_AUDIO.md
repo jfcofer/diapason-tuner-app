@@ -86,8 +86,9 @@ the moment the app is not foreground, and the UI says so.
 - Predictive back must be supported and tested.
 - 16 KB, edge-to-edge and target API checks live in `just check-android-release`.
 
-**Device disconnect** — AAudio's error callback fires, and `AAudioBackend` sets
-`StreamHandle::disconnected`. Do not rebuild the stream on the audio thread or the error thread. Signal a normal-priority thread, close, reopen with backoff, and surface
+**Device disconnect** — AAudio's error callback fires on either stream, or the input's read fails,
+and `AAudioBackend` sets `StreamHandle::disconnected`. Do not rebuild the stream on the audio
+thread or the error thread. Signal a normal-priority thread, close, reopen with backoff, and surface
 a `route_changed` flag in the snapshot so the UI can show a brief, non-alarming indicator.
 
 ## 3. iOS / iPadOS

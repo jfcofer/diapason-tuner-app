@@ -78,31 +78,40 @@ iOS (`T-002c`). Pitch detection. Latency *calibration* UI (M5).
   requested flags (00000104) and output flags (00000002)". `USAGE_GAME` makes no difference. The
   log points at a per-app vendor policy (`UseAAudioApp`). **Measure `granted_paths` from the
   app.**
-- **Input underruns:** 10–16 at start-up, then 0. The engine should treat a rising
-  `input_underruns` as "input warming up" and not analyse those blocks.
-- **cargo-ndk 4.1.2** swallows `--message-format=json` and the `Executable` lines.
-  `test-android-device.sh` takes the newest build of each test from `target/` instead.
-- **`adb shell` reads stdin**, which ends a `while read` loop after one pass. Use `adb shell -n`.
+- **Input underruns:** 9–16 at start-up, then 0, which a device test now asserts. The engine should
+  treat a rising `input_underruns` as "input warming up" and not analyse those blocks.
+- **Worst callback, release, excluding the draining first callback:** 281–571 µs of 20 ms.
+- **cargo-ndk 4 ships `cargo-ndk-runner`,** which pushes and runs the exact test binary and returns
+  its exit status. `test-android-device.sh` uses it. Use `adb shell -n` in any loop: plain
+  `adb shell` reads stdin.
+
+**The review of part 1** (the `reviewer` subagent) was fixed before merge:
+- A lost microphone now sets `disconnected`: a failed read, or an error callback, which is now on
+  the input too.
+- `host_time_ns` is presentation time from `getTimestamp`, as `AUDIO_ENGINE.md` §6 requires. It had
+  been render time.
+- The first callback's drain is excluded from the worst case.
+- A failed output close leaks the state instead of freeing it.
+- `Running` is `Send`.
+- The seqlock reader yields.
+- The device script uses cargo's own runner, and the canary is checked for the allocator's
+  message.
+- The ADR, `AGENTS.md` §6 and `AUDIO_ENGINE.md` §7 no longer overclaim. The trap sees only Rust's
+  allocator, and `read`/`getTimestamp` may take a platform mutex on the legacy path.
+
+**Part 2 also owes:**
+- the §1 callback budget measured in release, from the app;
+- shedding an input backlog that builds up after start-up (use `getFramesWritten −
+  getFramesRead`), since it is otherwise permanent latency;
+- growing the buffer when xruns rise;
+- mapping a denied microphone to `AudioError::PermissionDenied`, which today surfaces as
+  `Platform`;
+- the shipped-`.so` measurements.
 
 **Plan, approved by the owner on 2026-10-09.** It replaces the binding choice in Context.
 
-- **Binding: AAudio via `ndk`** (`audio` + `api-level-28` features).
-  - `oboe` 0.6.1 (2024-03-03) has had no commits since.
-  - `ndk` is maintained, and cpal 0.18 uses it on Android.
-  - **minSdk 28** comes first, in `T-008`, because `ndk` gates `input_preset` on API 28.
-- **Duplex = two AAudio streams, one clock.** The output stream's callback and frame counter are
-  the stream clock. It does a non-blocking `read` (timeout 0) from the input stream into a buffer
-  preallocated at `MAX_BLOCK_FRAMES × MAX_CHANNELS`. Short reads are zero-padded and counted
-  (Oboe's `FullDuplexStream` pattern).
-- **Output:** `LowLatency`, `Exclusive` falling back to `Shared`, `f32`, rate unspecified (native).
-  The input requests the granted rate. With `input_channels == 0` it opens output only.
-- **Error callback:** sets an atomic flag only. A normal-priority supervisor in `engine` rebuilds
-  the stream with backoff.
-- **RT clock:** `clock_gettime(CLOCK_MONOTONIC)`, vDSO-backed on arm64, for host time and the
-  worst-case callback duration. It is an audited exception, recorded in the binding ADR.
-  `audio_io` gets the RT `clippy.toml` symlink.
-- **No lossy casts on Android:** AAudio's `i32`/`i64` go through `try_from` (`adr/0018` question
-  moves to `T-002c`).
+- **Binding, duplex shape, configuration, error handling, RT calls:** now decided in `adr/0020`
+  (raw `ndk-sys`, not `ndk`; see Part 1 above). minSdk 28 is `adr/0019`.
 - **Capabilities** (Unprocessed support, low-latency feature, native rate and burst) come from a
   small Kotlin channel in `core_platform`. Dart passes them to Rust as configuration.
 - **Permission:** `permission_handler` behind `MicrophonePermission`. Check its version, licence
@@ -121,7 +130,11 @@ iOS (`T-002c`). Pitch detection. Latency *calibration* UI (M5).
 
 ## Verification performed
 
-- **Part 1:** `just test-android-device` on the Redmi 23117RA68G (Android 16, API 36):
-  - `android_conformance`: 4/4 (duplex, output-only, forced block cutting, and the device report);
-  - `android_alloc_canary`: exit 134 (SIGABRT), so the trap is armed.
+- **Part 1:** `just test-android-device` on the Redmi 23117RA68G (Android 16, API 36), at the
+  committed code:
+  - `android_conformance`: 5/5 (duplex, output-only, forced block cutting, microphone keeps up, and
+    the device report);
+  - `android_alloc_canary`: exit 134 with "memory allocation of 64 bytes failed".
+
+  `--release`: 5/5.
 - `just lint-rust`, now including `lint-rust-android`, and `just verify`: green.
