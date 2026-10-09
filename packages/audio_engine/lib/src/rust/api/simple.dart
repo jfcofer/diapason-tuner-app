@@ -16,7 +16,7 @@ EngineStatus engineStatus() => RustLib.instance.api.crateApiSimpleEngineStatus()
 
 /// A snapshot of the engine, as seen from Dart.
 ///
-/// Mirrors [`diapason_engine::EngineSnapshot`] rather than re-exporting it, because the mapping
+/// Built from [`diapason_engine::BuildInfo`] rather than re-exporting it, because the mapping
 /// across the boundary is this crate's whole job and the engine type must stay free to change
 /// shape without the FFI layer silently following it.
 class EngineStatus {
@@ -32,7 +32,7 @@ class EngineStatus {
   /// Identifies the engine crate.
   final String engineBuild;
 
-  /// Whether an audio stream is running. Always `false` until `T-002`.
+  /// Whether an audio stream is running. Always `false` until `T-002b` opens one from Dart.
   final bool running;
 
   @override

@@ -4,11 +4,11 @@
 //! `diapason_engine`; business rules live in `engine` and `dsp`, where `cargo test` reaches them in
 //! milliseconds without a device.
 
-use diapason_engine::EngineSnapshot;
+use diapason_engine::BuildInfo;
 
 /// A snapshot of the engine, as seen from Dart.
 ///
-/// Mirrors [`diapason_engine::EngineSnapshot`] rather than re-exporting it, because the mapping
+/// Built from [`diapason_engine::BuildInfo`] rather than re-exporting it, because the mapping
 /// across the boundary is this crate's whole job and the engine type must stay free to change
 /// shape without the FFI layer silently following it.
 pub struct EngineStatus {
@@ -16,16 +16,16 @@ pub struct EngineStatus {
     pub dsp_build: String,
     /// Identifies the engine crate.
     pub engine_build: String,
-    /// Whether an audio stream is running. Always `false` until `T-002`.
+    /// Whether an audio stream is running. Always `false` until `T-002b` opens one from Dart.
     pub running: bool,
 }
 
-impl From<EngineSnapshot> for EngineStatus {
-    fn from(snapshot: EngineSnapshot) -> Self {
+impl From<BuildInfo> for EngineStatus {
+    fn from(info: BuildInfo) -> Self {
         Self {
-            dsp_build: snapshot.dsp_build,
-            engine_build: snapshot.engine_build,
-            running: snapshot.running,
+            dsp_build: info.dsp_build,
+            engine_build: info.engine_build,
+            running: false,
         }
     }
 }
@@ -37,7 +37,7 @@ impl From<EngineSnapshot> for EngineStatus {
 #[flutter_rust_bridge::frb(sync)]
 #[must_use]
 pub fn engine_status() -> EngineStatus {
-    EngineSnapshot::current().into()
+    BuildInfo::current().into()
 }
 
 /// Initialise default utilities. Called once by the generated `RustLib.init()`.
