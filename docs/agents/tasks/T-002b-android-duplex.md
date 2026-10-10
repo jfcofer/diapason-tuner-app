@@ -76,8 +76,8 @@ iOS (`T-002c`). Pitch detection. Latency *calibration* UI (M5).
 - **HyperOS:** the shell may not `pm grant`/`revoke` or `adb uninstall`, and every USB install
   waits for a tap on the device.
 
-**Part 2a (2026-10-09):** `session` crate (`adr/0022`), FFI start/stop and snapshot stream, the
-debug-app allocation trap, the permission, the tuner flow, `just test-integration-android`.
+**Part 2a (#13, merged 2026-10-09):** `session` crate (`adr/0022`), FFI start/stop and snapshot
+stream, the debug-app allocation trap, the permission, the tuner flow, `test-integration-android`.
 - **Deviation:** on denial the tuner opens no stream. A dev-only A4 tone button proves output
   works without the microphone, instead of a tone forced on at denial.
 - **`permission_handler` is held at 12.** 13 needs compileSdk 37: its own task (`AGENTS.md` §8).
@@ -100,15 +100,13 @@ microphone stays open across screens and in the background until the app exits. 
 background the platform silences it (exact zeros, no error), so the tuner hears nothing without
 knowing why.
 
-**Part 2b owes:**
-- the Kotlin capabilities channel and the preset rule;
-- reporting a refused microphone as `PermissionDenied` (today `DeviceUnavailable`), from the
-  permission status, since `-896` is generic;
-- the callback budget in release, from the app;
-- input-backlog shedding (`getFramesWritten − getFramesRead`), and buffer growth on xruns;
-- the shipped-`.so` measurements;
-- checking that the preset is really applied: the `AudioRecord` underneath logs `inputSource 0`
-  although `VOICE_RECOGNITION` was requested.
+**Part 2b owes, as two PRs (split 2026-10-09, `T-010`; Pigeon chosen by the owner):**
+- **2b-i, capabilities:** a Pigeon channel in `core_platform`, the preset rule in Rust, a refused
+  microphone as `PermissionDenied` from the permission status (`-896` is generic), and proof the
+  preset is applied (`AudioRecord` logs `inputSource 0` although `VOICE_RECOGNITION` was asked).
+- **2b-ii, stream tuning:** input-backlog shedding (`getFramesWritten − getFramesRead`), buffer
+  growth on xruns, the callback budget in release from the app, and the shipped-`.so`
+  measurements as a `check-android-release` gate.
 
 **Plan, approved by the owner on 2026-10-09.** It replaces the binding choice in Context.
 

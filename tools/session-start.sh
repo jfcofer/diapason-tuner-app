@@ -40,6 +40,9 @@ printf '  4. only the reference docs that task points to\n'
 note "Then reconcile STATE.md with everything below. Report any contradiction first."
 
 section "Working tree"
+# Mark where this session starts, so session-end measures this session's work and not the branch's
+# (T-010). Running this again mid-session moves the mark forward.
+git rev-parse HEAD >"$(git rev-parse --git-path diapason-session-base)"
 git -c color.ui=auto log --oneline -8
 git status --short --branch
 
@@ -114,12 +117,23 @@ section "Open tasks"
 # usually deleting its branch on the way. Matching each open task against PRs (branch names carry
 # the ID: AGENTS.md §7) is what catches a task left in-progress after its work merged (T-009).
 # Multi-part tasks merge a PR per part, so a merged PR is a prompt to check, not proof of done.
-note "Each in-progress or blocked task against its PRs. Reconcile the task file with any mismatch."
+note "Each open task against its PRs. Reconcile the task file with any mismatch."
 for task in docs/agents/tasks/T-*.md; do
     id="$(sed -n '2,/^---$/s/^id: *//p' "$task")"
     status="$(sed -n '2,/^---$/s/^status: *//p' "$task")"
-    [[ "$status" == in-progress || "$status" == blocked ]] || continue
+    [[ "$status" == todo || "$status" == in-progress || "$status" == blocked ]] || continue
+    # A parent never has a PR of its own: its slices carry the work, so show theirs (T-010).
+    slices=''
+    for child in docs/agents/tasks/"$id"[a-z]-*.md; do
+        [[ -f "$child" ]] || continue
+        slices+="$(sed -n '2,/^---$/s/^id: *//p' "$child") $(sed -n '2,/^---$/s/^status: *//p' "$child"), "
+    done
+    if [[ -n "$slices" ]]; then
+        printf '  %-8s %-12s %s\n' "$id" "$status" "parent; slices: ${slices%, }"
+        continue
+    fi
     if [[ $have_prs -eq 0 ]]; then
+        [[ "$status" == todo ]] && continue
         printf '  %-8s %-12s %s\n' "$id" "$status" "PR state unknown (see above)"
         continue
     fi
@@ -127,7 +141,11 @@ for task in docs/agents/tasks/T-*.md; do
     open_pr="$(awk -F'\t' -v id="$id" 'index($3, "/" id "-") { print "#" $1; exit }' <<<"$open_prs")"
     last_merged="$(awk -F'\t' -v id="$id" \
         'index($3, "/" id "-") { print "#" $1 " merged " $2; exit }' <<<"$merged")"
-    if [[ -n "$open_pr" ]]; then
+    # A todo task is listed only when a PR already carries its ID: then it is not todo (T-010).
+    if [[ "$status" == todo ]]; then
+        [[ -n "$open_pr$last_merged" ]] || continue
+        verdict="has PR ${open_pr:-$last_merged}, so it has started. Mark it in-progress or done"
+    elif [[ -n "$open_pr" ]]; then
         verdict="PR $open_pr open"
     elif [[ -n "$last_merged" ]]; then
         verdict="no open PR; last PR $last_merged. Close the task, or confirm it says what is left"

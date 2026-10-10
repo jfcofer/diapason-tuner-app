@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-09 (T-002b part 2a)
+# STATE — updated 2026-10-09 (T-010)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -8,22 +8,21 @@
 ## Where we are
 
 **Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
-unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap.
-**Status:**
+unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
-- **Merged:** T-006, T-002a, T-007, T-008, **T-002b part 1** and T-009 (PRs #6–#9, #11, #12).
-- **Branch in flight:** `feat/T-002b-session` (T-002b part 2a), rebased on `main`, not pushed.
-  `just verify` is green.
+- **Merged:** T-006, T-002a, T-007, T-008, T-002b parts 1 and 2a, T-009 (PRs #6–#9, #11–#13).
+- **Open:** #14, `T-010` (`chore/T-010-process-drift-2`).
 - The dev flavour runs on the Redmi. The tuner screen asks for the microphone and shows the live
   session.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-002b-android-duplex.md`**: part 1 is merged (#11). **Part 2a is built and
-reviewed** on `feat/T-002b-session`; its notes record the review fixes and what 2b and part 3 owe.
-- **Verified on the Redmi, ready for its PR:** `just test-integration-android` passed both
-  halves, headphone replugs rebuild the stream, and revoking the permission kills the app.
+**`docs/agents/tasks/T-010-process-drift-2.md`**: session checks that passed while checking
+nothing (the TODO scan, `session-end`'s baseline), and the drift reconciling #13 found.
+
+Then **`docs/agents/tasks/T-002b-android-duplex.md`**: parts 1 and 2a merged (#11, #13). Part 2b is
+two PRs, 2b-i (capabilities, preset, permission) and 2b-ii (stream tuning); see its task file.
 
 ## Hardware this project actually has
 
@@ -111,8 +110,9 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **Land `T-002b` part 2a:** PR, six green checks, rebase-merge (the owner
-   approves). The owner also merges Dependabot #2 and #10.
-2. **`T-002b` part 2b, then part 3** (see Active task).
-3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
-4. `T-004` (CI reproducibility) whenever a slice is waiting on CI. `T-003-pitch-core` after T-002.
+1. **Land `T-010`** (#14). The owner merges Dependabot #2 and #10 (both green).
+2. **`T-011`, a ktfmt gate** (owner's call, 2026-10-09): pinned, in `verify`, before real Kotlin.
+3. **`T-002b` 2b-i**, then **2b-ii**, then **part 3** (overlay, lifecycle, latency).
+4. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
+5. `T-004` whenever a slice is waiting on CI. **`T-003-pitch-core` can run in parallel** with M1:
+   it is host-only `dsp` work with no device dependency.

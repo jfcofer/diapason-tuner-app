@@ -26,7 +26,8 @@
     "ask": [
       "Bash(git push:*)",
       "Bash(flutter build:*)",
-      "Bash(gh:*)"
+      "Bash(gh:*)",
+      "Edit(./apps/diapason/android/app/build.gradle.kts)"
     ],
     "deny": [
       "Bash(rm -rf:*)",
@@ -47,7 +48,10 @@
       {
         "matcher": "Edit|Write",
         "hooks": [
-          { "type": "command", "command": "tools/format-changed.sh" }
+          {
+            "type": "command",
+            "command": "tools/format-changed.sh"
+          }
         ]
       }
     ]
