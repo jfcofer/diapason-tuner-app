@@ -59,53 +59,48 @@ iOS (`T-002c`). Pitch detection. Latency *calibration* UI (M5).
 
 ## Implementation notes
 
-**Part 1 of 3, done 2026-10-09:** the binding, the backend and on-device conformance.
-`adr/0020` has the full evidence. Deviations from the plan below:
+**Part 1 (#11, merged 2026-10-09):** binding, backend, on-device conformance (`adr/0020`).
+- `ndk-sys` with our own wrapper, not `ndk` (owner's choice): `ndk` 0.9's stream is not `Send`,
+  and its Drop unwraps `AAudioStream_close`.
+- `audio_io` has no RT `clippy.toml`. The trampoline runs inside `assert_no_alloc`, and a device
+  canary proves the trap fires.
+- The review's fixes and the device log are in the journal: `2026-10-09-aaudio-review.md` and
+  `2026-10-09-aaudio-backend.md`.
 
-- **`ndk-sys` with our own wrapper, not `ndk`.** The owner chose this after `ndk` 0.9's source
-  showed `AudioStream` is not `Send` and its Drop unwraps `AAudioStream_close` (an abort under
-  `panic = "abort"`).
-- **No `clippy.toml` symlink for `audio_io`.** Its device tests must sleep and read the clock, and
-  clippy cannot scope the list per target. Instead the trampoline runs inside `assert_no_alloc`,
-  and `android_alloc_canary` proves on device that the trap fires.
-- **The ADR's shipped-`.so` figures wait for part 2.** Nothing calls the backend yet, so the linker
-  strips it. Linking is proven on the device test binary instead (only `libaaudio`, `libdl`,
-  `libc`).
+**Found on the Redmi:**
+- The output is refused the fast path as the shell user, apparently by a vendor per-app policy
+  (`UseAAudioApp`). Measure `granted_paths` from the app.
+- 9–16 input underruns at start-up, then 0.
+- Worst release callback: 281–571 µs of 20 ms.
+- Use `adb shell -n` in loops.
+- **HyperOS:** the shell may not `pm grant`/`revoke` or `adb uninstall`, and every USB install
+  waits for a tap on the device.
 
-**Found on the Redmi, for part 2:**
+**Part 2a (2026-10-09):** `session` crate (`adr/0022`), FFI start/stop and snapshot stream, the
+debug-app allocation trap, the permission, the tuner flow, `just test-integration-android`.
+- **Deviation:** on denial the tuner opens no stream. A dev-only A4 tone button proves output
+  works without the microphone, instead of a tone forced on at denial.
+- **`permission_handler` is held at 12.** 13 needs compileSdk 37: its own task (`AGENTS.md` §8).
+- **AAudio refuses to open the input without `RECORD_AUDIO`.** It does not deliver silence. The
+  session falls back to output only and reports the input fault.
 
-- **The output is refused the fast path** as the shell user: AudioFlinger's "mismatch between
-  requested flags (00000104) and output flags (00000002)". `USAGE_GAME` makes no difference. The
-  log points at a per-app vendor policy (`UseAAudioApp`). **Measure `granted_paths` from the
-  app.**
-- **Input underruns:** 9–16 at start-up, then 0, which a device test now asserts. The engine should
-  treat a rising `input_underruns` as "input warming up" and not analyse those blocks.
-- **Worst callback, release, excluding the draining first callback:** 281–571 µs of 20 ms.
-- **cargo-ndk 4 ships `cargo-ndk-runner`,** which pushes and runs the exact test binary and returns
-  its exit status. `test-android-device.sh` uses it. Use `adb shell -n` in any loop: plain
-  `adb shell` reads stdin.
+- **The review fixed before the PR:**
+  - A device lost for a moment no longer leaves the microphone off for good: both opens failing
+    is now blamed on the device.
+  - A command dropped on a full queue is re-sent as desired state on the next tick.
+  - `stop` clears the input fault.
+  - The fake now matches the real engine: rate 0 while stopped, the input fault Android reports.
+  - The panel offers "Retry microphone".
+  - ARCHITECTURE §4 and §7 match the code.
 
-**The review of part 1** (the `reviewer` subagent) was fixed before merge:
-- A lost microphone now sets `disconnected`: a failed read, or an error callback, which is now on
-  the input too.
-- `host_time_ns` is presentation time from `getTimestamp`, as `AUDIO_ENGINE.md` §6 requires. It had
-  been render time.
-- The first callback's drain is excluded from the worst case.
-- A failed output close leaks the state instead of freeing it.
-- `Running` is `Send`.
-- The seqlock reader yields.
-- The device script uses cargo's own runner, and the canary is checked for the allocator's
-  message.
-- The ADR, `AGENTS.md` §6 and `AUDIO_ENGINE.md` §7 no longer overclaim. The trap sees only Rust's
-  allocator, and `read`/`getTimestamp` may take a platform mutex on the legacy path.
+**Part 3 owes (lifecycle):** Dart never stops the stream yet. Once the tuner listens, the
+microphone stays open across screens and in the background until the app exits.
 
-**Part 2b also owes:**
-- the §1 callback budget measured in release, from the app;
-- shedding an input backlog that builds up after start-up (use `getFramesWritten −
-  getFramesRead`), since it is otherwise permanent latency;
-- growing the buffer when xruns rise;
-- mapping a denied microphone to `AudioError::PermissionDenied`, which today surfaces as
-  `Platform`;
+**Part 2b owes:**
+- the Kotlin capabilities channel and the preset rule;
+- mapping the refused-input error to `PermissionDenied` (today `DeviceUnavailable`);
+- the callback budget in release, from the app;
+- input-backlog shedding (`getFramesWritten − getFramesRead`), and buffer growth on xruns;
 - the shipped-`.so` measurements.
 
 **Plan, approved by the owner on 2026-10-09.** It replaces the binding choice in Context.
