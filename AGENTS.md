@@ -61,7 +61,7 @@ might need to repeat — add a recipe.
 |---|---|
 | `just setup` | Toolchain check, `dart pub get` across the workspace, codegen |
 | `just verify` | **The gate:** format + lint + test + codegen-drift check, Dart *and* Rust |
-| `just gen` | flutter_rust_bridge + build_runner + l10n codegen |
+| `just gen` | flutter_rust_bridge + build_runner + Pigeon + l10n codegen |
 | `just test-rust` / `just test-dart` | Focused test loops |
 | `just bench` | Criterion DSP benches (fails on regression vs. baseline) |
 | `just run android` / `just run ios` | Launch the dev flavor |

@@ -46,8 +46,9 @@ diapason/
 │   │                            temperaments, cents math, settings model
 │   ├── core_ui/                 Design system: tokens, theme, primitives, painters,
 │   │                            motion constants, widgetbook. No Riverpod, no plugins
-│   ├── core_platform/           Interfaces + impls for permissions, haptics, wakelock,
-│   │                            prefs, lifecycle. Every impl has a fake
+│   ├── core_platform/           Interfaces + impls for permissions, audio capabilities,
+│   │                            haptics, wakelock, prefs, lifecycle. Every impl has a fake.
+│   │                            A plugin: Kotlin in android/, Pigeon schemas in pigeons/
 │   ├── feature_tuner/           Screen, view models, tuner-only widgets
 │   ├── feature_metronome/
 │   └── feature_settings/
@@ -105,6 +106,7 @@ resolver = "3"
 | `**/frb_generated*.dart`, `frb_generated.rs` | `just gen` (FRB) | Yes — reviewable diff, no codegen in CI critical path |
 | `**/*.g.dart`, `**/*.freezed.dart` | `just gen` (build_runner) | No |
 | `**/l10n/app_localizations*.dart` | `just gen` (gen-l10n) | No |
+| `**/*.g.dart`, `**/*.g.kt` from `pigeons/*.dart` | `just gen` (Pigeon, `adr/0024`) | No |
 | `fixtures/audio/**` | `cargo xtask fixtures` | Yes — deterministic, small, and CI must not synthesise them |
 
 `just verify` fails if regenerating produces a diff. That is how "someone hand-edited a generated

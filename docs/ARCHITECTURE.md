@@ -31,9 +31,9 @@ UI is a *subscriber* to a state snapshot, never a participant in timing.
                 │                        │                   │
 ┌───────────────▼────────┬───────────────▼────────┬──────────▼────────┐
 │ core_ui                │ core_domain            │ core_platform      │
-│ tokens, primitives,    │ pure Dart model:       │ permissions,       │
-│ painters, motion       │ notes, temperaments,   │ haptics, wakelock, │
-│                        │ tunings, cents math    │ lifecycle, prefs   │
+│ tokens, primitives,    │ pure Dart model:       │ permissions, audio │
+│ painters, motion       │ notes, temperaments,   │ capabilities,      │
+│                        │ tunings, cents math    │ haptics, lifecycle │
 └────────────────────────┴───────────┬────────────┴────────────────────┘
                                      │
 ┌────────────────────────────────────▼─────────────────────────────────┐
@@ -161,11 +161,14 @@ mode. Behaviour for each: `PLATFORM_AUDIO.md` §5.
 - Errors are typed and *actionable at the UI*: the session's `Fault` is `PermissionDenied`,
   `DeviceUnavailable`, `ConfigurationUnsupported` or `Internal`; iOS adds `Interrupted` in
   `T-002c`. The UI maps each to a specific recovery affordance — never a generic snackbar.
+  On Android, `PermissionDenied` comes from the permission Dart reports, not from AAudio's error
+  codes, which cannot tell a refusal from a fault (`adr/0024`).
 - The engine self-heals on stream disconnect (device change, route change) by rebuilding the
   stream on a non-RT thread with exponential backoff, and reports the transition in the snapshot.
 
 ## 8. What is deliberately not here
 
 No dependency injection framework beyond Riverpod. No repository layer — there is no remote data.
-No BLoC. No code generation beyond FRB, Riverpod, and l10n. No abstraction over `dart:ui` painting.
+No BLoC. No code generation beyond FRB, Riverpod, l10n, and Pigeon for platform channels
+(`adr/0024`). No abstraction over `dart:ui` painting.
 No plugin for audio. Each of these was considered and rejected; the reasoning is in `docs/adr/`.
