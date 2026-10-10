@@ -20,6 +20,7 @@ struct Stats {
     max_block_frames: AtomicUsize,
     worst_callback_ns: AtomicU64,
     input_underruns: AtomicU64,
+    input_frames_shed: AtomicU64,
     disconnected: AtomicBool,
 }
 
@@ -63,6 +64,13 @@ impl StreamHandle {
         self.stats.input_underruns.load(Ordering::Relaxed)
     }
 
+    /// Microphone frames discarded unheard because they had queued up behind the callback. Each
+    /// one is latency the tuner did not have to suffer (`docs/adr/0025`).
+    #[must_use]
+    pub fn input_frames_shed(&self) -> u64 {
+        self.stats.input_frames_shed.load(Ordering::Relaxed)
+    }
+
     /// Whether the platform reported that the stream broke, for example because its device went
     /// away. The stream does not recover by itself: whoever owns the backend closes and reopens it,
     /// off the real-time thread (`docs/PLATFORM_AUDIO.md` §2).
@@ -85,8 +93,16 @@ impl StreamHandle {
         self.stats.input_underruns.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Record microphone frames discarded from a backlog. Real-time thread: atomics only.
+    #[cfg(target_os = "android")]
+    pub(crate) fn record_shed(&self, frames: usize) {
+        self.stats
+            .input_frames_shed
+            .fetch_add(frames as u64, Ordering::Relaxed);
+    }
+
     /// Record that the platform broke the stream. Called from the platform's error callback (on
-    /// its own thread or the audio thread), from a failed input read or drain on the audio
+    /// its own thread or the audio thread), from a failed input read or a backlog shed on the audio
     /// thread, or by [`crate::OfflineBackend::simulate_disconnect`].
     pub(crate) fn mark_disconnected(&self) {
         self.stats.disconnected.store(true, Ordering::Relaxed);

@@ -18,6 +18,26 @@ pub enum InputPreset {
     Other(i32),
 }
 
+impl InputPreset {
+    /// The preset to try when the device refuses this one, if any. A device can advertise an
+    /// unprocessed source and still fail to open it; `VoiceRecognition` is the documented fallback
+    /// (`docs/PLATFORM_AUDIO.md` §2), and nothing falls back further.
+    ///
+    /// ```
+    /// use diapason_audio_io::InputPreset;
+    ///
+    /// assert_eq!(InputPreset::Unprocessed.fallback(), Some(InputPreset::VoiceRecognition));
+    /// assert_eq!(InputPreset::VoiceRecognition.fallback(), None);
+    /// ```
+    #[must_use]
+    pub fn fallback(self) -> Option<Self> {
+        match self {
+            Self::Unprocessed => Some(Self::VoiceRecognition),
+            Self::VoiceRecognition | Self::Other(_) => None,
+        }
+    }
+}
+
 /// Which path one stream was actually given. Requesting low latency and exclusive mode is only a
 /// request; budget devices often refuse one or both, and that refusal is where most of their
 /// latency comes from (`docs/PLATFORM_AUDIO.md` §2).
@@ -37,6 +57,14 @@ pub struct GrantedPath {
 pub struct BackendReport {
     /// Output underruns plus input overruns the platform has counted since the stream opened.
     pub xruns: Option<u32>,
+    /// The output's share of [`Self::xruns`]: the callback missed the speaker. What a larger buffer
+    /// can prevent, unlike an input overrun, which shedding handles.
+    pub output_xruns: Option<u32>,
+    /// Frames the output buffer holds before the speaker would wait: the latency the stream runs
+    /// at. Grown one burst at a time when the output underruns (`docs/adr/0025`).
+    pub buffer_frames: Option<u32>,
+    /// The most [`Self::buffer_frames`] can grow to.
+    pub buffer_capacity_frames: Option<u32>,
     /// The smallest block the output moves at once.
     pub frames_per_burst: Option<u32>,
     /// The input preset the backend asked for. `None` without an input.

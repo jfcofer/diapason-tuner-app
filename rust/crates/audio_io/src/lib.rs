@@ -107,6 +107,14 @@ pub trait AudioBackend {
         BackendReport::default()
     }
 
+    /// Ask for an output buffer of `frames`, between one burst and
+    /// [`BackendReport::buffer_capacity_frames`]. Returns the size granted, which may differ, or
+    /// `None` when closed or where the backend has no adjustable buffer (the default). Control side
+    /// only: never from the audio thread.
+    fn set_buffer_frames(&mut self, _frames: u32) -> Option<u32> {
+        None
+    }
+
     /// Stop the stream, release the device and drop the callback. Closing a closed backend is a
     /// no-op, so lifecycle code never has to track whether it already did.
     ///
