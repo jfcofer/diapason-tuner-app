@@ -104,6 +104,25 @@ for task in docs/agents/tasks/T-*.md; do
             END             { flush() }' "$task")
     fi
 done
+# A parent (T-002) is split into slices (T-002a, T-002b). A parent still todo once a slice has
+# started, or done while one is open, says something false about the work (T-010).
+for task in docs/agents/tasks/T-[0-9][0-9][0-9]-*.md; do
+    parent="$(front_matter "$task" | sed -n 's/^id: *//p')"
+    parent_status="$(front_matter "$task" | sed -n 's/^status: *//p')"
+    for child in docs/agents/tasks/"$parent"[a-z]-*.md; do
+        [[ -f "$child" ]] || continue
+        child_status="$(front_matter "$child" | sed -n 's/^status: *//p')"
+        if [[ "$parent_status" == todo && "$child_status" != todo ]]; then
+            fail "$(basename "$task") is todo, but its slice $(basename "$child") is $child_status" \
+                 "Mark the parent in-progress."
+            taskbad=1
+        elif [[ "$parent_status" == "done" && "$child_status" != "done" && "$child_status" != "abandoned" ]]; then
+            fail "$(basename "$task") is done, but its slice $(basename "$child") is $child_status" \
+                 "Finish or abandon the slice, or reopen the parent."
+            taskbad=1
+        fi
+    done
+done
 active="$(grep -oP 'docs/agents/tasks/\KT-[0-9a-z-]+\.md' docs/agents/STATE.md 2>/dev/null | head -1)"
 if [[ -n "$active" && -f "docs/agents/tasks/$active" ]]; then
     active_status="$(front_matter "docs/agents/tasks/$active" | sed -n 's/^status: *//p')"
@@ -112,7 +131,7 @@ if [[ -n "$active" && -f "docs/agents/tasks/$active" ]]; then
         taskbad=1
     fi
 fi
-[[ $taskbad -eq 0 ]] && ok "task front matter valid, done means done, active task is open"
+[[ $taskbad -eq 0 ]] && ok "task front matter valid, done means done, parents track their slices, active task is open"
 
 # ── Lint suppressions (AGENTS.md §3.2, adr/0018) ─────────────────────────────
 # The gate means nothing if a lint can be switched off where it fires. The single audited home for
@@ -135,15 +154,33 @@ done < <(
 
 # ── Task IDs referenced in code must exist ───────────────────────────────────
 printf '\n%sTask references%s\n' "$BOLD" "$OFF"
+# A broken pattern matches nothing and passes silently, which is how this check was dead until
+# T-010. So the pattern proves itself on a known line before it is trusted on the tree.
+todo_id='TODO\(\K[^)]*'
+if [[ "$(grep -oP "$todo_id" <<<'// TODO(T-123): x')" != "T-123" ]]; then
+    fail "the TODO pattern no longer extracts a task ID" "Fix todo_id in tools/docs-check.sh."
+fi
+# `git grep -P` needs a git built with PCRE (Apple's is not). Exit 1 only means "no match"; anything
+# above it means the scan never ran, which must not read as a pass. Untracked files are scanned
+# too, so a local verify sees a new file before CI does.
 unknown=0
+todo_hits="$(git grep --untracked -h -o -P "$todo_id" -- '*.dart' '*.rs' '*.kt' '*.kts' '*.swift' \
+    ':!**/cargokit/**' ':!**/frb_generated*' 2>&1)"
+todo_rc=$?
+if [[ $todo_rc -gt 1 ]]; then
+    fail "the TODO scan could not run" "$todo_hits"
+    unknown=1
+    todo_hits=''
+fi
 while read -r id; do
     [[ -z "$id" ]] && continue
     # T-0xx is the documented placeholder for "a task that does not exist yet".
     [[ "$id" == "T-0xx" ]] && continue
-    compgen -G "docs/agents/tasks/${id}-*.md" >/dev/null || {
-        fail "TODO references unknown task $id" "Create the task file, or use T-0xx for 'not yet scheduled'."
-        unknown=1; }
-done < <(grep -rhoP 'TODO\(\K T?-?[0-9A-Za-z]+' --include='*.dart' --include='*.rs' --include='*.kts' . 2>/dev/null | sort -u)
+    if [[ ! "$id" =~ ^T-[0-9]{3}[a-z]?$ ]] || ! compgen -G "docs/agents/tasks/${id}-*.md" >/dev/null; then
+        fail "TODO references unknown task '$id'" "Create the task file, or use T-0xx for 'not yet scheduled'."
+        unknown=1
+    fi
+done < <(sort -u <<<"$todo_hits")
 [[ $unknown -eq 0 ]] && ok "every TODO names a real task (or T-0xx)"
 
 printf '\n'
