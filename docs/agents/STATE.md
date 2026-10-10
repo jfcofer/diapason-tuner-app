@@ -11,7 +11,7 @@
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
 - **Merged:** T-006, T-002a, T-007, T-008, T-002b parts 1 and 2a, T-009 (PRs #6–#9, #11–#13).
-- **Branch in flight:** `chore/T-010-process-drift-2`, not pushed.
+- **Open:** #14, `T-010` (`chore/T-010-process-drift-2`).
 - The dev flavour runs on the Redmi. The tuner screen asks for the microphone and shows the live
   session.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
@@ -22,7 +22,7 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. 
 nothing (the TODO scan, `session-end`'s baseline), and the drift reconciling #13 found.
 
 Then **`docs/agents/tasks/T-002b-android-duplex.md`**: parts 1 and 2a merged (#11, #13). Part 2b is
-two PRs, 2b-i (capabilities, preset, permission) and 2b-ii (stream tuning); the task file lists each.
+two PRs, 2b-i (capabilities, preset, permission) and 2b-ii (stream tuning); see its task file.
 
 ## Hardware this project actually has
 
@@ -110,8 +110,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **Land `T-010`** (its PR). The owner merges Dependabot #2 and #10 (both green).
-2. **`T-011`, a ktfmt gate** (owner's call, 2026-10-09): pinned, in `verify`, before any real Kotlin.
+1. **Land `T-010`** (#14). The owner merges Dependabot #2 and #10 (both green).
+2. **`T-011`, a ktfmt gate** (owner's call, 2026-10-09): pinned, in `verify`, before real Kotlin.
 3. **`T-002b` 2b-i**, then **2b-ii**, then **part 3** (overlay, lifecycle, latency).
 4. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
 5. `T-004` whenever a slice is waiting on CI. **`T-003-pitch-core` can run in parallel** with M1:
