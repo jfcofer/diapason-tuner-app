@@ -1,7 +1,7 @@
 ---
 id: T-010
 title: Make the session checks catch what they claim to, and reconcile part 2a's merge
-status: in-progress
+status: done
 milestone: M1
 owner: claude
 created: 2026-10-09
