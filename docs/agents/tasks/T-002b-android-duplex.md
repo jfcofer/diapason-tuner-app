@@ -103,10 +103,12 @@ on the host, and was shown to fail without the fix.
 showed the capture client with `Source: AUDIO_SOURCE_VOICE_RECOGNITION` (6). `AudioRecord`'s
 `inputSource 0` is only `set()`'s first argument; the source travels in the attributes.
 
-**Part 2b-ii owes, stream tuning:** falling back to VoiceRecognition when an Unprocessed input
-fails to open (review), input-backlog shedding (`getFramesWritten − getFramesRead`), buffer
-  growth on xruns, the callback budget in release from the app, and the shipped-`.so`
-  measurements as a `check-android-release` gate.
+**Part 2b-ii (2026-10-10), stream tuning** (`adr/0025`): the backlog is shed every callback
+(`input_frames_shed`); the output buffer grows a burst per underrun, as session policy; a refused
+Unprocessed falls back to VoiceRecognition; `callbackLoad` against the burst; and
+`check-android-release` checks the engine links AAudio, no `libc++_shared`, within 4 MB per ABI.
+Review: ~20 ms of slack (now ≤ 5 ms), and tests that proved nothing; both fixed. **Owes, on the
+device:** `test-android-device` (debug, `--release`), and `just run android dev --profile`.
 
 **Plan, approved by the owner on 2026-10-09.** It replaces the binding choice in Context.
 
