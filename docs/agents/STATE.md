@@ -22,9 +22,8 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap.
 
 **`docs/agents/tasks/T-002b-android-duplex.md`**: part 1 is merged (#11). **Part 2a is built and
 reviewed** on `feat/T-002b-session`; its notes record the review fixes and what 2b and part 3 owe.
-- **Open before its PR:** `just test-integration-android` on the Redmi, with the owner at the
-  device (HyperOS install and microphone prompts). The denied half passed on device. The granted
-  half has not run.
+- **`just test-integration-android` passed on the Redmi,** both halves. **Open before its PR:**
+  the two hand checks in the task's Verification (permission revocation, headphone replug).
 
 ## Hardware this project actually has
 
@@ -112,7 +111,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **Finish `T-002b` part 2a:** the device run, then PR, six green checks, rebase-merge (the owner
+1. **Finish `T-002b` part 2a:** the hand checks, then PR, six green checks, rebase-merge (the owner
    approves). The owner also merges Dependabot #2 and #10.
 2. **`T-002b` part 2b, then part 3** (see Active task).
 3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.

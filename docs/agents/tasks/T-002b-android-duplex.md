@@ -37,10 +37,10 @@ timing; emulated audio says nothing about real devices.
 - [x] ADR for the Android audio binding, with the measurements above
 - [x] The Android backend passes the `T-002a` conformance suite (on device, via an integration
       test)
-- [ ] Duplex: mic in and output out on one stream and one clock, on the Redmi
+- [x] Duplex: mic in and output out on one stream and one clock, on the Redmi
 - [ ] Input preset per `PLATFORM_AUDIO.md` (Unprocessed if supported, else VoiceRecognition), and
       the preset *actually obtained* is reported
-- [ ] `RECORD_AUDIO` in the manifest. The app manifest currently declares **no** permissions
+- [x] `RECORD_AUDIO` in the manifest. The app manifest currently declares **no** permissions
 - [ ] A real `MicrophonePermission` in `core_platform` behind the existing interface, covering
       denial and revocation-while-running. The metronome path is unaffected by denial
 - [ ] Diagnostics overlay: sample rate, buffer size, round-trip latency, worst-case callback
@@ -81,8 +81,10 @@ debug-app allocation trap, the permission, the tuner flow, `just test-integratio
 - **Deviation:** on denial the tuner opens no stream. A dev-only A4 tone button proves output
   works without the microphone, instead of a tone forced on at denial.
 - **`permission_handler` is held at 12.** 13 needs compileSdk 37: its own task (`AGENTS.md` §8).
-- **AAudio refuses to open the input without `RECORD_AUDIO`.** It does not deliver silence. The
-  session falls back to output only and reports the input fault.
+- **AAudio refuses to open the input without `RECORD_AUDIO`,** with `-896`
+  (`AAUDIO_ERROR_INTERNAL`). It does not deliver silence. The session falls back to output only
+  and reports the input fault. The code is generic, so 2b cannot map it to `PermissionDenied` by
+  code alone. Use the permission status Dart already holds.
 
 - **The review fixed before the PR:**
   - A device lost for a moment no longer leaves the microphone off for good: both opens failing
@@ -98,7 +100,8 @@ microphone stays open across screens and in the background until the app exits.
 
 **Part 2b owes:**
 - the Kotlin capabilities channel and the preset rule;
-- mapping the refused-input error to `PermissionDenied` (today `DeviceUnavailable`);
+- reporting a refused microphone as `PermissionDenied` (today `DeviceUnavailable`), from the
+  permission status, since `-896` is generic;
 - the callback budget in release, from the app;
 - input-backlog shedding (`getFramesWritten − getFramesRead`), and buffer growth on xruns;
 - the shipped-`.so` measurements.
@@ -138,3 +141,10 @@ microphone stays open across screens and in the background until the app exits.
 
   `--release`: 5/5.
 - `just lint-rust`, now including `lint-rust-android`, and `just verify`: green.
+- **Part 2a:** `just test-integration-android` on the Redmi, run by the owner. Both halves passed
+  with the debug allocation trap armed:
+  - **without the microphone:** the output ran, the input fault was reported, and the input stream
+    was refused with `-896`;
+  - **with it, allowed at the system prompt:** duplex.
+- **Still to check by hand:** revoking the microphone in Settings kills the running app (assumed
+  in `PlatformMicrophonePermission`'s doc); a headphone replug raises `rebuilds`, no crash.
