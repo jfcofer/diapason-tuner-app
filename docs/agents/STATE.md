@@ -110,8 +110,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **Land `T-010`.** The owner merges Dependabot #2 and #10 (both green) and adds the `ask` rule for
-   `apps/diapason/android/app/build.gradle.kts` to `.claude/settings.json` (`T-010`, Out of scope).
+1. **Land `T-010`** (its PR). The owner merges Dependabot #2 and #10 (both green).
 2. **`T-011`, a ktfmt gate** (owner's call, 2026-10-09): pinned, in `verify`, before any real Kotlin.
 3. **`T-002b` 2b-i**, then **2b-ii**, then **part 3** (overlay, lifecycle, latency).
 4. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
