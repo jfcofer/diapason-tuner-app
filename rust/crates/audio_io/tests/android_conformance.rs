@@ -265,6 +265,20 @@ fn report_what_the_device_grants() {
             "requested {preset:?}: input underruns {warm} in the first 2 s, {} in the next 3 s",
             handle.input_underruns() - warm
         );
+        // What the input counters say is queued, sampled from this thread for 1 s: on the legacy
+        // path a pipeline offset that no read returns, which is why shedding measures from a floor.
+        let gaps: Vec<i64> = (0..100)
+            .filter_map(|_| {
+                thread::sleep(Duration::from_millis(10));
+                backend.input_counter_gap()
+            })
+            .collect();
+        println!(
+            "requested {preset:?}: counter gap min {:?}, max {:?} frames; {} frames shed",
+            gaps.iter().min(),
+            gaps.iter().max(),
+            handle.input_frames_shed()
+        );
         let config = backend.actual_config().expect("open stream has a config");
         assert_eq!(
             backend.report().requested_input_preset,
