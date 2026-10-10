@@ -107,8 +107,8 @@ showed the capture client with `Source: AUDIO_SOURCE_VOICE_RECOGNITION` (6). `Au
 (`input_frames_shed`); the output buffer grows a burst per underrun, as session policy; a refused
 Unprocessed falls back to VoiceRecognition; `callbackLoad` against the burst; and
 `check-android-release` checks the engine links AAudio, no `libc++_shared`, within 4 MB per ABI.
-Review: ~20 ms of slack (now ≤ 5 ms), and tests that proved nothing; both fixed. **Owes, on the
-device:** `test-android-device` (debug, `--release`), and `just run android dev --profile`.
+**Redmi, first run:** the raw counter gap shed ~10k frames/s with nothing stalling (steady test
+failed; underruns 0 → ~28/s), so shedding now measures from a floor. **Owes:** a rerun of both.
 
 **Plan, approved by the owner on 2026-10-09.** It replaces the binding choice in Context.
 
