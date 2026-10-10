@@ -40,7 +40,22 @@
 - **The two getters joined the audited RT calls** (`AUDIO_ENGINE.md` §7), and `adr/0020` now says
   0025 amends it.
 
+## Device run (owner)
+- **Passed:** the buffer resize (1920 → 2880 of 4104: growth works on this device), the stall
+  test (inconclusive while steady shedding ran), the canary, and a profile callback load of 4.5 %
+  (906 µs, with the faulty shedding still running).
+- **Failed, rightly:** `the_microphone_keeps_up_once_warmed_up` shed 20,016 frames in 2 s with
+  nothing stalling, about 20 % of the microphone. The profile app had shed ~1,000,000. Input
+  underruns rose to ~28/s, where part 1 had 0 after warm-up.
+- **Cause:** on the legacy path, `getFramesWritten − getFramesRead` leads what a read returns, so
+  it always looked like backlog. Shedding took frames the next read needed.
+- **Fix:** the start-up drain is back. After it, the backlog is the gap above its floor over the
+  last one to two windows of 64 callbacks. The arithmetic is in `backlog.rs`, with host tests;
+  the report now prints the raw counter gap, so the offset is measured.
+- **Seen in the app log:** the output was refused the FAST path (`flags 0x104 → 0x0`, perfMode
+  12 → 10), although part 1 found the app granted it. Recorded for part 3's latency work.
+
 ## Left for next session
-- The owner: `just test-android-device` and `just test-android-device --release` (shell binaries:
-  no install taps), then `just run android dev --profile` and read the "Callback:" line.
+- The owner: rerun `just test-android-device` (debug and `--release`) and the profile app, with
+  the floor in place.
 - Then the PR for 2b-ii; then part 3.
