@@ -41,3 +41,4 @@ agent from "improving" a deliberate choice.
 | [0021](0021-panic-abort.md) | Release builds abort on panic; the FFI surface is panic-free by construction | Accepted |
 | [0022](0022-stream-supervisor-crate.md) | A `session` crate supervises the stream and replays desired state | Accepted |
 | [0023](0023-kotlin-formatting.md) | Format Kotlin with a pinned ktfmt, kotlinlang style | Accepted |
+| [0024](0024-platform-channels-and-device-capabilities.md) | Pigeon platform channels; Rust picks the preset; the session is told the permission | Accepted |
