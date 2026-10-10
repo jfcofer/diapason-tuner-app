@@ -1,6 +1,6 @@
 # 0020 — Android audio: AAudio through raw `ndk-sys`, with our own wrapper
 
-**Status:** Accepted · 2026-10-09
+**Status:** Accepted · 2026-10-09 · amended in part by [0025](0025-stream-tuning.md) (the backlog drain, the RT call list)
 
 ## Context
 

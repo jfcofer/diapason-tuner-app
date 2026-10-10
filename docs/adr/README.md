@@ -42,3 +42,4 @@ agent from "improving" a deliberate choice.
 | [0022](0022-stream-supervisor-crate.md) | A `session` crate supervises the stream and replays desired state | Accepted |
 | [0023](0023-kotlin-formatting.md) | Format Kotlin with a pinned ktfmt, kotlinlang style | Accepted |
 | [0024](0024-platform-channels-and-device-capabilities.md) | Pigeon platform channels; Rust picks the preset; the session is told the permission | Accepted |
+| [0025](0025-stream-tuning.md) | Shed the input backlog on the audio thread; grow the output buffer as session policy | Accepted |
