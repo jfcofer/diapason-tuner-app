@@ -12,7 +12,7 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. 
 
 - **Merged:** T-006, T-002a, T-007, T-008, T-002b parts 1 and 2a, T-009, T-010, T-011 (PRs
   #6–#9, #11–#15), and Dependabot #2 and #10.
-- **Branch in flight:** `feat/T-002b-capabilities` (2b-i), its PR pending the device run.
+- **Branch in flight:** `feat/T-002b-capabilities` (2b-i), passed on the Redmi; its PR is next.
 - The dev flavour runs on the Redmi. The tuner screen asks for the microphone and shows the live
   session.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
@@ -20,9 +20,9 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. 
 ## Active task
 
 **`docs/agents/tasks/T-002b-android-duplex.md`**: parts 1 and 2a merged (#11, #13). **2b-i is
-built** (`adr/0024`): capabilities over Pigeon, the preset rule in Rust, the permission told to the
-session. It owes a device run before its PR: `just test-integration-android`, and `dumpsys` proof of
-the preset applied. Then 2b-ii (stream tuning).
+built and device-tested** (`adr/0024`): capabilities over Pigeon, the preset rule in Rust, the
+permission told to the session. It still owes `dumpsys` proof of the preset applied. Then 2b-ii
+(stream tuning).
 
 ## Hardware this project actually has
 
@@ -113,7 +113,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **Device run for 2b-i** (owner taps the installs), then its PR.
+1. **The PR for 2b-i**, then the preset proof (see the task file).
 2. **`T-002b` 2b-ii**, then **part 3** (overlay, lifecycle, latency).
 3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
 4. `T-004` whenever a slice is waiting on CI. **`T-003-pitch-core` can run in parallel** with M1:
