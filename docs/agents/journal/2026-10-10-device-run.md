@@ -9,7 +9,11 @@
   - Denied: `permissionDenied`, with the output running.
   - Granted: duplex, VoiceRecognition requested and obtained, a low-latency (not exclusive) input,
     48 kHz, burst 960.
-- Recorded in T-002b. Its PR is next.
+- **The preset is proven applied.** During `just run android`, the owner's
+  `dumpsys media.audio_policy` showed the capture client's attributes with
+  `Source: AUDIO_SOURCE_VOICE_RECOGNITION` (`Source: 6`). The criterion is ticked. Caveat: the
+  grep excerpt omits the client's uid, but it was the only capture client while Diapason
+  (uid 10381) ran.
 
 ## Tried and abandoned
 - **Capturing the preset proof by launching the app over `adb`.** WhatsApp was in the foreground:
@@ -17,12 +21,13 @@
   dump it had written to `/sdcard`. On a personal device, ask first.
 
 ## Surprises
-- **The `media.audio_policy` dump held no recording client.** It was taken after the test had
-  closed the stream, and that dump lists output tracks, not record clients. So the preset proof is
-  still open. Next time run `dumpsys audio` ("Recording activity") while the tuner listens.
+- **The first `media.audio_policy` dump held no capture client**, because it was taken after the
+  test had closed the stream. The proof needs a live microphone. With one, the input's attributes
+  carry the real source.
+- **`AudioRecord` logs `inputSource 0` while applying VOICE_RECOGNITION.** The log prints `set()`'s
+  first argument, and AAudio passes the source in the attributes instead.
 - **The debug integration build compiles Rust for three ABIs** (`aarch64`, `i686`, `x86_64`),
   although one device is attached. Worth a look in 2b-ii, where build cost matters on this host.
 
 ## Left for next session
-- Push and open the 2b-i PR (the owner approves the push).
-- The preset proof while the tuner listens; then 2b-ii.
+- Push and open the 2b-i PR, when the owner says so. Then 2b-ii.
