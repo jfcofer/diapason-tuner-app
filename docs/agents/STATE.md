@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-09 (T-011)
+# STATE — updated 2026-10-09 (T-002b part 2b-i)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -10,20 +10,19 @@
 **Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
-- **Merged:** T-006, T-002a, T-007, T-008, T-002b parts 1 and 2a, T-009, T-010 (PRs #6–#9,
-  #11–#14).
-- **Branch in flight:** `build/T-011-ktfmt`, its PR pending.
+- **Merged:** T-006, T-002a, T-007, T-008, T-002b parts 1 and 2a, T-009, T-010, T-011 (PRs
+  #6–#9, #11–#15), and Dependabot #2 and #10.
+- **Branch in flight:** `feat/T-002b-capabilities` (2b-i), its PR pending the device run.
 - The dev flavour runs on the Redmi. The tuner screen asks for the microphone and shows the live
   session.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-011-ktfmt.md`**: Kotlin formatting gated by a pinned, checksum-verified
-ktfmt (`adr/0023`), before 2b-i adds the first Kotlin we write.
-
-Then **`docs/agents/tasks/T-002b-android-duplex.md`**: parts 1 and 2a merged (#11, #13). Part 2b is
-two PRs, 2b-i (capabilities, preset, permission) and 2b-ii (stream tuning); see its task file.
+**`docs/agents/tasks/T-002b-android-duplex.md`**: parts 1 and 2a merged (#11, #13). **2b-i is
+built** (`adr/0024`): capabilities over Pigeon, the preset rule in Rust, the permission told to the
+session. It owes a device run before its PR: `just test-integration-android`, and `dumpsys` proof of
+the preset applied. Then 2b-ii (stream tuning).
 
 ## Hardware this project actually has
 
@@ -68,11 +67,12 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - `0022` the `session` crate owns the stream. Every (re)open replays the desired state, so every
   new `Command` needs a replay test.
 - `0023` ktfmt formats the Kotlin we write (not `*.g.kt`, not Gradle `*.kts`), in `verify`.
+- `0024` Pigeon for platform channels; Rust picks the preset; Dart tells the session the permission.
 
 ## Traps a later session will otherwise re-discover
 
-- **A clean checkout has no `*.g.dart`.** Run `just deps` before analyze, test or build. A local
-  tree that already has them hides the problem, so test CI-shaped changes in a fresh clone.
+- **A clean checkout has no `*.g.dart` or `*.g.kt`** (Pigeon). Run `just deps` first. A tree that
+  has them hides this, so test CI-shaped changes in a fresh clone.
 - **`flutter build ipa` fails without a development team**, even `--no-codesign`: use
   `build-ios-unsigned`.
 - **cargokit's vendored `build_tool` is not our code**, so it is excluded from format and analysis.
@@ -113,8 +113,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **Land `T-011`.** The owner merges Dependabot #2 and #10.
-2. **`T-002b` 2b-i**, then **2b-ii**, then **part 3** (overlay, lifecycle, latency).
+1. **Device run for 2b-i** (owner taps the installs), then its PR.
+2. **`T-002b` 2b-ii**, then **part 3** (overlay, lifecycle, latency).
 3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
 4. `T-004` whenever a slice is waiting on CI. **`T-003-pitch-core` can run in parallel** with M1:
    it is host-only `dsp` work with no device dependency.

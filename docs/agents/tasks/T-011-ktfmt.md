@@ -1,7 +1,7 @@
 ---
 id: T-011
 title: Gate Kotlin formatting with a pinned ktfmt before any real Kotlin lands
-status: in-progress
+status: done
 milestone: M1
 owner: claude
 created: 2026-10-09
@@ -33,7 +33,7 @@ artifact is `ktfmt-0.64-with-dependencies.jar` (71 MB), with a `.sha256` beside 
       wrong checksum fail (15/15)
 - [x] CI's `checks` job installs the jar with the pinned JDK and runs the check; `actionlint` passes
 - [x] lefthook and the agent edit hook format `.kt`, never generated `*.g.kt`
-- [ ] `just verify` green locally and all six CI jobs green on the PR
+- [x] `just verify` green locally and all six CI jobs green on the PR (#15, merged 2026-10-09)
 
 ## Out of scope
 
