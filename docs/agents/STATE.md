@@ -21,7 +21,7 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. 
 
 **`docs/agents/tasks/T-002b-android-duplex.md`**: parts 1 and 2a merged (#11, #13). **2b-i is
 built and device-tested** (`adr/0024`): capabilities over Pigeon, the preset rule in Rust, the
-permission told to the session. It still owes `dumpsys` proof of the preset applied. Then 2b-ii
+permission told to the session; VoiceRecognition is proven applied on the Redmi. Then 2b-ii
 (stream tuning).
 
 ## Hardware this project actually has
@@ -113,7 +113,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **The PR for 2b-i**, then the preset proof (see the task file).
+1. **The PR for 2b-i** (push when the owner says so).
 2. **`T-002b` 2b-ii**, then **part 3** (overlay, lifecycle, latency).
 3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
 4. `T-004` whenever a slice is waiting on CI. **`T-003-pitch-core` can run in parallel** with M1:

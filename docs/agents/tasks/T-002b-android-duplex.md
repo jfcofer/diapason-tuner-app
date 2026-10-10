@@ -38,7 +38,7 @@ timing; emulated audio says nothing about real devices.
 - [x] The Android backend passes the `T-002a` conformance suite (on device, via an integration
       test)
 - [x] Duplex: mic in and output out on one stream and one clock, on the Redmi
-- [ ] Input preset per `PLATFORM_AUDIO.md` (Unprocessed if supported, else VoiceRecognition), and
+- [x] Input preset per `PLATFORM_AUDIO.md` (Unprocessed if supported, else VoiceRecognition), and
       the preset *actually obtained* is reported
 - [x] `RECORD_AUDIO` in the manifest. The app manifest currently declares **no** permissions
 - [x] A real `MicrophonePermission` in `core_platform` behind the existing interface, covering
@@ -99,9 +99,9 @@ Redmi. A denial reported before the microphone was wanted was never stored. The 
 derived; a new grant retries; a repeated grant does not. A driver test replays the contract's order
 on the host, and was shown to fail without the fix.
 
-**Still owed by 2b-i:** proof the preset is applied. `AudioRecord` logs `inputSource 0` although
-`VOICE_RECOGNITION` was asked, and "obtained" only echoes the request. Run
-`adb shell -n dumpsys audio | grep -iA4 'recording activity'` while the tuner listens.
+**The preset is applied (2026-10-10):** while the app listened, `dumpsys media.audio_policy`
+showed the capture client with `Source: AUDIO_SOURCE_VOICE_RECOGNITION` (6). `AudioRecord`'s
+`inputSource 0` is only `set()`'s first argument; the source travels in the attributes.
 
 **Part 2b-ii owes, stream tuning:** falling back to VoiceRecognition when an Unprocessed input
 fails to open (review), input-backlog shedding (`getFramesWritten − getFramesRead`), buffer
@@ -133,8 +133,8 @@ fails to open (review), input-backlog shedding (`getFramesWritten − getFramesR
 - **Part 2b-i, Redmi** (`test-integration-android`, owner, 2026-10-10): the device reports
   unprocessed **false** and low latency **true** (native 48 kHz / 256 frames), so VoiceRecognition
   is chosen. Denied: `permissionDenied`, with the output running. Granted: duplex, VoiceRecognition
-  requested and obtained, low-latency input, 48 kHz, burst 960. The `dumpsys` was taken after the
-  stream closed, so it holds no recording client: the preset proof is still owed.
+  requested and obtained, low-latency input, 48 kHz, burst 960. During `just run android`, the
+  only capture client had `Source: AUDIO_SOURCE_VOICE_RECOGNITION`. The excerpt omits its uid.
 - **Part 2b-i, host:** `just verify` green; `session` 21 tests, including the preset truth table and
   five permission transitions, each with desired state replayed.
 - **Part 2a:** `just test-integration-android` on the Redmi, run by the owner. Both halves passed
