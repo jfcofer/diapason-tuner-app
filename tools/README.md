@@ -21,3 +21,5 @@ Created in T-001:
 | `doctor-selftest.sh` | Break each pin in a scratch copy and prove `doctor.sh` catches it |
 | `check-ios-release.sh` | Assert on a built `.app`: privacy manifest, mic string, MinimumOSVersion, Rust linked. Bash 3.2/BSD only — it runs on macOS |
 | `ios/configure_project.rb` | Generate the iOS flavour configs, schemes, xcconfigs and Podfile (`just ios-project`). Ruby + the pinned `xcodeproj` gem |
+| `jvm.sh` | Sourced, not run: what `doctor.sh` and `ktfmt.sh` must agree on (the JDK Flutter builds with, the ktfmt jar path, SHA-256) |
+| `ktfmt.sh` | Install the pinned ktfmt jar (checksum-verified), and format or check our Kotlin (`adr/0023`) |

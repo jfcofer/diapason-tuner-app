@@ -31,6 +31,11 @@ case "$file" in
     *.rs)
         command -v rustfmt >/dev/null 2>&1 && rustfmt --edition 2024 "$file" >/dev/null 2>&1
         ;;
+    *.g.kt)
+        ;;
+    *.kt)
+        "$repo_root/tools/ktfmt.sh" format "$file" >/dev/null 2>&1
+        ;;
 esac
 
 exit 0

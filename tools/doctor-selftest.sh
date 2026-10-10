@@ -41,7 +41,7 @@ expect_failure() {
     local sandbox="$WORK/$RANDOM$RANDOM"
 
     mkdir -p "$sandbox/tools"
-    cp "$REPO/tools/doctor.sh" "$REPO/tools/versions.env" "$sandbox/tools/"
+    cp "$REPO/tools/doctor.sh" "$REPO/tools/jvm.sh" "$REPO/tools/versions.env" "$sandbox/tools/"
     cp "$REPO/.fvmrc" "$REPO/rust-toolchain.toml" "$REPO/pubspec.lock" "$sandbox/"
 
     ( cd "$sandbox" && eval "$mutate" )
@@ -68,7 +68,9 @@ printf '\n%sdoctor self-test%s\n' "$BOLD" "$OFF"
 #    Point doctor at a real JDK >= 25 and require it to name the actual issue, not just "wrong
 #    version" - the error text is the whole value of this check.
 JDK25=""
-for candidate in /usr/lib/jvm/java-2[5-9]-openjdk /usr/lib/jvm/java-2[5-9]*; do
+# GitHub's ubuntu runners keep their JDKs as temurin-NN-jdk-amd64 and export JAVA_HOME_25_X64.
+for candidate in "${JAVA_HOME_25_X64:-}" /usr/lib/jvm/java-2[5-9]-openjdk /usr/lib/jvm/java-2[5-9]* \
+        /usr/lib/jvm/temurin-2[5-9]*; do
     [[ -x "$candidate/bin/java" ]] && { JDK25="$candidate"; break; }
 done
 if ! want java; then
@@ -130,6 +132,13 @@ expect_failure repo-tools "wrong actionlint version" \
 expect_failure repo-tools "wrong xcodeproj gem version" \
     'sed -i "s/^XCODEPROJ_VERSION=.*/XCODEPROJ_VERSION=0.0.1/" tools/versions.env' \
     'xcodeproj gem.*0\.0\.1 not installed'
+expect_failure repo-tools "wrong ktfmt version" \
+    'sed -i "s/^KTFMT_VERSION=.*/KTFMT_VERSION=0.0.1/" tools/versions.env' \
+    'ktfmt.*0\.0\.1 not installed'
+# The jar at the pinned version is present, but it is not the one the pin vouches for.
+expect_failure repo-tools "ktfmt jar fails its checksum" \
+    'sed -i "s/^KTFMT_SHA256=.*/KTFMT_SHA256=0000000000000000000000000000000000000000000000000000000000000000/" tools/versions.env' \
+    'ktfmt.*does not match the pinned checksum'
 
 # 7. Missing Android NDK.
 expect_failure android "wrong Android NDK" \
