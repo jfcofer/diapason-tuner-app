@@ -1,5 +1,5 @@
 name: core_platform
-description: Interfaces and implementations for permissions, haptics, wakelock, prefs, lifecycle.
+description: Interfaces and implementations for permissions, audio capabilities, haptics, wakelock, prefs, lifecycle.
 version: 0.1.0
 publish_to: none
 resolution: workspace
@@ -9,6 +9,7 @@ environment:
   flutter: ">=3.47.0"
 
 dependencies:
+  core_domain: ^0.1.0
   flutter:
     sdk: flutter
   # MIT, no network calls, ships a privacy manifest, supports SwiftPM. Checked for T-002b. iOS
@@ -20,3 +21,15 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Typed platform channels (docs/adr/0024). Pinned exactly: its output depends on the version.
+  # Run by `just gen-dart`; the output is generated, not committed, like build_runner's.
+  pigeon: 29.0.4
+
+# A Flutter plugin, so its Kotlin registers with the engine like any other plugin. Android only:
+# on iOS the capabilities are unknown until T-002c.
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.jfcofer.diapason.core_platform
+        pluginClass: CorePlatformPlugin

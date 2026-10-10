@@ -64,6 +64,9 @@ gen-dart:
     # root writes nothing. (--delete-conflicting-outputs was removed in current build_runner.)
     # melos is a workspace dev_dependency, so `dart run` uses the locked version - no global install.
     dart run melos exec --depends-on=build_runner -- dart run build_runner build
+    # Pigeon's typed platform channels (docs/adr/0024): each package's pigeons/*.dart, run from
+    # that package, since the output paths in each file are relative to it. Not committed.
+    for f in packages/*/pigeons/*.dart; do (cd "${f%%/pigeons/*}" && dart run pigeon --input "pigeons/${f##*/}") || exit 1; done
     # flutter gen-l10n     # [T-0xx] re-enable when content strings land; the locale-aware app
     #                      # *label* lives in native strings.xml / InfoPlist.strings, not here.
 

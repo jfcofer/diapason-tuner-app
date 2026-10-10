@@ -119,6 +119,19 @@ for dir in packages/core_* packages/audio_engine; do
 done
 [[ $VIOLATIONS -eq $before ]] && ok "no core_* or audio_engine imports a feature_*"
 
+# ── audio_engine and core_platform are siblings: neither imports the other ─────
+# Device capabilities cross between them as a core_domain value, wired in the app (adr/0024).
+before=$VIOLATIONS
+if imports_match packages/audio_engine "^package:core_platform/"; then
+    violation "audio_engine imports core_platform" \
+        "Pass what the engine needs as a core_domain value; the app wires the two together."
+fi
+if imports_match packages/core_platform "^package:audio_engine/"; then
+    violation "core_platform imports audio_engine" \
+        "The platform layer knows nothing of the engine; the app wires the two together."
+fi
+[[ $VIOLATIONS -eq $before ]] && ok "audio_engine and core_platform do not import each other"
+
 # ── Rust: dsp depends on nothing ──────────────────────────────────────────────
 printf '\n%sRust crate boundaries%s\n' "$BOLD" "$OFF"
 

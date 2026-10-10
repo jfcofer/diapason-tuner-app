@@ -4,5 +4,7 @@
 /// plugin directly - they receive one of these instead, which is what keeps widget tests hermetic.
 library;
 
+export 'src/audio_capabilities.dart';
 export 'src/microphone_permission.dart';
+export 'src/platform_audio_capabilities.dart' show PlatformAudioCapabilities;
 export 'src/platform_microphone_permission.dart' show PlatformMicrophonePermission;
