@@ -111,7 +111,7 @@ jobs:
       - run: just deps   # pub get + Dart codegen
       - run: just doctor flutter java rust android
       - run: just build-android prod
-      # targetSdk 36, per-ABI 16 KB alignment, size budget.
+      # targetSdk 36, per-ABI 16 KB alignment, the engine linking AAudio, size budgets.
       - run: just check-android-release
 
   # The only place iOS is compiled at all: there is no macOS host on this project, so a red job
