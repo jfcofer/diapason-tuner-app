@@ -22,8 +22,8 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap.
 
 **`docs/agents/tasks/T-002b-android-duplex.md`**: part 1 is merged (#11). **Part 2a is built and
 reviewed** on `feat/T-002b-session`; its notes record the review fixes and what 2b and part 3 owe.
-- **`just test-integration-android` passed on the Redmi,** both halves. **Open before its PR:**
-  the two hand checks in the task's Verification (permission revocation, headphone replug).
+- **Verified on the Redmi, ready for its PR:** `just test-integration-android` passed both
+  halves, headphone replugs rebuild the stream, and revoking the permission kills the app.
 
 ## Hardware this project actually has
 
@@ -42,7 +42,8 @@ reviewed** on `feat/T-002b-session`; its notes record the review fixes and what 
 - **iOS project** from `just ios-project`; **never edit `project.pbxproj` by hand.** Release checks:
   `check-android-release`, `check-ios-release`.
 - **`AAudioBackend`** (`T-002b`): duplex as two AAudio streams on one clock, device-tested with
-  `just test-android-device`. Android-only code is linted by `lint-rust-android`.
+  `just test-android-device`, linted by `lint-rust-android`. On the Redmi the app gets the
+  low-latency (FAST) path, shared not MMAP; only the shell user is refused.
 - **Session** (`T-002b` 2a, `adr/0022`): a sans-IO `Supervisor` on virtual time plus one thread;
   Dart sees `EngineHandle` (commands in, ~30 Hz `SessionSnapshot` out). `verifyEngineContract`
   binds fake and real engine; `just test-integration-android` runs it on a device.
@@ -107,11 +108,10 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 | Reference devices beyond the Redmi | M1+ | No iPhone, Pixel or tablet available. `T-002` criteria were amended to "every device available" |
 | Font licences confirmed for bundling | M3 | `DESIGN_SYSTEM.md` §1 assumes OFL faces |
 | Where `audio_io` puts lossy casts | `T-002c` | Android needed none (`try_from` throughout `android.rs`). Core Audio's `mSampleTime` (`f64`) does. Supersede `adr/0018` with a leaf crate, or let `audio_io` depend on `dsp` |
-| Does the app get the AAudio fast path on the Redmi? | `T-002b` part 2b | The shell user is refused (`adr/0020`); a vendor per-app policy is suspected. Read `granted_paths` from the app |
 
 ## Next up (in order)
 
-1. **Finish `T-002b` part 2a:** the hand checks, then PR, six green checks, rebase-merge (the owner
+1. **Land `T-002b` part 2a:** PR, six green checks, rebase-merge (the owner
    approves). The owner also merges Dependabot #2 and #10.
 2. **`T-002b` part 2b, then part 3** (see Active task).
 3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.

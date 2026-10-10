@@ -41,13 +41,13 @@ timing; emulated audio says nothing about real devices.
 - [ ] Input preset per `PLATFORM_AUDIO.md` (Unprocessed if supported, else VoiceRecognition), and
       the preset *actually obtained* is reported
 - [x] `RECORD_AUDIO` in the manifest. The app manifest currently declares **no** permissions
-- [ ] A real `MicrophonePermission` in `core_platform` behind the existing interface, covering
+- [x] A real `MicrophonePermission` in `core_platform` behind the existing interface, covering
       denial and revocation-while-running. The metronome path is unaffected by denial
 - [ ] Diagnostics overlay: sample rate, buffer size, round-trip latency, worst-case callback
       duration, xrun count, input preset
 - [ ] Android rows of the `PLATFORM_AUDIO.md` §5 lifecycle matrix verified on device; automatable
       rows covered by an integration test
-- [ ] Stream rebuilds off the RT thread on route change and device disconnect
+- [x] Stream rebuilds off the RT thread on route change and device disconnect
 - [ ] Round-trip latency on the Redmi recorded in the journal
 - [x] The RT clock exception (`clock_gettime` in the callback) has its ADR, and `AGENTS.md` §6
       cites it, so the documented RT rule stays true
@@ -68,8 +68,8 @@ iOS (`T-002c`). Pitch detection. Latency *calibration* UI (M5).
   `2026-10-09-aaudio-backend.md`.
 
 **Found on the Redmi:**
-- The output is refused the fast path as the shell user, apparently by a vendor per-app policy
-  (`UseAAudioApp`). Measure `granted_paths` from the app.
+- **The app gets the low-latency path** (`AUDIO_OUTPUT_FLAG_FAST`, `AUDIO_INPUT_FLAG_FAST`), but
+  not exclusive mode: the app's MMAP policy is "never". Only the shell user was refused.
 - 9–16 input underruns at start-up, then 0.
 - Worst release callback: 281–571 µs of 20 ms.
 - Use `adb shell -n` in loops.
@@ -96,7 +96,9 @@ debug-app allocation trap, the permission, the tuner flow, `just test-integratio
   - ARCHITECTURE §4 and §7 match the code.
 
 **Part 3 owes (lifecycle):** Dart never stops the stream yet. Once the tuner listens, the
-microphone stays open across screens and in the background until the app exits.
+microphone stays open across screens and in the background until the app exits. In the
+background the platform silences it (exact zeros, no error), so the tuner hears nothing without
+knowing why.
 
 **Part 2b owes:**
 - the Kotlin capabilities channel and the preset rule;
@@ -104,19 +106,15 @@ microphone stays open across screens and in the background until the app exits.
   permission status, since `-896` is generic;
 - the callback budget in release, from the app;
 - input-backlog shedding (`getFramesWritten − getFramesRead`), and buffer growth on xruns;
-- the shipped-`.so` measurements.
+- the shipped-`.so` measurements;
+- checking that the preset is really applied: the `AudioRecord` underneath logs `inputSource 0`
+  although `VOICE_RECOGNITION` was requested.
 
 **Plan, approved by the owner on 2026-10-09.** It replaces the binding choice in Context.
 
-- **Binding, duplex shape, configuration, error handling, RT calls:** now decided in `adr/0020`
-  (raw `ndk-sys`, not `ndk`; see Part 1 above). minSdk 28 is `adr/0019`.
+- **Decided:** the binding in `adr/0020`, minSdk 28 in `adr/0019`, the session in `adr/0022`.
 - **Capabilities** (Unprocessed support, low-latency feature, native rate and burst) come from a
   small Kotlin channel in `core_platform`. Dart passes them to Rust as configuration.
-- **Permission:** `permission_handler` behind `MicrophonePermission`. Check its version, licence
-  and network behaviour first.
-- **On-device conformance:** `just test-android-device` runs the Rust test binary through `adb`.
-  Verify first that the shell uid can open an input stream; otherwise use a debug-only FFI entry
-  point driven by an `integration_test`.
 - **Three PRs:**
   1. the ADR, the backend and on-device conformance;
   2. **split by the owner on 2026-10-09:**
@@ -146,5 +144,7 @@ microphone stays open across screens and in the background until the app exits.
   - **without the microphone:** the output ran, the input fault was reported, and the input stream
     was refused with `-896`;
   - **with it, allowed at the system prompt:** duplex.
-- **Still to check by hand:** revoking the microphone in Settings kills the running app (assumed
-  in `PlatformMicrophonePermission`'s doc); a headphone replug raises `rebuilds`, no crash.
+- **By hand, on the Redmi (owner, logcat kept):**
+  - each wired-headphone plug and unplug disconnected the stream, and the session rebuilt it on
+    the new device, with no crash;
+  - revoking the microphone in Settings killed the running app.
