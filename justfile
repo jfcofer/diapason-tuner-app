@@ -136,9 +136,13 @@ docs-check:
 
 # ── Running ───────────────────────────────────────────────────────────────────
 
+# `flutter run -d` matches a device id or name, not a platform, so `android` is resolved to the
+# connected device's serial (ANDROID_SERIAL picks one of several). Anything else passes through.
 run platform="ios" flavor="dev":
-    cd apps/diapason && flutter run -d {{platform}} --flavor {{flavor}} \
-        --target lib/main_{{flavor}}.dart --dart-define-from-file=flavors/{{flavor}}.json
+    cd apps/diapason && flutter run \
+        -d "$(if [[ {{platform}} == android ]]; then adb get-serialno; else echo {{platform}}; fi)" \
+        --flavor {{flavor}} --target lib/main_{{flavor}}.dart \
+        --dart-define-from-file=flavors/{{flavor}}.json
 
 # ── Performance ───────────────────────────────────────────────────────────────
 
