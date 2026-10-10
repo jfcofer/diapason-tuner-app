@@ -5,7 +5,9 @@
 # broken commit from being written in the first place.
 
 pre-commit:
-  parallel: true
+  # In sequence: three jobs `git add` what they format, and in parallel they race for the index
+  # lock, which fails a commit at random with exit 128 (seen in T-002b). Each job takes milliseconds.
+  parallel: false
   jobs:
     - name: dart-format
       glob: "*.dart"
