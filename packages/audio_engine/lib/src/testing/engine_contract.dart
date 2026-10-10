@@ -19,12 +19,15 @@ class EngineContractViolation implements Exception {
 /// first rule it breaks (`docs/TESTING.md` §3: the fake is a contract, not a stub).
 ///
 /// Runs against `FakeAudioEngine` in unit tests and against the real engine on a device, so the
-/// two cannot drift apart. With [microphoneGranted] false, asking for the microphone must keep the
-/// stream running without it and report an input fault. [deadline] bounds each wait: it is a
-/// timeout, never a measurement.
+/// two cannot drift apart. [microphoneGranted] is the real permission, which the engine is told:
+/// refused, asking for the microphone must keep the stream running without it and report
+/// [AudioFault.permissionDenied]. With [reportsInputPreset], an open microphone must report the
+/// input preset requested and obtained: true on Android, where presets exist. [deadline] bounds
+/// each wait: it is a timeout, never a measurement.
 Future<void> verifyEngineContract(
   EngineHandle engine, {
   bool microphoneGranted = true,
+  bool reportsInputPreset = false,
   Duration deadline = const Duration(seconds: 10),
 }) async {
   await engine.initialize();
@@ -49,13 +52,27 @@ Future<void> verifyEngineContract(
   engine.stopTone();
   await until('the tone stopped', (s) => s.toneHz == null);
 
-  engine.start(input: true);
+  engine
+    ..setMicrophoneAccess(granted: microphoneGranted)
+    ..start(input: true);
   if (microphoneGranted) {
-    await until('the microphone open', (s) => s.state == SessionState.running && s.inputActive);
+    await until(
+      reportsInputPreset
+          ? 'the microphone open, with the preset requested and obtained reported'
+          : 'the microphone open',
+      (s) =>
+          s.state == SessionState.running &&
+          s.inputActive &&
+          (!reportsInputPreset ||
+              s.diagnostics.requestedInputPreset != null && s.diagnostics.inputPreset != null),
+    );
   } else {
     await until(
-      'output running without the microphone, with an input fault',
-      (s) => s.state == SessionState.running && !s.inputActive && s.inputFault != null,
+      'output running without the microphone, the fault saying the permission is missing',
+      (s) =>
+          s.state == SessionState.running &&
+          !s.inputActive &&
+          s.inputFault == AudioFault.permissionDenied,
     );
   }
 

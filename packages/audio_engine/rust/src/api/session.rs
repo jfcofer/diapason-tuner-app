@@ -5,8 +5,8 @@
 //! generator beyond flutter_rust_bridge (`docs/ARCHITECTURE.md` §8).
 
 use diapason_session::{
-    Fault, InputPreset, Session, SessionError, SessionSnapshot, SessionState,
-    spawn_platform_session,
+    DeviceCapabilities, Fault, InputPreset, MicrophoneAccess, Session, SessionError,
+    SessionSnapshot, SessionState, spawn_platform_session,
 };
 
 use crate::frb_generated::StreamSink;
@@ -19,17 +19,33 @@ pub struct AudioSession {
 }
 
 impl AudioSession {
-    /// Start the session thread on this platform's backend. No stream opens until [`start`].
+    /// Start the session thread on this platform's backend, configured from what the platform
+    /// reported about the device. No stream opens until [`start`].
     ///
     /// [`start`]: AudioSession::start
     ///
     /// # Errors
     /// [`AudioSessionError::Spawn`] if the thread cannot be created.
     #[flutter_rust_bridge::frb(sync)]
-    pub fn spawn() -> Result<AudioSession, AudioSessionError> {
+    pub fn spawn(capabilities: DeviceCapabilitiesDto) -> Result<AudioSession, AudioSessionError> {
         Ok(Self {
-            session: spawn_platform_session()?,
+            session: spawn_platform_session(capabilities.into())?,
         })
+    }
+
+    /// Tell the session whether the microphone permission is granted. Returns at once; a running
+    /// stream follows it on the next tick.
+    ///
+    /// # Errors
+    /// [`AudioSessionError::Gone`] if the session has shut down.
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn set_microphone_access(&self, granted: bool) -> Result<(), AudioSessionError> {
+        let access = if granted {
+            MicrophoneAccess::Granted
+        } else {
+            MicrophoneAccess::Denied
+        };
+        Ok(self.session.set_microphone_access(access)?)
     }
 
     /// Run the stream, with the microphone if `input`. Returns at once.
@@ -98,6 +114,24 @@ impl From<SessionError> for AudioSessionError {
     }
 }
 
+/// What the platform reported about the audio device. Mirrors
+/// `diapason_session::DeviceCapabilities`; `None` means unknown.
+pub struct DeviceCapabilitiesDto {
+    /// The device supports the unprocessed microphone source.
+    pub unprocessed_source: Option<bool>,
+    /// The device advertises a low-latency audio path.
+    pub low_latency: Option<bool>,
+}
+
+impl From<DeviceCapabilitiesDto> for DeviceCapabilities {
+    fn from(dto: DeviceCapabilitiesDto) -> Self {
+        Self {
+            unprocessed_source: dto.unprocessed_source,
+            low_latency: dto.low_latency,
+        }
+    }
+}
+
 /// Where the session is in its lifecycle. Mirrors `diapason_session::SessionState`.
 pub enum SessionStateDto {
     /// No stream, and none wanted.
@@ -161,6 +195,8 @@ pub struct SessionSnapshotDto {
     pub xruns: Option<u32>,
     /// The output's burst size, in frames.
     pub frames_per_burst: Option<u32>,
+    /// The input preset requested.
+    pub requested_input_preset: Option<InputPresetDto>,
     /// The input preset obtained.
     pub input_preset: Option<InputPresetDto>,
     /// The platform's raw value for the input preset obtained.
@@ -204,6 +240,7 @@ impl From<&SessionSnapshot> for SessionSnapshotDto {
             input_underruns: snapshot.input_underruns,
             xruns: report.xruns,
             frames_per_burst: report.frames_per_burst,
+            requested_input_preset: report.requested_input_preset.map(Into::into),
             input_preset: report.input_preset.map(Into::into),
             input_preset_code: report.input_preset.and_then(|preset| match preset {
                 InputPreset::Other(code) => Some(code),

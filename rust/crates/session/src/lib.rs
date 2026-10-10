@@ -32,12 +32,14 @@
     )
 )]
 
+mod capabilities;
 mod driver;
 mod platform;
 mod supervisor;
 
+pub use capabilities::{DeviceCapabilities, choose_input_preset};
 pub use diapason_audio_io::{BackendReport, GrantedPath, InputPreset, StreamConfig};
 pub use diapason_engine::{BuildInfo, EngineSnapshot};
 pub use driver::{Session, SessionError};
 pub use platform::spawn_platform_session;
-pub use supervisor::{Fault, SessionSnapshot, SessionState, Supervisor};
+pub use supervisor::{Fault, MicrophoneAccess, SessionSnapshot, SessionState, Supervisor};

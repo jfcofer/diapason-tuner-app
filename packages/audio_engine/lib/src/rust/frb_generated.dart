@@ -65,7 +65,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1143823011;
+  int get rustContentHash => -1730272424;
 
   static const kDefaultExternalLibraryLoaderConfig = ExternalLibraryLoaderConfig(
     stem: 'diapason_ffi',
@@ -75,9 +75,14 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  void crateApiSessionAudioSessionSetMicrophoneAccess({
+    required AudioSession that,
+    required bool granted,
+  });
+
   Stream<SessionSnapshotDto> crateApiSessionAudioSessionSnapshots({required AudioSession that});
 
-  AudioSession crateApiSessionAudioSessionSpawn();
+  AudioSession crateApiSessionAudioSessionSpawn({required DeviceCapabilitiesDto capabilities});
 
   void crateApiSessionAudioSessionStart({required AudioSession that, required bool input});
 
@@ -111,6 +116,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
+  void crateApiSessionAudioSessionSetMicrophoneAccess({
+    required AudioSession that,
+    required bool granted,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAudioSession(
+            that,
+            serializer,
+          );
+          sse_encode_bool(granted, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_audio_session_error,
+        ),
+        constMeta: kCrateApiSessionAudioSessionSetMicrophoneAccessConstMeta,
+        argValues: [that, granted],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionAudioSessionSetMicrophoneAccessConstMeta => const TaskConstMeta(
+    debugName: 'AudioSession_set_microphone_access',
+    argNames: ['that', 'granted'],
+  );
+
+  @override
   Stream<SessionSnapshotDto> crateApiSessionAudioSessionSnapshots({required AudioSession that}) {
     final sink = RustStreamSink<SessionSnapshotDto>();
     unawaited(
@@ -123,7 +160,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
               serializer,
             );
             sse_encode_StreamSink_session_snapshot_dto_Sse(sink, serializer);
-            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1, port: port_);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2, port: port_);
           },
           codec: SseCodec(
             decodeSuccessData: sse_decode_unit,
@@ -142,12 +179,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: 'AudioSession_snapshots', argNames: ['that', 'sink']);
 
   @override
-  AudioSession crateApiSessionAudioSessionSpawn() {
+  AudioSession crateApiSessionAudioSessionSpawn({required DeviceCapabilitiesDto capabilities}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+          sse_encode_box_autoadd_device_capabilities_dto(capabilities, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -155,14 +193,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_audio_session_error,
         ),
         constMeta: kCrateApiSessionAudioSessionSpawnConstMeta,
-        argValues: [],
+        argValues: [capabilities],
         apiImpl: this,
       ),
     );
   }
 
   TaskConstMeta get kCrateApiSessionAudioSessionSpawnConstMeta =>
-      const TaskConstMeta(debugName: 'AudioSession_spawn', argNames: []);
+      const TaskConstMeta(debugName: 'AudioSession_spawn', argNames: ['capabilities']);
 
   @override
   void crateApiSessionAudioSessionStart({required AudioSession that, required bool input}) {
@@ -175,7 +213,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_bool(input, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -207,7 +245,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
           sse_encode_f_32(frequencyHz, serializer);
           sse_encode_f_32(amplitude, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -235,7 +273,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -261,7 +299,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -283,7 +321,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
         },
         codec: SseCodec(decodeSuccessData: sse_decode_engine_status, decodeErrorData: null),
         constMeta: kCrateApiSimpleEngineStatusConstMeta,
@@ -302,7 +340,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8, port: port_);
+          pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9, port: port_);
         },
         codec: SseCodec(decodeSuccessData: sse_decode_unit, decodeErrorData: null),
         constMeta: kCrateApiSimpleInitAppConstMeta,
@@ -391,6 +429,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  DeviceCapabilitiesDto dco_decode_box_autoadd_device_capabilities_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_device_capabilities_dto(raw);
+  }
+
+  @protected
   double dco_decode_box_autoadd_f_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as double;
@@ -418,6 +462,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int dco_decode_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
+  }
+
+  @protected
+  DeviceCapabilitiesDto dco_decode_device_capabilities_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2) throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return DeviceCapabilitiesDto(
+      unprocessedSource: dco_decode_opt_box_autoadd_bool(arr[0]),
+      lowLatency: dco_decode_opt_box_autoadd_bool(arr[1]),
+    );
   }
 
   @protected
@@ -507,7 +562,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   SessionSnapshotDto dco_decode_session_snapshot_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 24) throw Exception('unexpected arr length: expect 24 but see ${arr.length}');
+    if (arr.length != 25) throw Exception('unexpected arr length: expect 25 but see ${arr.length}');
     return SessionSnapshotDto(
       state: dco_decode_session_state_dto(arr[0]),
       backend: dco_decode_String(arr[1]),
@@ -522,17 +577,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       inputUnderruns: dco_decode_CastedPrimitive_u_64(arr[10]),
       xruns: dco_decode_opt_box_autoadd_u_32(arr[11]),
       framesPerBurst: dco_decode_opt_box_autoadd_u_32(arr[12]),
-      inputPreset: dco_decode_opt_box_autoadd_input_preset_dto(arr[13]),
-      inputPresetCode: dco_decode_opt_box_autoadd_i_32(arr[14]),
-      outputLowLatency: dco_decode_opt_box_autoadd_bool(arr[15]),
-      outputExclusive: dco_decode_opt_box_autoadd_bool(arr[16]),
-      inputLowLatency: dco_decode_opt_box_autoadd_bool(arr[17]),
-      inputExclusive: dco_decode_opt_box_autoadd_bool(arr[18]),
-      rebuilds: dco_decode_u_32(arr[19]),
-      fault: dco_decode_opt_box_autoadd_fault_dto(arr[20]),
-      inputFault: dco_decode_opt_box_autoadd_fault_dto(arr[21]),
-      lastError: dco_decode_opt_String(arr[22]),
-      commandsDropped: dco_decode_u_32(arr[23]),
+      requestedInputPreset: dco_decode_opt_box_autoadd_input_preset_dto(arr[13]),
+      inputPreset: dco_decode_opt_box_autoadd_input_preset_dto(arr[14]),
+      inputPresetCode: dco_decode_opt_box_autoadd_i_32(arr[15]),
+      outputLowLatency: dco_decode_opt_box_autoadd_bool(arr[16]),
+      outputExclusive: dco_decode_opt_box_autoadd_bool(arr[17]),
+      inputLowLatency: dco_decode_opt_box_autoadd_bool(arr[18]),
+      inputExclusive: dco_decode_opt_box_autoadd_bool(arr[19]),
+      rebuilds: dco_decode_u_32(arr[20]),
+      fault: dco_decode_opt_box_autoadd_fault_dto(arr[21]),
+      inputFault: dco_decode_opt_box_autoadd_fault_dto(arr[22]),
+      lastError: dco_decode_opt_String(arr[23]),
+      commandsDropped: dco_decode_u_32(arr[24]),
     );
   }
 
@@ -657,6 +713,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  DeviceCapabilitiesDto sse_decode_box_autoadd_device_capabilities_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return sse_decode_device_capabilities_dto(deserializer);
+  }
+
+  @protected
   double sse_decode_box_autoadd_f_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return sse_decode_f_32(deserializer);
@@ -684,6 +748,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return sse_decode_u_32(deserializer);
+  }
+
+  @protected
+  DeviceCapabilitiesDto sse_decode_device_capabilities_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    final var_unprocessedSource = sse_decode_opt_box_autoadd_bool(deserializer);
+    final var_lowLatency = sse_decode_opt_box_autoadd_bool(deserializer);
+    return DeviceCapabilitiesDto(
+      unprocessedSource: var_unprocessedSource,
+      lowLatency: var_lowLatency,
+    );
   }
 
   @protected
@@ -820,6 +895,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     final var_inputUnderruns = sse_decode_CastedPrimitive_u_64(deserializer);
     final var_xruns = sse_decode_opt_box_autoadd_u_32(deserializer);
     final var_framesPerBurst = sse_decode_opt_box_autoadd_u_32(deserializer);
+    final var_requestedInputPreset = sse_decode_opt_box_autoadd_input_preset_dto(deserializer);
     final var_inputPreset = sse_decode_opt_box_autoadd_input_preset_dto(deserializer);
     final var_inputPresetCode = sse_decode_opt_box_autoadd_i_32(deserializer);
     final var_outputLowLatency = sse_decode_opt_box_autoadd_bool(deserializer);
@@ -845,6 +921,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       inputUnderruns: var_inputUnderruns,
       xruns: var_xruns,
       framesPerBurst: var_framesPerBurst,
+      requestedInputPreset: var_requestedInputPreset,
       inputPreset: var_inputPreset,
       inputPresetCode: var_inputPresetCode,
       outputLowLatency: var_outputLowLatency,
@@ -978,6 +1055,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_device_capabilities_dto(
+    DeviceCapabilitiesDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_device_capabilities_dto(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_f_32(double self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_f_32(self, serializer);
@@ -1005,6 +1091,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_u_32(self, serializer);
+  }
+
+  @protected
+  void sse_encode_device_capabilities_dto(DeviceCapabilitiesDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_opt_box_autoadd_bool(self.unprocessedSource, serializer);
+    sse_encode_opt_box_autoadd_bool(self.lowLatency, serializer);
   }
 
   @protected
@@ -1131,6 +1224,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_CastedPrimitive_u_64(self.inputUnderruns, serializer);
     sse_encode_opt_box_autoadd_u_32(self.xruns, serializer);
     sse_encode_opt_box_autoadd_u_32(self.framesPerBurst, serializer);
+    sse_encode_opt_box_autoadd_input_preset_dto(self.requestedInputPreset, serializer);
     sse_encode_opt_box_autoadd_input_preset_dto(self.inputPreset, serializer);
     sse_encode_opt_box_autoadd_i_32(self.inputPresetCode, serializer);
     sse_encode_opt_box_autoadd_bool(self.outputLowLatency, serializer);
@@ -1195,6 +1289,14 @@ class AudioSessionImpl extends RustOpaque implements AudioSession {
     rustArcDecrementStrongCountPtr:
         RustLib.instance.api.rust_arc_decrement_strong_count_AudioSessionPtr,
   );
+
+  /// Tell the session whether the microphone permission is granted. Returns at once; a running
+  /// stream follows it on the next tick.
+  ///
+  /// # Errors
+  /// [`AudioSessionError::Gone`] if the session has shut down.
+  void setMicrophoneAccess({required bool granted}) => RustLib.instance.api
+      .crateApiSessionAudioSessionSetMicrophoneAccess(that: this, granted: granted);
 
   /// Deliver a snapshot to `sink` about 30 times a second, replacing any earlier subscriber.
   /// Delivery stops when Dart cancels the stream.

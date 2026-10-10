@@ -25,8 +25,14 @@ abstract interface class EngineHandle {
   Stream<SessionSnapshot> get snapshots;
 
   /// Run the stream, with the microphone if [input]. Asking for the microphone again retries it
-  /// after an input fault. Only ask for it once the permission is granted.
+  /// after an input fault.
   void start({required bool input});
+
+  /// Tell the engine whether the microphone permission is [granted]. Call it whenever the
+  /// permission is read or requested. A refused microphone is never opened: the stream runs without
+  /// it, and [SessionSnapshot.inputFault] is [AudioFault.permissionDenied]. Granting it later brings
+  /// the microphone back to a running stream.
+  void setMicrophoneAccess({required bool granted});
 
   /// Close the stream.
   void stop();
@@ -40,8 +46,12 @@ abstract interface class EngineHandle {
 
 /// The real engine, over the flutter_rust_bridge boundary.
 class AudioEngine implements EngineHandle {
-  /// Creates a handle. Call [initialize] before anything else.
-  new();
+  /// Creates a handle for a device with [capabilities], from which the engine chooses the
+  /// microphone's input preset (`docs/adr/0024`). Call [initialize] before anything else.
+  new({this.capabilities = AudioDeviceCapabilities.unknown});
+
+  /// What the platform reported about the device.
+  final AudioDeviceCapabilities capabilities;
 
   ffi.AudioSession? _session;
   Stream<SessionSnapshot>? _snapshots;
@@ -56,7 +66,12 @@ class AudioEngine implements EngineHandle {
   Future<void> initialize() async {
     if (_session != null) return;
     await RustLib.init();
-    final session = ffi.AudioSession.spawn();
+    final session = ffi.AudioSession.spawn(
+      capabilities: ffi.DeviceCapabilitiesDto(
+        unprocessedSource: capabilities.unprocessedSource,
+        lowLatency: capabilities.lowLatency,
+      ),
+    );
     _session = session;
     // Subscribe once, for the life of the app, and share it: Rust keeps one subscriber.
     _snapshots = session.snapshots().map(_toDomain).asBroadcastStream();
@@ -76,6 +91,9 @@ class AudioEngine implements EngineHandle {
 
   @override
   void start({required bool input}) => _live.start(input: input);
+
+  @override
+  void setMicrophoneAccess({required bool granted}) => _live.setMicrophoneAccess(granted: granted);
 
   @override
   void stop() => _live.stop();
@@ -111,12 +129,8 @@ SessionSnapshot _toDomain(ffi.SessionSnapshotDto dto) => SessionSnapshot(
     inputUnderruns: dto.inputUnderruns,
     xruns: dto.xruns,
     framesPerBurst: dto.framesPerBurst,
-    inputPreset: switch (dto.inputPreset) {
-      null => null,
-      ffi.InputPresetDto.unprocessed => InputPreset.unprocessed,
-      ffi.InputPresetDto.voiceRecognition => InputPreset.voiceRecognition,
-      ffi.InputPresetDto.other => InputPreset.other,
-    },
+    requestedInputPreset: _preset(dto.requestedInputPreset),
+    inputPreset: _preset(dto.inputPreset),
     inputPresetCode: dto.inputPresetCode,
     outputPath: _path(dto.outputLowLatency, dto.outputExclusive),
     inputPath: _path(dto.inputLowLatency, dto.inputExclusive),
@@ -124,6 +138,13 @@ SessionSnapshot _toDomain(ffi.SessionSnapshotDto dto) => SessionSnapshot(
     commandsDropped: dto.commandsDropped,
   ),
 );
+
+InputPreset? _preset(ffi.InputPresetDto? preset) => switch (preset) {
+  null => null,
+  ffi.InputPresetDto.unprocessed => InputPreset.unprocessed,
+  ffi.InputPresetDto.voiceRecognition => InputPreset.voiceRecognition,
+  ffi.InputPresetDto.other => InputPreset.other,
+};
 
 AudioFault? _fault(ffi.FaultDto? fault) => switch (fault) {
   null => null,

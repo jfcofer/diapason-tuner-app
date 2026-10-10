@@ -60,6 +60,20 @@ impl From<&AudioError> for Fault {
     }
 }
 
+/// What the platform says about the microphone permission. The session needs it because a
+/// refused microphone does not say why: `AAudio` fails with a generic code (`-896`), and iOS records
+/// silence. So the session is told, and never asks the platform for a microphone it may not use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MicrophoneAccess {
+    /// Not yet reported. The microphone is tried, and a failure is blamed on the device.
+    #[default]
+    Unknown,
+    /// The user granted the permission.
+    Granted,
+    /// The user refused it, or revoked it.
+    Denied,
+}
+
 /// Everything the UI and the diagnostics overlay need, at one moment.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SessionSnapshot {
@@ -124,6 +138,7 @@ struct Retry {
 pub struct Supervisor<B> {
     backend: B,
     desired: Desired,
+    microphone: MicrophoneAccess,
     live: Option<Live>,
     state: SessionState,
     retry: Retry,
@@ -142,6 +157,7 @@ impl<B: AudioBackend> Supervisor<B> {
         Self {
             backend,
             desired: Desired::default(),
+            microphone: MicrophoneAccess::Unknown,
             live: None,
             state: SessionState::Stopped,
             retry: Retry::default(),
@@ -171,6 +187,23 @@ impl<B: AudioBackend> Supervisor<B> {
             self.fault = None;
             self.retry = Retry::default();
             self.open_or_retry(now_ns, false);
+        }
+    }
+
+    /// Record the microphone permission. A running session follows it on the next
+    /// [`tick`](Self::tick), with a brief reopen of the stream: denying it releases the
+    /// microphone, and a new grant retries a microphone that failed, since under an unknown
+    /// permission the likeliest cause was the permission. Repeating a grant is not a new fact, so
+    /// it retries nothing.
+    ///
+    /// While the permission is denied and the microphone wanted, the input fault is
+    /// [`Fault::PermissionDenied`]. It is derived, not stored, so no order of calls can lose it.
+    pub fn set_microphone_access(&mut self, access: MicrophoneAccess) {
+        let newly_granted =
+            access == MicrophoneAccess::Granted && self.microphone != MicrophoneAccess::Granted;
+        self.microphone = access;
+        if newly_granted {
+            self.input_fault = None;
         }
     }
 
@@ -248,15 +281,30 @@ impl<B: AudioBackend> Supervisor<B> {
             report: self.backend.report(),
             rebuilds: self.rebuilds,
             fault: self.fault,
-            input_fault: self.input_fault,
+            input_fault: self.reported_input_fault(),
             last_error: self.last_error.clone(),
             commands_dropped: self.commands_dropped,
         }
     }
 
-    /// The microphone is wanted, and has not failed since it was last asked for.
+    /// Why the microphone is not running although it is wanted. A denied permission is the reason
+    /// whenever it holds, whatever failed before it; it needs no stream to be true, only a session.
+    fn reported_input_fault(&self) -> Option<Fault> {
+        if self.desired.input
+            && self.microphone == MicrophoneAccess::Denied
+            && self.state != SessionState::Stopped
+        {
+            Some(Fault::PermissionDenied)
+        } else {
+            self.input_fault
+        }
+    }
+
+    /// The microphone is wanted, may be used, and has not failed since it was last asked for.
     fn wants_input(&self) -> bool {
-        self.desired.input && self.input_fault.is_none()
+        self.desired.input
+            && self.microphone != MicrophoneAccess::Denied
+            && self.input_fault.is_none()
     }
 
     /// Open a stream; on failure, schedule the next attempt or give up.
@@ -307,7 +355,8 @@ impl<B: AudioBackend> Supervisor<B> {
     /// fails, so the metronome never depends on it (`docs/PLATFORM_AUDIO.md` §2).
     ///
     /// The microphone is blamed only when the output opens without it. If both fail, the device
-    /// failed, so the microphone stays wanted and the next attempt asks for it again.
+    /// failed, so the microphone stays wanted and the next attempt asks for it again. A microphone
+    /// known to be denied is not asked for at all ([`Self::wants_input`]).
     fn open_stream(&mut self) -> Result<(), AudioError> {
         if !self.wants_input() {
             return self.try_open(false);
