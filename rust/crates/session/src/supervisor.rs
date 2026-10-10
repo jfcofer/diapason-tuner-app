@@ -93,6 +93,8 @@ pub struct SessionSnapshot {
     pub worst_callback_ns: u64,
     /// Blocks the microphone had not delivered in time, on the current stream.
     pub input_underruns: u64,
+    /// Microphone frames discarded from a backlog, on the current stream: latency removed.
+    pub input_frames_shed: u64,
     /// Path, preset, burst and xruns, as the backend reports them.
     pub report: BackendReport,
     /// Streams rebuilt after the platform broke one: a route change or a lost device. The UI shows
@@ -149,6 +151,8 @@ pub struct Supervisor<B> {
     commands_dropped: u32,
     /// A command was dropped; send the desired state again on the next tick.
     resend: bool,
+    /// Output underruns of the open stream already answered by growing its buffer.
+    output_xruns_seen: u32,
 }
 
 impl<B: AudioBackend> Supervisor<B> {
@@ -167,6 +171,7 @@ impl<B: AudioBackend> Supervisor<B> {
             last_error: None,
             commands_dropped: 0,
             resend: false,
+            output_xruns_seen: 0,
         }
     }
 
@@ -251,8 +256,11 @@ impl<B: AudioBackend> Supervisor<B> {
                 } else if live.input != self.wants_input() {
                     self.close_stream();
                     self.open_or_retry(now_ns, false);
-                } else if self.resend {
-                    self.resend_desired();
+                } else {
+                    if self.resend {
+                        self.resend_desired();
+                    }
+                    self.grow_buffer_on_underrun();
                 }
             }
             SessionState::Recovering if now_ns >= self.retry.next_at_ns => {
@@ -278,12 +286,41 @@ impl<B: AudioBackend> Supervisor<B> {
             callbacks: handle.map_or(0, StreamHandle::callbacks),
             worst_callback_ns: handle.map_or(0, StreamHandle::worst_callback_ns),
             input_underruns: handle.map_or(0, StreamHandle::input_underruns),
+            input_frames_shed: handle.map_or(0, StreamHandle::input_frames_shed),
             report: self.backend.report(),
             rebuilds: self.rebuilds,
             fault: self.fault,
             input_fault: self.reported_input_fault(),
             last_error: self.last_error.clone(),
             commands_dropped: self.commands_dropped,
+        }
+    }
+
+    /// The output underran since the last tick: grow its buffer by one burst, up to its capacity.
+    /// A larger buffer is latency, so it grows only when the device has shown it needs it, and
+    /// starts again at two bursts with every new stream (`docs/adr/0025`).
+    fn grow_buffer_on_underrun(&mut self) {
+        let report = self.backend.report();
+        let (Some(xruns), Some(buffer), Some(capacity), Some(burst)) = (
+            report.output_xruns,
+            report.buffer_frames,
+            report.buffer_capacity_frames,
+            report.frames_per_burst,
+        ) else {
+            return;
+        };
+        if xruns <= self.output_xruns_seen {
+            // A count that went down was reset by the platform within the stream: follow it, or
+            // growth would stay off until the count climbed past its old mark.
+            self.output_xruns_seen = xruns;
+            return;
+        }
+        self.output_xruns_seen = xruns;
+        if buffer < capacity {
+            // The size granted is in the next report; a refusal leaves the buffer as it was.
+            let _ = self
+                .backend
+                .set_buffer_frames(buffer.saturating_add(burst).min(capacity));
         }
     }
 
@@ -390,8 +427,10 @@ impl<B: AudioBackend> Supervisor<B> {
             handle,
             input,
         });
-        // The new engine was given the whole desired state, so nothing is owed to it.
+        // The new engine was given the whole desired state, so nothing is owed to it. The new
+        // stream counts underruns from zero.
         self.resend = false;
+        self.output_xruns_seen = 0;
         Ok(())
     }
 
