@@ -26,12 +26,17 @@ doctor-selftest *sections:
     @tools/doctor-selftest.sh {{sections}}
 
 # Clean clone → ready to work.
-setup: doctor
+# install-ktfmt first: doctor fails while the jar is missing, and installing needs only curl.
+setup: install-ktfmt doctor
     fvm install
     dart pub get                           # pub workspace resolves every member
     cargo fetch
     lefthook install
     just gen
+
+# The pinned Kotlin formatter, checksum-verified, into the user cache (adr/0023).
+install-ktfmt:
+    @tools/ktfmt.sh install                # [T-011]
 
 # What a fresh checkout needs before Dart can be analysed, tested or built: resolve the workspace
 # and run Dart codegen. Riverpod's *.g.dart are generated, not committed (AGENTS.md §8), so without
@@ -68,7 +73,7 @@ gen-dart:
 # these recipes, never a command of its own (docs/CI_RELEASE.md §1).
 verify: doctor-selftest fmt-check lint test deny doc-rust check-drift check-deps docs-check lint-ci ios-project-check
 
-fmt-check: fmt-check-dart fmt-check-rust
+fmt-check: fmt-check-dart fmt-check-rust fmt-check-kotlin
 
 fmt-check-dart:
     {{dart_files}} | xargs -0 dart format --output=none --set-exit-if-changed
@@ -76,10 +81,14 @@ fmt-check-dart:
 fmt-check-rust:
     cargo fmt --all -- --check
 
+fmt-check-kotlin:
+    @tools/ktfmt.sh check                  # [T-011] our .kt only; generated and Gradle files excluded
+
 fix:
     {{dart_files}} | xargs -0 dart format
     cargo fmt --all
     dart fix --apply
+    tools/ktfmt.sh format                  # last: it needs the jar, the others need nothing
 
 lint: lint-dart lint-rust
 

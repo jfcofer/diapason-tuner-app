@@ -18,6 +18,8 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 # shellcheck disable=SC1091
 source tools/versions.env
+# shellcheck source=tools/jvm.sh
+source tools/jvm.sh
 
 SECTIONS=(flutter java rust rust-tools frb android repo-tools dev)
 for arg in "$@"; do
@@ -105,28 +107,8 @@ fi
 if want java; then
 section "Java (the JDK Gradle will actually use)"
 
-flutter_jdk=""
-if [[ -f "$HOME/.config/flutter/settings" ]] && command -v python3 >/dev/null 2>&1; then
-    flutter_jdk="$(python3 -c '
-import json, sys
-try:
-    print(json.load(open(sys.argv[1])).get("jdk-dir", ""))
-except Exception:
-    print("")
-' "$HOME/.config/flutter/settings" 2>/dev/null)"
-fi
-
-java_bin=""
-if [[ -n "$flutter_jdk" && -x "$flutter_jdk/bin/java" ]]; then
-    java_bin="$flutter_jdk/bin/java"
-    java_src="flutter config --jdk-dir"
-elif [[ -n "${JAVA_HOME:-}" && -x "${JAVA_HOME}/bin/java" ]]; then
-    java_bin="$JAVA_HOME/bin/java"
-    java_src="JAVA_HOME"
-elif command -v java >/dev/null 2>&1; then
-    java_bin="$(command -v java)"
-    java_src="PATH"
-fi
+java_bin=''; java_src=''
+IFS=$'\t' read -r java_bin java_src < <(find_jdk)
 
 jdk_fix="flutter config --jdk-dir=\"\$HOME/.sdkman/candidates/java/$JAVA_SDKMAN_ID\""
 if [[ -z "$java_bin" ]]; then
@@ -289,6 +271,16 @@ if ! xcodeproj="$(ruby -e "gem 'xcodeproj', '$XCODEPROJ_VERSION'; require 'xcode
     fail "xcodeproj gem" "$XCODEPROJ_VERSION not installed" "$xcodeproj_fix"
 else
     pass "xcodeproj gem" "$xcodeproj"
+fi
+# The Kotlin formatter is a jar in the user cache (tools/ktfmt.sh); the pin includes its checksum.
+ktfmt_path="$(ktfmt_jar)"
+if [[ ! -f "$ktfmt_path" ]]; then
+    fail "ktfmt" "$KTFMT_VERSION not installed" "just install-ktfmt"
+elif [[ "$(sha256_of "$ktfmt_path")" != "$KTFMT_SHA256" ]]; then
+    fail "ktfmt" "$KTFMT_VERSION jar does not match the pinned checksum" \
+         "rm \"$ktfmt_path\" && just install-ktfmt"
+else
+    pass "ktfmt" "$KTFMT_VERSION"
 fi
 fi
 
