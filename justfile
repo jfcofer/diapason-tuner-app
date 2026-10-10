@@ -1,7 +1,8 @@
 # Diapasón — the single command surface for humans, agents and CI.
 #
 # Rule: if CI runs it, it is a recipe here. If an agent needs to repeat it, it is a recipe here.
-# Recipes marked [T-001] are the contract for the scaffold task and are not implemented yet.
+# A [T-###] tag names the task that introduced a recipe. [T-0xx, M#] marks one whose script does not
+# exist yet: it is a placeholder for that milestone and fails if run.
 
 set shell := ["bash", "-uc"]
 
