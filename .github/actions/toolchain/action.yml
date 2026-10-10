@@ -26,6 +26,9 @@ inputs:
   xcodeproj:
     description: Install the pinned xcodeproj gem (just ios-project). Needs the runner's Ruby.
     default: "false"
+  ktfmt:
+    description: Install the pinned, checksum-verified ktfmt jar. Running it (just fmt-check-kotlin) needs java.
+    default: "false"
   tools:
     description: Extra binaries for taiki-e/install-action, comma-separated. just is always installed.
     default: ""
@@ -102,6 +105,11 @@ runs:
       env:
         VERSION: ${{ steps.pins.outputs.xcodeproj }}
       run: gem install --user-install --no-document xcodeproj -v "$VERSION"
+
+    # The same script `just setup` runs: it verifies the jar against the pinned SHA-256.
+    - if: inputs.ktfmt == 'true'
+      shell: bash
+      run: tools/ktfmt.sh install
 
     # After rust-cache, so a cached ~/.cargo/bin makes this a no-op.
     - if: inputs.frb == 'true'

@@ -70,7 +70,8 @@ jobs:
       - run: just doctor flutter
       - run: just goldens
 
-  # Repository invariants: pins, generated code, dependency direction, docs, CI config, iOS project.
+  # Repository invariants: pins, generated code, dependency direction, docs, CI config, iOS project,
+  # and Kotlin formatting, which needs only a JDK and so lives here rather than in build-android.
   checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -79,14 +80,17 @@ jobs:
       - uses: ./.github/actions/toolchain
         with:
           flutter: "true"
+          java: "true"
           rust: "true"
           frb: "true"
           actionlint: "true"
           xcodeproj: "true"
+          ktfmt: "true"
           tools: shellcheck
       - run: just deps   # pub get + Dart codegen
-      - run: just doctor flutter rust frb repo-tools
-      - run: just doctor-selftest flutter rust frb repo-tools   # prove doctor still fails when it should
+      - run: just doctor flutter java rust frb repo-tools
+      - run: just doctor-selftest flutter java rust frb repo-tools   # prove doctor still fails when it should
+      - run: just fmt-check-kotlin                    # ktfmt, kotlinlang style (adr/0023)
       - run: just check-drift                         # regenerating must produce no diff
       - run: just ios-project-check                   # regenerating the Xcode project, likewise
       - run: just check-deps                          # one-way dependency rule, AGENTS.md §5
