@@ -131,12 +131,15 @@ class SessionSnapshotDto {
     required this.callbacks,
     required this.worstCallbackNs,
     required this.inputUnderruns,
+    required this.inputFramesShed,
     required this.rebuilds,
     required this.commandsDropped,
     this.maxBlockFrames,
     this.toneHz,
     this.xruns,
     this.framesPerBurst,
+    this.bufferFrames,
+    this.bufferCapacityFrames,
     this.requestedInputPreset,
     this.inputPreset,
     this.inputPresetCode,
@@ -187,6 +190,15 @@ class SessionSnapshotDto {
 
   /// The output's burst size, in frames.
   final int? framesPerBurst;
+
+  /// The output buffer, in frames: the stream's latency.
+  final int? bufferFrames;
+
+  /// The most the output buffer can grow to.
+  final int? bufferCapacityFrames;
+
+  /// Microphone frames discarded from a backlog.
+  final int inputFramesShed;
 
   /// The input preset requested.
   final InputPresetDto? requestedInputPreset;
@@ -239,6 +251,9 @@ class SessionSnapshotDto {
       inputUnderruns.hashCode ^
       xruns.hashCode ^
       framesPerBurst.hashCode ^
+      bufferFrames.hashCode ^
+      bufferCapacityFrames.hashCode ^
+      inputFramesShed.hashCode ^
       requestedInputPreset.hashCode ^
       inputPreset.hashCode ^
       inputPresetCode.hashCode ^
@@ -270,6 +285,9 @@ class SessionSnapshotDto {
           inputUnderruns == other.inputUnderruns &&
           xruns == other.xruns &&
           framesPerBurst == other.framesPerBurst &&
+          bufferFrames == other.bufferFrames &&
+          bufferCapacityFrames == other.bufferCapacityFrames &&
+          inputFramesShed == other.inputFramesShed &&
           requestedInputPreset == other.requestedInputPreset &&
           inputPreset == other.inputPreset &&
           inputPresetCode == other.inputPresetCode &&

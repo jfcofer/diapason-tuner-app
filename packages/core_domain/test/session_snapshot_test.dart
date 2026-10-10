@@ -55,4 +55,27 @@ void main() {
       expect(failed.diagnostics, same(diagnostics));
     });
   });
+  group('callbackLoad', () {
+    SessionSnapshot running({int? burst, Duration worst = Duration.zero, int rate = 48000}) =>
+        SessionSnapshot(
+          state: SessionState.running,
+          sampleRate: rate,
+          diagnostics: StreamDiagnostics(
+            backend: 'aaudio',
+            framesPerBurst: burst,
+            worstCallback: worst,
+          ),
+        );
+
+    test('is the worst callback over one burst period', () {
+      // 960 frames at 48 kHz is 20 ms; 3 ms of it is 15 %, the budget.
+      final load = running(burst: 960, worst: const Duration(milliseconds: 3)).callbackLoad;
+      expect(load, closeTo(0.15, 1e-9));
+    });
+
+    test('is unknown with no burst or no stream', () {
+      expect(running().callbackLoad, isNull);
+      expect(running(burst: 960, rate: 0).callbackLoad, isNull);
+    });
+  });
 }

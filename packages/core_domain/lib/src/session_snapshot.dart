@@ -79,6 +79,9 @@ class StreamDiagnostics {
     this.inputUnderruns = 0,
     this.xruns,
     this.framesPerBurst,
+    this.bufferFrames,
+    this.bufferCapacityFrames,
+    this.inputFramesShed = 0,
     this.requestedInputPreset,
     this.inputPreset,
     this.inputPresetCode,
@@ -100,7 +103,7 @@ class StreamDiagnostics {
   /// Audio callbacks completed.
   final int callbacks;
 
-  /// The slowest audio callback so far. Budget: 15 % of the buffer period
+  /// The slowest audio callback so far. Budget: 15 % of one burst's period
   /// (`docs/AUDIO_ENGINE.md` §1).
   final Duration worstCallback;
 
@@ -112,6 +115,16 @@ class StreamDiagnostics {
 
   /// The output's burst size in frames, where the platform has one.
   final int? framesPerBurst;
+
+  /// The output buffer in frames: the latency the stream runs at. Grown one burst at a time when
+  /// the output underruns (`docs/adr/0025`).
+  final int? bufferFrames;
+
+  /// The most [bufferFrames] can grow to.
+  final int? bufferCapacityFrames;
+
+  /// Microphone frames discarded from a backlog: latency the tuner was spared.
+  final int inputFramesShed;
 
   /// The microphone processing the engine asked for. `null` without a microphone.
   final InputPreset? requestedInputPreset;
@@ -145,6 +158,9 @@ class StreamDiagnostics {
       other.inputUnderruns == inputUnderruns &&
       other.xruns == xruns &&
       other.framesPerBurst == framesPerBurst &&
+      other.bufferFrames == bufferFrames &&
+      other.bufferCapacityFrames == bufferCapacityFrames &&
+      other.inputFramesShed == inputFramesShed &&
       other.requestedInputPreset == requestedInputPreset &&
       other.inputPreset == inputPreset &&
       other.inputPresetCode == inputPresetCode &&
@@ -163,6 +179,9 @@ class StreamDiagnostics {
     inputUnderruns,
     xruns,
     framesPerBurst,
+    bufferFrames,
+    bufferCapacityFrames,
+    inputFramesShed,
     requestedInputPreset,
     inputPreset,
     inputPresetCode,
@@ -226,6 +245,16 @@ class SessionSnapshot {
 
   /// The numbers the diagnostics overlay shows.
   final StreamDiagnostics diagnostics;
+
+  /// The slowest callback as a share of one burst's duration, which is how long a callback has
+  /// before the speaker waits. Budget 0.15; above 0.4 is a failure (`docs/AUDIO_ENGINE.md` §1).
+  /// `null` with no stream open or no burst reported.
+  double? get callbackLoad {
+    final burst = diagnostics.framesPerBurst;
+    if (burst == null || burst <= 0 || sampleRate <= 0) return null;
+    final periodMicroseconds = burst * Duration.microsecondsPerSecond / sampleRate;
+    return diagnostics.worstCallback.inMicroseconds / periodMicroseconds;
+  }
 
   /// Returns a copy with the given fields replaced. Nullable fields cannot be cleared through it;
   /// build a new snapshot for that.
