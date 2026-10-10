@@ -10,19 +10,18 @@
 **Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
-- **Merged:** T-006, T-002a, T-007, T-008, T-002b parts 1 and 2a, T-009, T-010, T-011 (PRs
-  #6–#9, #11–#15), and Dependabot #2 and #10.
-- **Branch in flight:** `feat/T-002b-capabilities` (2b-i), passed on the Redmi; its PR is next.
+- **Merged:** T-006, T-002a, T-007, T-008, T-002b parts 1, 2a and 2b-i, T-009, T-010, T-011
+  (PRs #6–#9, #11–#16), and Dependabot #2 and #10.
+- **Branch in flight:** `feat/T-002b-stream-tuning` (2b-ii), not pushed.
 - The dev flavour runs on the Redmi. The tuner screen asks for the microphone and shows the live
   session.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-002b-android-duplex.md`**: parts 1 and 2a merged (#11, #13). **2b-i is
-built and device-tested** (`adr/0024`): capabilities over Pigeon, the preset rule in Rust, the
-permission told to the session; VoiceRecognition is proven applied on the Redmi. Then 2b-ii
-(stream tuning).
+**`docs/agents/tasks/T-002b-android-duplex.md`**: parts 1, 2a and 2b-i merged (#11, #13, #16).
+**2b-ii is built** (`adr/0025`): backlog shedding, buffer growth, the preset fallback, the callback
+budget and the shipped-`.so` gate. It owes the device runs the task file lists, then its PR.
 
 ## Hardware this project actually has
 
@@ -68,6 +67,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
   new `Command` needs a replay test.
 - `0023` ktfmt formats the Kotlin we write (not `*.g.kt`, not Gradle `*.kts`), in `verify`.
 - `0024` Pigeon for platform channels; Rust picks the preset; Dart tells the session the permission.
+- `0025` the input backlog is shed on the audio thread; buffer growth is session policy, off it.
 
 ## Traps a later session will otherwise re-discover
 
@@ -113,8 +113,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **The PR for 2b-i** (push when the owner says so).
-2. **`T-002b` 2b-ii**, then **part 3** (overlay, lifecycle, latency).
+1. **2b-ii's device runs, then its PR** (push when the owner says so).
+2. **`T-002b` part 3**: the overlay (first golden), lifecycle, round-trip latency.
 3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
 4. `T-004` whenever a slice is waiting on CI. **`T-003` (pitch core, no task file yet) can run in parallel** with M1:
    it is host-only `dsp` work with no device dependency.
