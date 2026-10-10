@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:audio_engine/audio_engine.dart';
 import 'package:core_platform/core_platform.dart';
 import 'package:diapason/app.dart';
+import 'package:diapason/flavor.dart';
 import 'package:feature_tuner/feature_tuner.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -12,8 +13,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 ///
 /// Every flavour entrypoint funnels through here so that initialisation order is defined in exactly
 /// one place. The engine is initialised *before* `runApp` because `engineStatusProvider` reads it
-/// synchronously during the first build. Initialising it starts the session thread; no stream
-/// opens, and no permission is asked for, until the user chooses to.
+/// synchronously during the first build. It needs the device's audio capabilities first, from
+/// which it chooses the microphone's input preset (`docs/adr/0024`). Initialising it starts the
+/// session thread; no stream opens, and no permission is asked for, until the user chooses to.
 Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -25,7 +27,8 @@ Future<void> bootstrap() async {
     }
   };
 
-  final engine = AudioEngine();
+  final capabilities = await PlatformAudioCapabilities().read();
+  final engine = AudioEngine(capabilities: capabilities);
   await engine.initialize();
 
   runApp(
@@ -33,6 +36,7 @@ Future<void> bootstrap() async {
       overrides: [
         engineHandleProvider.overrideWithValue(engine),
         microphonePermissionProvider.overrideWithValue(const PlatformMicrophonePermission()),
+        showEngineDiagnosticsProvider.overrideWithValue(Flavor.showEngineDiagnostics),
       ],
       child: const DiapasonApp(),
     ),
