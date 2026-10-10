@@ -3,6 +3,7 @@
 // `just test-integration-android`, which runs it with the microphone revoked and then granted.
 import 'package:audio_engine/audio_engine.dart';
 import 'package:audio_engine/testing.dart';
+import 'package:core_domain/core_domain.dart';
 import 'package:core_platform/core_platform.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,18 +32,32 @@ void main() {
             'expected the microphone $expectedMicrophone; set it so on the device and run again',
       );
     }
-    final engine = AudioEngine();
-    await tester.runAsync(() => verifyEngineContract(engine, microphoneGranted: granted));
+    final capabilities = await tester.runAsync(PlatformAudioCapabilities().read);
+    debugPrint('device capabilities: $capabilities');
+    final engine = AudioEngine(capabilities: capabilities ?? AudioDeviceCapabilities.unknown);
+    await tester.runAsync(
+      () => verifyEngineContract(
+        engine,
+        microphoneGranted: granted,
+        reportsInputPreset: defaultTargetPlatform == TargetPlatform.android,
+      ),
+    );
 
-    // Record what the platform says when the microphone is refused, for the device log in the
-    // task file. T-002b part 2b maps it to AudioFault.permissionDenied.
-    if (!granted) {
-      engine.start(input: true);
-      final refused = await tester.runAsync(
-        () => engine.snapshots.firstWhere((s) => s.inputFault != null),
-      );
-      debugPrint('microphone refused: ${refused?.inputFault} / ${refused?.diagnostics.lastError}');
-      engine.stop();
-    }
+    // Record what the device gives the microphone, for the device log in the task file: the preset
+    // requested and obtained, or, refused, the fault (the engine no longer asks the platform).
+    engine
+      ..setMicrophoneAccess(granted: granted)
+      ..start(input: true);
+    final settled = await tester.runAsync(
+      () => engine.snapshots.firstWhere((s) => s.inputActive || s.inputFault != null),
+    );
+    final diagnostics = settled?.diagnostics;
+    debugPrint(
+      'microphone: active ${settled?.inputActive}, fault ${settled?.inputFault}, preset '
+      '${diagnostics?.requestedInputPreset} requested, ${diagnostics?.inputPreset} obtained '
+      '(code ${diagnostics?.inputPresetCode}), input path ${diagnostics?.inputPath}, '
+      '${settled?.sampleRate} Hz, burst ${diagnostics?.framesPerBurst}',
+    );
+    engine.stop();
   });
 }

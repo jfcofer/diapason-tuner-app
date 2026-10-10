@@ -20,6 +20,7 @@ class SessionPanel extends ConsumerWidget {
     final permission = ref.watch(tunerControllerProvider);
     final snapshot = ref.watch(sessionSnapshotProvider).value;
     final controller = ref.read(tunerControllerProvider.notifier);
+    final diagnostics = ref.watch(showEngineDiagnosticsProvider);
     final running = snapshot?.state == SessionState.running;
     final tonePlaying = snapshot?.toneHz != null;
 
@@ -27,7 +28,10 @@ class SessionPanel extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         _Microphone(permission: permission, controller: controller),
-        if (snapshot != null) ...[const SizedBox(height: 24), _Readout(snapshot: snapshot)],
+        if (snapshot != null) ...[
+          const SizedBox(height: 24),
+          _Readout(snapshot: snapshot, diagnostics: diagnostics),
+        ],
         if (snapshot?.inputFault != null && permission == MicrophonePermissionStatus.granted) ...[
           const SizedBox(height: 12),
           FilledButton(
@@ -36,12 +40,15 @@ class SessionPanel extends ConsumerWidget {
             child: const Text('Retry microphone'),
           ),
         ],
-        const SizedBox(height: 24),
-        OutlinedButton(
-          key: const Key('tuner.testTone'),
-          onPressed: () => controller.toggleTestTone(playing: tonePlaying, streamRunning: running),
-          child: Text(tonePlaying ? 'Stop test tone' : 'Play A4 test tone'),
-        ),
+        if (diagnostics) ...[
+          const SizedBox(height: 24),
+          OutlinedButton(
+            key: const Key('tuner.testTone'),
+            onPressed: () =>
+                controller.toggleTestTone(playing: tonePlaying, streamRunning: running),
+            child: Text(tonePlaying ? 'Stop test tone' : 'Play A4 test tone'),
+          ),
+        ],
       ],
     );
   }
@@ -93,9 +100,10 @@ class _Microphone extends StatelessWidget {
 }
 
 class _Readout extends StatelessWidget {
-  const new({required this.snapshot});
+  const new({required this.snapshot, required this.diagnostics});
 
   final SessionSnapshot snapshot;
+  final bool diagnostics;
 
   @override
   Widget build(BuildContext context) {
@@ -107,6 +115,8 @@ class _Readout extends StatelessWidget {
     final lines = <String>[
       'Stream: ${snapshot.state.name} at ${snapshot.sampleRate} Hz',
       if (snapshot.inputActive) 'Microphone: $level' else 'Microphone: off',
+      if (snapshot.diagnostics.requestedInputPreset case final requested? when diagnostics)
+        'Preset: ${requested.name} requested, ${_presetName(snapshot.diagnostics)} obtained',
       if (snapshot.inputFault case final fault?) 'Microphone unavailable: ${fault.name}',
       if (snapshot.fault case final fault?) 'Audio stopped: ${fault.name}',
       if (snapshot.rebuilds > 0) 'Audio route changed ${snapshot.rebuilds}×',
@@ -118,3 +128,10 @@ class _Readout extends StatelessWidget {
     );
   }
 }
+
+/// The preset obtained, by name, or the platform's own code when it is one this app never asks for.
+String _presetName(StreamDiagnostics diagnostics) => switch (diagnostics.inputPreset) {
+  null => 'unknown',
+  InputPreset.other => 'code ${diagnostics.inputPresetCode}',
+  final preset => preset.name,
+};

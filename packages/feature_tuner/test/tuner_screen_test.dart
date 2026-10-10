@@ -6,11 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The screen over fakes: no native library, no platform channel.
+/// The screen over fakes: no native library, no platform channel. Diagnostics are on, as in the
+/// dev flavour, unless [diagnostics] says otherwise.
 Future<FakeAudioEngine> pumpTuner(
   WidgetTester tester, {
   required FakeMicrophonePermission permission,
   FakeAudioEngine? engine,
+  bool diagnostics = true,
 }) async {
   final fake = engine ?? FakeAudioEngine();
   await tester.pumpWidget(
@@ -18,6 +20,7 @@ Future<FakeAudioEngine> pumpTuner(
       overrides: [
         engineHandleProvider.overrideWithValue(fake),
         microphonePermissionProvider.overrideWithValue(permission),
+        showEngineDiagnosticsProvider.overrideWithValue(diagnostics),
       ],
       child: const MaterialApp(home: TunerScreen()),
     ),
@@ -81,6 +84,34 @@ void main() {
     expect(engine.current.state, SessionState.stopped);
     expect(micMessage(tester), contains('needs the microphone'));
     expect(find.text('Try again'), findsOneWidget);
+  });
+
+  testWidgets('a refusal is told to the engine, which then never opens the microphone', (
+    tester,
+  ) async {
+    final permission = FakeMicrophonePermission(onRequest: MicrophonePermissionStatus.denied);
+    final engine = await pumpTuner(tester, permission: permission);
+    await tapAndSettle(tester, const Key('tuner.micAction'));
+
+    engine.start(input: true);
+    expect(engine.current.inputActive, isFalse);
+    expect(engine.current.inputFault, AudioFault.permissionDenied);
+  });
+
+  testWidgets('with diagnostics on, the preset requested and obtained are shown', (tester) async {
+    await pumpTuner(tester, permission: FakeMicrophonePermission());
+    await tapAndSettle(tester, const Key('tuner.micAction'));
+    expect(
+      find.text('Preset: voiceRecognition requested, voiceRecognition obtained'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('without diagnostics, no test tone and no preset readout', (tester) async {
+    await pumpTuner(tester, permission: FakeMicrophonePermission(), diagnostics: false);
+    await tapAndSettle(tester, const Key('tuner.micAction'));
+    expect(find.byKey(const Key('tuner.testTone')), findsNothing);
+    expect(find.textContaining('Preset:'), findsNothing);
   });
 
   testWidgets('a permanent refusal sends the user to Settings, without prompting', (tester) async {

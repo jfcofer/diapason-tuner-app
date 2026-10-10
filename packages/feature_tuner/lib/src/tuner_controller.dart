@@ -12,6 +12,12 @@ MicrophonePermission microphonePermission(Ref ref) => throw UnimplementedError(
   'override microphonePermissionProvider in bootstrap.dart or your test',
 );
 
+/// Whether development diagnostics show: the A4 test tone and the stream's preset readout. Off
+/// unless overridden, so a build that forgets the override ships without them; `bootstrap.dart`
+/// overrides it from the flavour (`docs/CI_RELEASE.md` §6).
+@Riverpod(keepAlive: true)
+bool showEngineDiagnostics(Ref ref) => false;
+
 /// The tuner's control flow: permission first, then the stream (`docs/PLATFORM_AUDIO.md` §2).
 ///
 /// State is the microphone permission as of the last attempt to listen, or `null` before the
@@ -22,8 +28,9 @@ class TunerController extends _$TunerController {
   @override
   MicrophonePermissionStatus? build() => null;
 
-  /// Ask for the microphone if needed, then open the stream with it if granted. Without it, no
-  /// stream is opened for the tuner's sake: the screen shows how to recover instead.
+  /// Ask for the microphone if needed, tell the engine the answer, then open the stream with the
+  /// microphone if granted. Without it, no stream is opened for the tuner's sake: the screen shows
+  /// how to recover instead.
   Future<void> listen() async {
     final permission = ref.read(microphonePermissionProvider);
     var status = await permission.status();
@@ -33,9 +40,10 @@ class TunerController extends _$TunerController {
     }
     if (!ref.mounted) return;
     state = status;
-    if (status == MicrophonePermissionStatus.granted) {
-      ref.read(engineHandleProvider).start(input: true);
-    }
+    final granted = status == MicrophonePermissionStatus.granted;
+    // The engine cannot tell a refused microphone from a broken one by itself (docs/adr/0024).
+    final engine = ref.read(engineHandleProvider)..setMicrophoneAccess(granted: granted);
+    if (granted) engine.start(input: true);
   }
 
   /// Ask for the microphone again after the engine reported an input fault, with the permission
