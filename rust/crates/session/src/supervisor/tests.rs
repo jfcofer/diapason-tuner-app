@@ -20,6 +20,10 @@ struct Flaky {
     opens: u32,
     /// Open attempts that asked for the microphone.
     input_opens: u32,
+    /// What `report` says while a stream is open, for the buffer policy.
+    report: BackendReport,
+    /// Every buffer size the supervisor asked for.
+    buffer_requests: Vec<u32>,
 }
 
 impl Flaky {
@@ -30,6 +34,8 @@ impl Flaky {
             fail_input: None,
             opens: 0,
             input_opens: 0,
+            report: BackendReport::default(),
+            buffer_requests: Vec::new(),
         }
     }
 }
@@ -67,8 +73,33 @@ impl AudioBackend for Flaky {
         self.inner.timestamp()
     }
 
+    fn report(&self) -> BackendReport {
+        if self.inner.actual_config().is_some() {
+            self.report
+        } else {
+            BackendReport::default()
+        }
+    }
+
+    fn set_buffer_frames(&mut self, frames: u32) -> Option<u32> {
+        self.buffer_requests.push(frames);
+        self.report.buffer_frames = Some(frames);
+        Some(frames)
+    }
+
     fn close(&mut self) -> diapason_audio_io::Result<()> {
         self.inner.close()
+    }
+}
+
+/// A device that grants two 192-frame bursts and could hold eight.
+fn tunable() -> BackendReport {
+    BackendReport {
+        output_xruns: Some(0),
+        buffer_frames: Some(384),
+        buffer_capacity_frames: Some(1536),
+        frames_per_burst: Some(192),
+        ..BackendReport::default()
     }
 }
 
@@ -528,5 +559,93 @@ fn repeating_a_grant_is_not_a_retry_so_a_failing_microphone_cannot_loop() {
     assert_eq!(
         supervisor.snapshot().input_fault,
         Some(Fault::DeviceUnavailable)
+    );
+}
+
+#[test]
+fn an_output_underrun_grows_the_buffer_by_one_burst_and_only_once_per_underrun() {
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.backend_mut().report = tunable();
+    supervisor.start(false, 0);
+    supervisor.tick(33 * MS);
+    assert!(
+        supervisor.backend_mut().buffer_requests.is_empty(),
+        "no underrun, no growth"
+    );
+
+    supervisor.backend_mut().report.output_xruns = Some(1);
+    supervisor.tick(66 * MS);
+    supervisor.tick(99 * MS);
+    assert_eq!(
+        supervisor.backend_mut().buffer_requests,
+        [576],
+        "one burst, once"
+    );
+
+    supervisor.backend_mut().report.output_xruns = Some(3);
+    supervisor.tick(132 * MS);
+    assert_eq!(supervisor.backend_mut().buffer_requests, [576, 768]);
+    assert_eq!(supervisor.snapshot().report.buffer_frames, Some(768));
+}
+
+#[test]
+fn the_buffer_never_grows_past_its_capacity() {
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.backend_mut().report = BackendReport {
+        buffer_frames: Some(1500),
+        ..tunable()
+    };
+    supervisor.start(false, 0);
+    for xruns in 1..5 {
+        supervisor.backend_mut().report.output_xruns = Some(xruns);
+        supervisor.tick(u64::from(xruns) * 33 * MS);
+    }
+    assert_eq!(
+        supervisor.backend_mut().buffer_requests,
+        [1536],
+        "capped once, then left alone"
+    );
+}
+
+#[test]
+fn a_new_stream_counts_underruns_from_zero() {
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.backend_mut().report = BackendReport {
+        output_xruns: Some(5),
+        ..tunable()
+    };
+    supervisor.start(false, 0);
+    supervisor.tick(33 * MS);
+    assert_eq!(supervisor.backend_mut().buffer_requests.len(), 1);
+
+    // A rebuild: the new stream's counter restarts, so its first underrun must still count.
+    supervisor.backend_mut().inner.simulate_disconnect();
+    supervisor.tick(66 * MS);
+    supervisor.backend_mut().report = BackendReport {
+        output_xruns: Some(1),
+        ..tunable()
+    };
+    supervisor.tick(66 * MS + FIRST_RETRY_NS);
+    supervisor.tick(66 * MS + FIRST_RETRY_NS + 33 * MS);
+    assert_eq!(supervisor.backend_mut().buffer_requests.len(), 2);
+}
+
+#[test]
+fn an_underrun_count_reset_by_the_platform_does_not_switch_growth_off() {
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.backend_mut().report = BackendReport {
+        output_xruns: Some(4),
+        ..tunable()
+    };
+    supervisor.start(false, 0);
+    supervisor.tick(33 * MS);
+    supervisor.backend_mut().report.output_xruns = Some(0);
+    supervisor.tick(66 * MS);
+    supervisor.backend_mut().report.output_xruns = Some(1);
+    supervisor.tick(99 * MS);
+    assert_eq!(
+        supervisor.backend_mut().buffer_requests.len(),
+        2,
+        "the underrun after the reset grew the buffer"
     );
 }
