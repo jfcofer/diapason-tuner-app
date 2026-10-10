@@ -79,6 +79,7 @@ class StreamDiagnostics {
     this.inputUnderruns = 0,
     this.xruns,
     this.framesPerBurst,
+    this.requestedInputPreset,
     this.inputPreset,
     this.inputPresetCode,
     this.outputPath,
@@ -112,6 +113,9 @@ class StreamDiagnostics {
   /// The output's burst size in frames, where the platform has one.
   final int? framesPerBurst;
 
+  /// The microphone processing the engine asked for. `null` without a microphone.
+  final InputPreset? requestedInputPreset;
+
   /// The microphone processing the device applied. `null` without a microphone.
   final InputPreset? inputPreset;
 
@@ -141,6 +145,7 @@ class StreamDiagnostics {
       other.inputUnderruns == inputUnderruns &&
       other.xruns == xruns &&
       other.framesPerBurst == framesPerBurst &&
+      other.requestedInputPreset == requestedInputPreset &&
       other.inputPreset == inputPreset &&
       other.inputPresetCode == inputPresetCode &&
       other.outputPath == outputPath &&
@@ -158,6 +163,7 @@ class StreamDiagnostics {
     inputUnderruns,
     xruns,
     framesPerBurst,
+    requestedInputPreset,
     inputPreset,
     inputPresetCode,
     outputPath,
@@ -169,7 +175,8 @@ class StreamDiagnostics {
   @override
   String toString() =>
       'StreamDiagnostics($backend, block: $maxBlockFrames, callbacks: $callbacks, '
-      'worst: $worstCallback, xruns: $xruns, preset: $inputPreset, error: $lastError)';
+      'worst: $worstCallback, xruns: $xruns, preset: $requestedInputPreset -> $inputPreset, '
+      'error: $lastError)';
 }
 
 /// The audio session at one moment, as the engine publishes it about 30 times a second.
