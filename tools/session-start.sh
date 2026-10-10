@@ -40,6 +40,9 @@ printf '  4. only the reference docs that task points to\n'
 note "Then reconcile STATE.md with everything below. Report any contradiction first."
 
 section "Working tree"
+# Mark where this session starts, so session-end measures this session's work and not the branch's
+# (T-010). Running this again mid-session moves the mark forward.
+git rev-parse HEAD >"$(git rev-parse --git-path diapason-session-base)"
 git -c color.ui=auto log --oneline -8
 git status --short --branch
 
@@ -81,12 +84,14 @@ verdict_jq="$(cat <<'JQ'
 JQ
 )"
 pr_limit=30
+open_prs='' merged='' have_prs=0
 if ! command -v gh >/dev/null 2>&1; then
     note "gh is not installed; check PRs and their checks on GitHub by hand"
 elif ! open_prs="$(bounded gh pr list --state open --limit "$pr_limit" \
         --json number,title,headRefName,statusCheckRollup --jq "$verdict_jq" 2>"$errors")"; then
     note "gh could not list PRs; check GitHub by hand: $(first_error)"
 else
+    have_prs=1
     printf '  %sOpen%s\n' "$BOLD" "$OFF"
     if [[ -z "$open_prs" ]]; then
         note "none"
@@ -97,13 +102,58 @@ else
         [[ "$(wc -l <<<"$open_prs")" -ge "$pr_limit" ]] && note "only the first $pr_limit are shown"
     fi
     printf '  %sRecently merged%s\n' "$BOLD" "$OFF"
-    merged="$(bounded gh pr list --state merged --limit 5 --json number,title,headRefName,mergedAt \
-        --jq '.[] | [.number, .mergedAt[:10], .headRefName, .title] | @tsv' 2>"$errors")" \
-        || note "gh could not list merged PRs: $(first_error)"
+    # Newest first. More are fetched than shown, because "Open tasks" below looks further back.
+    merged="$(bounded gh pr list --state merged --limit "$pr_limit" \
+        --json number,title,headRefName,mergedAt \
+        --jq 'sort_by(.mergedAt) | reverse | .[] | [.number, .mergedAt[:10], .headRefName, .title] | @tsv' \
+        2>"$errors")" || { note "gh could not list merged PRs: $(first_error)"; have_prs=0; }
     while IFS=$'\t' read -r number date branch title; do
         [[ -n "$number" ]] && printf '  #%-4s %-15s %s  %s(%s)%s\n' "$number" "$date" "$title" "$DIM" "$branch" "$OFF"
-    done <<<"$merged"
+    done < <(head -5 <<<"$merged")
 fi
+
+section "Open tasks"
+# A task is closed by hand, and the merge that should prompt it happens on GitHub between sessions,
+# usually deleting its branch on the way. Matching each open task against PRs (branch names carry
+# the ID: AGENTS.md §7) is what catches a task left in-progress after its work merged (T-009).
+# Multi-part tasks merge a PR per part, so a merged PR is a prompt to check, not proof of done.
+note "Each open task against its PRs. Reconcile the task file with any mismatch."
+for task in docs/agents/tasks/T-*.md; do
+    id="$(sed -n '2,/^---$/s/^id: *//p' "$task")"
+    status="$(sed -n '2,/^---$/s/^status: *//p' "$task")"
+    [[ "$status" == todo || "$status" == in-progress || "$status" == blocked ]] || continue
+    # A parent never has a PR of its own: its slices carry the work, so show theirs (T-010).
+    slices=''
+    for child in docs/agents/tasks/"$id"[a-z]-*.md; do
+        [[ -f "$child" ]] || continue
+        slices+="$(sed -n '2,/^---$/s/^id: *//p' "$child") $(sed -n '2,/^---$/s/^status: *//p' "$child"), "
+    done
+    if [[ -n "$slices" ]]; then
+        printf '  %-8s %-12s %s\n' "$id" "$status" "parent; slices: ${slices%, }"
+        continue
+    fi
+    if [[ $have_prs -eq 0 ]]; then
+        [[ "$status" == todo ]] && continue
+        printf '  %-8s %-12s %s\n' "$id" "$status" "PR state unknown (see above)"
+        continue
+    fi
+    # Field 3 is the branch in both lists. "/T-002-" must not match "feat/T-002b-…".
+    open_pr="$(awk -F'\t' -v id="$id" 'index($3, "/" id "-") { print "#" $1; exit }' <<<"$open_prs")"
+    last_merged="$(awk -F'\t' -v id="$id" \
+        'index($3, "/" id "-") { print "#" $1 " merged " $2; exit }' <<<"$merged")"
+    # A todo task is listed only when a PR already carries its ID: then it is not todo (T-010).
+    if [[ "$status" == todo ]]; then
+        [[ -n "$open_pr$last_merged" ]] || continue
+        verdict="has PR ${open_pr:-$last_merged}, so it has started. Mark it in-progress or done"
+    elif [[ -n "$open_pr" ]]; then
+        verdict="PR $open_pr open"
+    elif [[ -n "$last_merged" ]]; then
+        verdict="no open PR; last PR $last_merged. Close the task, or confirm it says what is left"
+    else
+        verdict="no open PR, and none among the last $pr_limit merged"
+    fi
+    printf '  %-8s %-12s %s\n' "$id" "$status" "$verdict"
+done
 
 section "Toolchain"
 just doctor

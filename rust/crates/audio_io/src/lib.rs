@@ -5,22 +5,29 @@
 //!
 //! The engine knows only [`AudioBackend`] and [`AudioCallback`] (`docs/PLATFORM_AUDIO.md` §1).
 //! [`OfflineBackend`] drives a stream from buffers with no device and no clock, so everything above
-//! this crate is testable on any host; platform backends arrive in `T-002b` and `T-002c`.
+//! this crate is testable on any host. `AAudioBackend` is Android's (`docs/adr/0020`); Core Audio
+//! arrives in `T-002c`.
 
 #![warn(clippy::pedantic)]
 #![warn(missing_docs)]
 
+#[cfg(target_os = "android")]
+mod android;
 mod callback;
 mod config;
 #[cfg(any(test, feature = "conformance"))]
 pub mod conformance;
 mod handle;
 mod offline;
+mod report;
 
+#[cfg(target_os = "android")]
+pub use android::AAudioBackend;
 pub use callback::{AudioCallback, CallbackInfo};
 pub use config::{MAX_BLOCK_FRAMES, MAX_CHANNELS, SAMPLE_RATES, StreamConfig, StreamTimestamp};
 pub use handle::StreamHandle;
 pub use offline::{BlockPattern, OfflineBackend};
+pub use report::{BackendReport, GrantedPath, InputPreset};
 
 use thiserror::Error;
 
@@ -42,12 +49,24 @@ pub enum AudioError {
     /// Buffers handed to a backend do not match the open stream's channel counts.
     #[error("buffer lengths do not match the stream: {0}")]
     BufferMismatch(&'static str),
-    /// The device went away mid-stream. Oboe reports this from the callback.
+    /// The platform reported the device gone while the stream was opened, started or closed
+    /// (AAudio: `AAUDIO_ERROR_DISCONNECTED`; stopping treats it as stopped). A disconnect while
+    /// running is never returned as an error: the backend sets [`StreamHandle::disconnected`]
+    /// from its error callback or a failed input read.
     #[error("audio device disconnected")]
     Disconnected,
     /// Recording was attempted without the microphone permission having been granted.
     #[error("microphone permission not granted")]
     PermissionDenied,
+    /// A platform audio call failed. Carries the platform's own code, so a support report can be
+    /// looked up in its documentation. Allocates nothing to build.
+    #[error("{operation} failed with platform error {code}")]
+    Platform {
+        /// What was being attempted, such as `"open the output stream"`.
+        operation: &'static str,
+        /// The platform's result code, such as an `aaudio_result_t`.
+        code: i32,
+    },
 }
 
 /// Result type for every backend operation.
@@ -81,6 +100,12 @@ pub trait AudioBackend {
 
     /// The stream clock at the most recent block. `None` before the first block, and when closed.
     fn timestamp(&self) -> Option<StreamTimestamp>;
+
+    /// What the platform granted beyond the config: path, preset, burst, xruns. Every field is
+    /// `None` when closed. The default reports nothing, for backends with no such notions.
+    fn report(&self) -> BackendReport {
+        BackendReport::default()
+    }
 
     /// Stop the stream, release the device and drop the callback. Closing a closed backend is a
     /// no-op, so lifecycle code never has to track whether it already did.

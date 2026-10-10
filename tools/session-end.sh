@@ -20,12 +20,32 @@ ok()   { printf '  %s✓%s %s\n' "$GREEN" "$OFF" "$1"; }
 
 printf '\nSession protocol (AGENTS.md §2)\n'
 
-# Compare against the last commit: what changed in this working session?
-changed="$(git status --porcelain; git diff --name-only HEAD~1 2>/dev/null)"
+# What this session changed, measured from where it started: `session-start` records HEAD in the
+# git dir. Without that mark (session-start not run), fall back to where the branch left
+# origin/main, which on a multi-session branch also counts earlier sessions' work, and say so.
+# `git diff <base>` covers committed, staged and unstaged in one call; `-z` paths are never quoted,
+# so spaces and non-ASCII names count too (T-010).
+mark="$(git rev-parse --git-path diapason-session-base)"
+base=''
+if [[ -f "$mark" ]] && git merge-base --is-ancestor "$(cat "$mark")" HEAD 2>/dev/null; then
+    base="$(cat "$mark")"
+elif base="$(git merge-base HEAD origin/main 2>/dev/null)"; then
+    printf '  %sno session-start mark: measuring from origin/main%s\n' "$DIM" "$OFF"
+else
+    base="$(git rev-parse HEAD)"
+    printf '  %sno session-start mark and no origin/main: measuring uncommitted work only%s\n' "$DIM" "$OFF"
+fi
+changed="$( { git diff --name-only -z "$base"; git ls-files -o --exclude-standard -z; } \
+    | tr '\0' '\n' | sort -u)"
+touched() { grep -qxF "$1" <<<"$changed"; }
+# Session files themselves do not count as work that needs recording.
+work="$(grep -v '^docs/agents/' <<<"$changed")"
+# Anything outside docs/ is code, tooling or configuration: root manifests and pins included.
+code="$(grep -v '^docs/' <<<"$work")"
 
-# 1. STATE.md must have been touched if any code or docs changed.
-if grep -qE '^(M|A|\?\?)? *(apps|packages|rust|docs|tools)/' <<<"$changed" 2>/dev/null; then
-    if grep -q "docs/agents/STATE.md" <<<"$changed"; then
+# 1. STATE.md must have been touched if anything else changed.
+if [[ -n "$work" ]]; then
+    if touched docs/agents/STATE.md; then
         ok "STATE.md updated"
     else
         fail "STATE.md was not updated" \
@@ -44,7 +64,8 @@ else
          "Append one: docs/agents/journal/${today}-<slug>.md (template in that folder)."
 fi
 
-# 3. STATE.md must name a task file that exists.
+# 3. STATE.md must name a task file that exists, and changed code must be recorded in a task file.
+# Any task counts: a session that closes one points STATE at the next.
 active="$(grep -oP 'docs/agents/tasks/\KT-[0-9a-z-]+\.md' docs/agents/STATE.md 2>/dev/null | head -1)"
 if [[ -n "$active" && -f "docs/agents/tasks/$active" ]]; then
     ok "active task exists: $active"
@@ -52,6 +73,14 @@ elif [[ -n "$active" ]]; then
     fail "STATE.md names a task file that does not exist: $active"
 else
     fail "STATE.md does not name an active task file"
+fi
+if [[ -z "$code" ]]; then
+    ok "no code changed, task file update not required"
+elif grep -qE '^docs/agents/tasks/T-[^/]+\.md$' <<<"$changed"; then
+    ok "a task file was updated"
+else
+    fail "code changed but no task file was updated" \
+         "Tick the criteria met, and record deviations in the task's Implementation notes."
 fi
 
 # 4. STATE.md must be a snapshot, not a log.

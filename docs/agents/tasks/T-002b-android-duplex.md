@@ -1,9 +1,9 @@
 ---
 id: T-002b
 title: Android duplex stream on the budget reference device
-status: todo
+status: in-progress
 milestone: M1
-owner: unassigned
+owner: claude
 created: 2026-10-04
 ---
 
@@ -34,22 +34,22 @@ timing; emulated audio says nothing about real devices.
 
 ## Acceptance criteria
 
-- [ ] ADR for the Android audio binding, with the measurements above
-- [ ] The Android backend passes the `T-002a` conformance suite (on device, via an integration
+- [x] ADR for the Android audio binding, with the measurements above
+- [x] The Android backend passes the `T-002a` conformance suite (on device, via an integration
       test)
-- [ ] Duplex: mic in and output out on one stream and one clock, on the Redmi
+- [x] Duplex: mic in and output out on one stream and one clock, on the Redmi
 - [ ] Input preset per `PLATFORM_AUDIO.md` (Unprocessed if supported, else VoiceRecognition), and
       the preset *actually obtained* is reported
-- [ ] `RECORD_AUDIO` in the manifest. The app manifest currently declares **no** permissions
-- [ ] A real `MicrophonePermission` in `core_platform` behind the existing interface, covering
+- [x] `RECORD_AUDIO` in the manifest. The app manifest currently declares **no** permissions
+- [x] A real `MicrophonePermission` in `core_platform` behind the existing interface, covering
       denial and revocation-while-running. The metronome path is unaffected by denial
 - [ ] Diagnostics overlay: sample rate, buffer size, round-trip latency, worst-case callback
       duration, xrun count, input preset
 - [ ] Android rows of the `PLATFORM_AUDIO.md` §5 lifecycle matrix verified on device; automatable
       rows covered by an integration test
-- [ ] Stream rebuilds off the RT thread on route change and device disconnect
+- [x] Stream rebuilds off the RT thread on route change and device disconnect
 - [ ] Round-trip latency on the Redmi recorded in the journal
-- [ ] The RT clock exception (`clock_gettime` in the callback) has its ADR, and `AGENTS.md` §6
+- [x] The RT clock exception (`clock_gettime` in the callback) has its ADR, and `AGENTS.md` §6
       cites it, so the documented RT rule stays true
 - [ ] `just verify` green; `build-android` CI green
 
@@ -59,35 +59,68 @@ iOS (`T-002c`). Pitch detection. Latency *calibration* UI (M5).
 
 ## Implementation notes
 
+**Part 1 (#11, merged 2026-10-09):** binding, backend, on-device conformance (`adr/0020`).
+- `ndk-sys` with our own wrapper, not `ndk` (owner's choice): `ndk` 0.9's stream is not `Send`,
+  and its Drop unwraps `AAudioStream_close`.
+- `audio_io` has no RT `clippy.toml`. The trampoline runs inside `assert_no_alloc`, and a device
+  canary proves the trap fires.
+- The review's fixes and the device log are in the journal: `2026-10-09-aaudio-review.md` and
+  `2026-10-09-aaudio-backend.md`.
+
+**Found on the Redmi:**
+- **The app gets the low-latency path** (`AUDIO_OUTPUT_FLAG_FAST`, `AUDIO_INPUT_FLAG_FAST`), but
+  not exclusive mode: the app's MMAP policy is "never". Only the shell user was refused.
+- 9–16 input underruns at start-up, then 0.
+- Worst release callback: 281–571 µs of 20 ms.
+- Use `adb shell -n` in loops.
+- **HyperOS:** the shell may not `pm grant`/`revoke` or `adb uninstall`, and every USB install
+  waits for a tap on the device.
+
+**Part 2a (#13, merged 2026-10-09):** `session` crate (`adr/0022`), FFI start/stop and snapshot
+stream, the debug-app allocation trap, the permission, the tuner flow, `test-integration-android`.
+- **Deviation:** on denial the tuner opens no stream. A dev-only A4 tone button proves output
+  works without the microphone, instead of a tone forced on at denial.
+- **`permission_handler` is held at 12.** 13 needs compileSdk 37: its own task (`AGENTS.md` §8).
+- **AAudio refuses to open the input without `RECORD_AUDIO`,** with `-896`
+  (`AAUDIO_ERROR_INTERNAL`). It does not deliver silence. The session falls back to output only
+  and reports the input fault. The code is generic, so 2b cannot map it to `PermissionDenied` by
+  code alone. Use the permission status Dart already holds.
+
+- **The review fixed before the PR:**
+  - A device lost for a moment no longer leaves the microphone off for good: both opens failing
+    is now blamed on the device.
+  - A command dropped on a full queue is re-sent as desired state on the next tick.
+  - `stop` clears the input fault.
+  - The fake now matches the real engine: rate 0 while stopped, the input fault Android reports.
+  - The panel offers "Retry microphone".
+  - ARCHITECTURE §4 and §7 match the code.
+
+**Part 3 owes (lifecycle):** Dart never stops the stream yet. Once the tuner listens, the
+microphone stays open across screens and in the background until the app exits. In the
+background the platform silences it (exact zeros, no error), so the tuner hears nothing without
+knowing why.
+
+**Part 2b owes, as two PRs (split 2026-10-09, `T-010`; Pigeon chosen by the owner):**
+- **2b-i, capabilities:** a Pigeon channel in `core_platform`, the preset rule in Rust, a refused
+  microphone as `PermissionDenied` from the permission status (`-896` is generic), and proof the
+  preset is applied (`AudioRecord` logs `inputSource 0` although `VOICE_RECOGNITION` was asked).
+- **2b-ii, stream tuning:** input-backlog shedding (`getFramesWritten − getFramesRead`), buffer
+  growth on xruns, the callback budget in release from the app, and the shipped-`.so`
+  measurements as a `check-android-release` gate.
+
 **Plan, approved by the owner on 2026-10-09.** It replaces the binding choice in Context.
 
-- **Binding: AAudio via `ndk`** (`audio` + `api-level-28` features).
-  - `oboe` 0.6.1 (2024-03-03) has had no commits since.
-  - `ndk` is maintained, and cpal 0.18 uses it on Android.
-  - **minSdk 28** comes first, in `T-008`, because `ndk` gates `input_preset` on API 28.
-- **Duplex = two AAudio streams, one clock.** The output stream's callback and frame counter are
-  the stream clock. It does a non-blocking `read` (timeout 0) from the input stream into a buffer
-  preallocated at `MAX_BLOCK_FRAMES × MAX_CHANNELS`. Short reads are zero-padded and counted
-  (Oboe's `FullDuplexStream` pattern).
-- **Output:** `LowLatency`, `Exclusive` falling back to `Shared`, `f32`, rate unspecified (native).
-  The input requests the granted rate. With `input_channels == 0` it opens output only.
-- **Error callback:** sets an atomic flag only. A normal-priority supervisor in `engine` rebuilds
-  the stream with backoff.
-- **RT clock:** `clock_gettime(CLOCK_MONOTONIC)`, vDSO-backed on arm64, for host time and the
-  worst-case callback duration. It is an audited exception, recorded in the binding ADR.
-  `audio_io` gets the RT `clippy.toml` symlink.
-- **No lossy casts on Android:** AAudio's `i32`/`i64` go through `try_from` (`adr/0018` question
-  moves to `T-002c`).
+- **Decided:** the binding in `adr/0020`, minSdk 28 in `adr/0019`, the session in `adr/0022`.
 - **Capabilities** (Unprocessed support, low-latency feature, native rate and burst) come from a
   small Kotlin channel in `core_platform`. Dart passes them to Rust as configuration.
-- **Permission:** `permission_handler` behind `MicrophonePermission`. Check its version, licence
-  and network behaviour first.
-- **On-device conformance:** `just test-android-device` runs the Rust test binary through `adb`.
-  Verify first that the shell uid can open an input stream; otherwise use a debug-only FFI entry
-  point driven by an `integration_test`.
 - **Three PRs:**
   1. the ADR, the backend and on-device conformance;
-  2. session, FFI, permission and capabilities;
+  2. **split by the owner on 2026-10-09:**
+     - **2a:** a new `session` crate (the supervisor that rebuilds streams; `engine`'s RT lint
+       config cannot host it), FFI start/stop, the snapshot stream, the debug-app allocation
+       trap, and the permission;
+     - **2b:** the capabilities channel and preset choice, plus everything "Part 2b also owes"
+       lists above;
   3. the overlay (the first golden, which closes the `adr/0016` gap), lifecycle and latency.
 - **Criterion amendment:** metronome-column lifecycle rows (FGS, MediaSession, lock screen) need
   the M4 metronome and move there. They are not ticked here.
@@ -96,4 +129,20 @@ iOS (`T-002c`). Pitch detection. Latency *calibration* UI (M5).
 
 ## Verification performed
 
-_Fill in during the work._
+- **Part 1:** `just test-android-device` on the Redmi 23117RA68G (Android 16, API 36), at the
+  committed code:
+  - `android_conformance`: 5/5 (duplex, output-only, forced block cutting, microphone keeps up, and
+    the device report);
+  - `android_alloc_canary`: exit 134 with "memory allocation of 64 bytes failed".
+
+  `--release`: 5/5.
+- `just lint-rust`, now including `lint-rust-android`, and `just verify`: green.
+- **Part 2a:** `just test-integration-android` on the Redmi, run by the owner. Both halves passed
+  with the debug allocation trap armed:
+  - **without the microphone:** the output ran, the input fault was reported, and the input stream
+    was refused with `-896`;
+  - **with it, allowed at the system prompt:** duplex.
+- **By hand, on the Redmi (owner, logcat kept):**
+  - each wired-headphone plug and unplug disconnected the stream, and the session rebuilt it on
+    the new device, with no crash;
+  - revoking the microphone in Settings killed the running app.

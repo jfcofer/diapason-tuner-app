@@ -8,3 +8,4 @@
 library;
 
 export 'src/engine_status.dart';
+export 'src/session_snapshot.dart';
