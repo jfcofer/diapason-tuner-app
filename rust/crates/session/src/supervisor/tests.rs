@@ -18,6 +18,8 @@ struct Flaky {
     fail_input: Option<AudioError>,
     /// Open attempts so far, failed or not.
     opens: u32,
+    /// Open attempts that asked for the microphone.
+    input_opens: u32,
 }
 
 impl Flaky {
@@ -27,6 +29,7 @@ impl Flaky {
             fail_all: None,
             fail_input: None,
             opens: 0,
+            input_opens: 0,
         }
     }
 }
@@ -42,6 +45,9 @@ impl AudioBackend for Flaky {
         callback: Box<dyn AudioCallback>,
     ) -> diapason_audio_io::Result<StreamHandle> {
         self.opens += 1;
+        if config.input_channels > 0 {
+            self.input_opens += 1;
+        }
         if let Some(error) = &self.fail_all {
             return Err(error.clone());
         }
@@ -340,4 +346,187 @@ fn stopping_clears_a_microphone_fault() {
     assert!(supervisor.snapshot().input_fault.is_some());
     supervisor.stop();
     assert_eq!(supervisor.snapshot().input_fault, None);
+}
+
+/// What `AAudio` returns for an input opened without `RECORD_AUDIO`: generic, so it says nothing
+/// about the permission (`T-002b` part 2a, on the Redmi).
+fn refused_input() -> AudioError {
+    AudioError::Platform {
+        operation: "open the input stream",
+        code: -896,
+    }
+}
+
+#[test]
+fn a_denied_microphone_is_never_asked_for_and_is_reported_as_denied() {
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.set_microphone_access(MicrophoneAccess::Denied);
+    supervisor.start(true, 0);
+
+    let snapshot = supervisor.snapshot();
+    assert_eq!(snapshot.state, SessionState::Running, "the output runs");
+    assert!(!snapshot.input_active);
+    assert_eq!(snapshot.input_fault, Some(Fault::PermissionDenied));
+    assert_eq!(
+        supervisor.backend_mut().input_opens,
+        0,
+        "the platform was never asked"
+    );
+
+    for tick in 1..100 {
+        supervisor.tick(tick * 33 * MS);
+    }
+    assert_eq!(
+        supervisor.backend_mut().input_opens,
+        0,
+        "and is not asked on a tick"
+    );
+}
+
+#[test]
+fn granting_the_microphone_while_running_brings_it_back_and_replays_the_tone() {
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.set_microphone_access(MicrophoneAccess::Denied);
+    supervisor.start(true, 0);
+    supervisor.start_tone(440.0, 0.5);
+
+    supervisor.set_microphone_access(MicrophoneAccess::Granted);
+    assert_eq!(supervisor.snapshot().input_fault, None, "cleared at once");
+    supervisor.tick(33 * MS);
+    render(&mut supervisor, 512);
+
+    let snapshot = supervisor.snapshot();
+    assert!(snapshot.input_active);
+    assert_eq!(
+        snapshot.engine.tone_hz,
+        Some(440.0),
+        "desired state was replayed"
+    );
+    assert_eq!(snapshot.rebuilds, 0, "not a route change");
+}
+
+#[test]
+fn denying_the_microphone_while_running_releases_it_and_keeps_the_output() {
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.set_microphone_access(MicrophoneAccess::Granted);
+    supervisor.start(true, 0);
+    supervisor.start_tone(220.0, 0.25);
+    assert!(supervisor.snapshot().input_active);
+
+    supervisor.set_microphone_access(MicrophoneAccess::Denied);
+    assert_eq!(
+        supervisor.snapshot().input_fault,
+        Some(Fault::PermissionDenied)
+    );
+    supervisor.tick(33 * MS);
+    render(&mut supervisor, 512);
+
+    let snapshot = supervisor.snapshot();
+    assert_eq!(snapshot.state, SessionState::Running);
+    assert!(!snapshot.input_active, "the microphone is released");
+    assert_eq!(snapshot.input_fault, Some(Fault::PermissionDenied));
+    assert_eq!(
+        snapshot.engine.tone_hz,
+        Some(220.0),
+        "desired state was replayed"
+    );
+}
+
+#[test]
+fn a_granted_microphone_that_still_fails_is_blamed_on_the_device() {
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.set_microphone_access(MicrophoneAccess::Granted);
+    supervisor.backend_mut().fail_input = Some(refused_input());
+    supervisor.start(true, 0);
+
+    let snapshot = supervisor.snapshot();
+    assert!(!snapshot.input_active);
+    assert_eq!(snapshot.input_fault, Some(Fault::DeviceUnavailable));
+    assert_eq!(snapshot.last_error, Some(refused_input()));
+}
+
+#[test]
+fn the_permission_outlives_a_stop_and_a_restart() {
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.set_microphone_access(MicrophoneAccess::Denied);
+    supervisor.start(true, 0);
+    supervisor.stop();
+    assert_eq!(
+        supervisor.snapshot().input_fault,
+        None,
+        "stop clears the fault"
+    );
+
+    supervisor.start(true, 10 * MS);
+    assert_eq!(
+        supervisor.snapshot().input_fault,
+        Some(Fault::PermissionDenied)
+    );
+    assert_eq!(supervisor.backend_mut().input_opens, 0);
+}
+
+#[test]
+fn a_denial_reported_before_the_microphone_is_wanted_still_names_the_permission() {
+    // Found in review: the engine contract's order. The fault was stored only when the denial
+    // arrived with the microphone already wanted, and start() wiped it.
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.start(false, 0);
+    supervisor.set_microphone_access(MicrophoneAccess::Denied);
+    supervisor.start(true, MS);
+    supervisor.tick(33 * MS);
+
+    let snapshot = supervisor.snapshot();
+    assert_eq!(snapshot.state, SessionState::Running);
+    assert!(!snapshot.input_active);
+    assert_eq!(snapshot.input_fault, Some(Fault::PermissionDenied));
+    assert_eq!(supervisor.backend_mut().input_opens, 0);
+
+    // A retry, as the UI's "Retry microphone" sends, keeps saying why.
+    supervisor.start(true, 66 * MS);
+    supervisor.tick(99 * MS);
+    assert_eq!(
+        supervisor.snapshot().input_fault,
+        Some(Fault::PermissionDenied)
+    );
+}
+
+#[test]
+fn a_new_grant_retries_a_microphone_that_failed_while_the_permission_was_unknown() {
+    // Under Unknown, AAudio's -896 is most likely the missing permission, so the grant that
+    // follows is worth one retry.
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.backend_mut().fail_input = Some(refused_input());
+    supervisor.start(true, 0);
+    assert_eq!(
+        supervisor.snapshot().input_fault,
+        Some(Fault::DeviceUnavailable)
+    );
+
+    supervisor.backend_mut().fail_input = None;
+    supervisor.set_microphone_access(MicrophoneAccess::Granted);
+    supervisor.tick(33 * MS);
+    assert!(supervisor.snapshot().input_active);
+}
+
+#[test]
+fn repeating_a_grant_is_not_a_retry_so_a_failing_microphone_cannot_loop() {
+    let mut supervisor = Supervisor::new(Flaky::new());
+    supervisor.set_microphone_access(MicrophoneAccess::Granted);
+    supervisor.backend_mut().fail_input = Some(refused_input());
+    supervisor.start(true, 0);
+    let opens = supervisor.backend_mut().opens;
+
+    for tick in 1..100 {
+        supervisor.set_microphone_access(MicrophoneAccess::Granted);
+        supervisor.tick(tick * 33 * MS);
+    }
+    assert_eq!(
+        supervisor.backend_mut().opens,
+        opens,
+        "no reopen without a new fact"
+    );
+    assert_eq!(
+        supervisor.snapshot().input_fault,
+        Some(Fault::DeviceUnavailable)
+    );
 }

@@ -6,10 +6,17 @@
 import 'package:audio_engine/src/rust/frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `fmt`, `from`, `from`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `fmt`, `from`, `from`, `from`, `from`, `from`, `from`
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<AudioSession>>
 abstract class AudioSession implements RustOpaqueInterface {
+  /// Tell the session whether the microphone permission is granted. Returns at once; a running
+  /// stream follows it on the next tick.
+  ///
+  /// # Errors
+  /// [`AudioSessionError::Gone`] if the session has shut down.
+  void setMicrophoneAccess({required bool granted});
+
   /// Deliver a snapshot to `sink` about 30 times a second, replacing any earlier subscriber.
   /// Delivery stops when Dart cancels the stream.
   ///
@@ -17,13 +24,15 @@ abstract class AudioSession implements RustOpaqueInterface {
   /// [`AudioSessionError::Gone`] if the session has shut down.
   Stream<SessionSnapshotDto> snapshots();
 
-  /// Start the session thread on this platform's backend. No stream opens until [`start`].
+  /// Start the session thread on this platform's backend, configured from what the platform
+  /// reported about the device. No stream opens until [`start`].
   ///
   /// [`start`]: AudioSession::start
   ///
   /// # Errors
   /// [`AudioSessionError::Spawn`] if the thread cannot be created.
-  static AudioSession spawn() => RustLib.instance.api.crateApiSessionAudioSessionSpawn();
+  static AudioSession spawn({required DeviceCapabilitiesDto capabilities}) =>
+      RustLib.instance.api.crateApiSessionAudioSessionSpawn(capabilities: capabilities);
 
   /// Run the stream, with the microphone if `input`. Returns at once.
   ///
@@ -57,6 +66,29 @@ enum AudioSessionError {
 
   /// The session has shut down.
   gone,
+}
+
+/// What the platform reported about the audio device. Mirrors
+/// `diapason_session::DeviceCapabilities`; `None` means unknown.
+class DeviceCapabilitiesDto {
+  const new({this.unprocessedSource, this.lowLatency});
+
+  /// The device supports the unprocessed microphone source.
+  final bool? unprocessedSource;
+
+  /// The device advertises a low-latency audio path.
+  final bool? lowLatency;
+
+  @override
+  int get hashCode => unprocessedSource.hashCode ^ lowLatency.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DeviceCapabilitiesDto &&
+          runtimeType == other.runtimeType &&
+          unprocessedSource == other.unprocessedSource &&
+          lowLatency == other.lowLatency;
 }
 
 /// Why something failed. Mirrors `diapason_session::Fault`.
@@ -105,6 +137,7 @@ class SessionSnapshotDto {
     this.toneHz,
     this.xruns,
     this.framesPerBurst,
+    this.requestedInputPreset,
     this.inputPreset,
     this.inputPresetCode,
     this.outputLowLatency,
@@ -155,6 +188,9 @@ class SessionSnapshotDto {
   /// The output's burst size, in frames.
   final int? framesPerBurst;
 
+  /// The input preset requested.
+  final InputPresetDto? requestedInputPreset;
+
   /// The input preset obtained.
   final InputPresetDto? inputPreset;
 
@@ -203,6 +239,7 @@ class SessionSnapshotDto {
       inputUnderruns.hashCode ^
       xruns.hashCode ^
       framesPerBurst.hashCode ^
+      requestedInputPreset.hashCode ^
       inputPreset.hashCode ^
       inputPresetCode.hashCode ^
       outputLowLatency.hashCode ^
@@ -233,6 +270,7 @@ class SessionSnapshotDto {
           inputUnderruns == other.inputUnderruns &&
           xruns == other.xruns &&
           framesPerBurst == other.framesPerBurst &&
+          requestedInputPreset == other.requestedInputPreset &&
           inputPreset == other.inputPreset &&
           inputPresetCode == other.inputPresetCode &&
           outputLowLatency == other.outputLowLatency &&

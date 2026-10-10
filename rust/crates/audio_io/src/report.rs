@@ -39,6 +39,8 @@ pub struct BackendReport {
     pub xruns: Option<u32>,
     /// The smallest block the output moves at once.
     pub frames_per_burst: Option<u32>,
+    /// The input preset the backend asked for. `None` without an input.
+    pub requested_input_preset: Option<InputPreset>,
     /// The input preset the device applied, which may not be the one requested. `None` without an
     /// input.
     pub input_preset: Option<InputPreset>,

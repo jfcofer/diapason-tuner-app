@@ -9,29 +9,29 @@ import 'package:core_domain/core_domain.dart';
 /// the pinned container with no Rust build in sight (`docs/TESTING.md`). It honours the same
 /// contract as the real engine (`verifyEngineContract`), and applies commands at once.
 class FakeAudioEngine implements EngineHandle {
-  /// Creates a fake reporting [status]. With [microphoneWorks] false, asking for the microphone
-  /// runs the stream without it and reports [inputFaultWhenBroken], as the real engine does. The
-  /// default is what Android reports for a refused microphone until `T-002b` part 2b maps it to
-  /// [AudioFault.permissionDenied].
-  new({
-    EngineStatus? status,
-    this.microphoneWorks = true,
-    this.inputFaultWhenBroken = AudioFault.deviceUnavailable,
-  }) : _status =
-           status ??
-           const EngineStatus(
-             dspBuild: 'diapason_dsp 0.1.0 (fake)',
-             engineBuild: 'diapason_engine 0.1.0 (fake)',
-           );
+  /// Creates a fake reporting [status]. It follows the real session's rules: a microphone whose
+  /// permission was refused ([setMicrophoneAccess]) is never opened and reports
+  /// [AudioFault.permissionDenied]; with [microphoneWorks] false, a permitted microphone fails as
+  /// a broken device would, with [AudioFault.deviceUnavailable].
+  new({EngineStatus? status, this.microphoneWorks = true})
+    : _status =
+          status ??
+          const EngineStatus(
+            dspBuild: 'diapason_dsp 0.1.0 (fake)',
+            engineBuild: 'diapason_engine 0.1.0 (fake)',
+          );
 
   final EngineStatus _status;
   final StreamController<SessionSnapshot> _controller = StreamController.broadcast();
 
-  /// Whether a request for the microphone succeeds.
+  /// Whether a permitted microphone opens. False plays a device that refuses it.
   bool microphoneWorks;
 
-  /// The input fault reported when the microphone does not work.
-  final AudioFault inputFaultWhenBroken;
+  /// The permission as last reported: `null` until [setMicrophoneAccess] is called.
+  bool? _microphoneGranted;
+
+  /// Whether the microphone was asked for by the last [start].
+  bool _wantsInput = false;
 
   /// How many times [initialize] has been called.
   int initializeCount = 0;
@@ -61,7 +61,31 @@ class FakeAudioEngine implements EngineHandle {
 
   @override
   void start({required bool input}) {
-    final micOpen = input && microphoneWorks;
+    _wantsInput = input;
+    _publishRunning();
+  }
+
+  @override
+  void setMicrophoneAccess({required bool granted}) {
+    final repeatedGrant = granted && _microphoneGranted == true;
+    _microphoneGranted = granted;
+    // The real session follows a change on its next tick; the fake applies it at once. Repeating
+    // a grant is not a new fact, so, as in the real session, it retries nothing.
+    if (current.state == SessionState.running && !repeatedGrant) _publishRunning();
+  }
+
+  void _publishRunning() {
+    final AudioFault? inputFault;
+    if (!_wantsInput) {
+      inputFault = null;
+    } else if (_microphoneGranted == false) {
+      inputFault = AudioFault.permissionDenied;
+    } else if (!microphoneWorks) {
+      inputFault = AudioFault.deviceUnavailable;
+    } else {
+      inputFault = null;
+    }
+    final micOpen = _wantsInput && inputFault == null;
     _publish(
       SessionSnapshot(
         state: SessionState.running,
@@ -69,14 +93,24 @@ class FakeAudioEngine implements EngineHandle {
         inputActive: micOpen,
         toneHz: _toneHz,
         rebuilds: current.rebuilds,
-        inputFault: input && !micOpen ? inputFaultWhenBroken : null,
-        diagnostics: const StreamDiagnostics(backend: 'fake', maxBlockFrames: 1024),
+        inputFault: inputFault,
+        diagnostics: StreamDiagnostics(
+          backend: 'fake',
+          maxBlockFrames: 1024,
+          requestedInputPreset: micOpen ? InputPreset.voiceRecognition : null,
+          inputPreset: micOpen ? InputPreset.voiceRecognition : null,
+        ),
       ),
     );
   }
 
   @override
-  void stop() => _publish(
+  void stop() {
+    _wantsInput = false;
+    _publishStopped();
+  }
+
+  void _publishStopped() => _publish(
     SessionSnapshot(
       state: SessionState.stopped,
       sampleRate: 0,

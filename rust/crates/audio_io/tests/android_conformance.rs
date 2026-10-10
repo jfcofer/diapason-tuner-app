@@ -155,6 +155,11 @@ fn report_what_the_device_grants() {
             handle.input_underruns() - warm
         );
         let config = backend.actual_config().expect("open stream has a config");
+        assert_eq!(
+            backend.report().requested_input_preset,
+            Some(preset),
+            "the report names the preset requested"
+        );
         println!(
             "requested {preset:?}: obtained {:?}, paths {:?}, {} Hz, burst {:?}, {} callbacks, \
              largest block {}, worst callback {} us, xruns {:?}, input underruns {}",

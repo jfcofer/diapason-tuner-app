@@ -166,6 +166,10 @@ impl AudioBackend for AAudioBackend {
         BackendReport {
             xruns: self.xruns(),
             frames_per_burst: self.frames_per_burst(),
+            requested_input_preset: self
+                .stream
+                .as_ref()
+                .and_then(|running| running.input.map(|_| self.preset)),
             input_preset: self.obtained_input_preset(),
             output_path: paths.map(|(output, _)| output),
             input_path: paths.and_then(|(_, input)| input),

@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use diapason_audio_io::AudioBackend;
 use thiserror::Error;
 
-use crate::{SessionSnapshot, Supervisor};
+use crate::{MicrophoneAccess, SessionSnapshot, Supervisor};
 
 /// How often the supervisor checks the stream and the subscriber gets a snapshot: ~30 Hz, the
 /// rate the UI is designed around (`docs/ARCHITECTURE.md` §4). The throttle lives here, in Rust.
@@ -20,6 +20,7 @@ type Subscriber = Box<dyn FnMut(&SessionSnapshot) -> bool + Send>;
 enum Control {
     Start { input: bool },
     Stop,
+    SetMicrophoneAccess(MicrophoneAccess),
     StartTone { frequency_hz: f32, amplitude: f32 },
     StopTone,
     Subscribe(Subscriber),
@@ -85,6 +86,14 @@ impl Session {
         self.send(Control::Stop)
     }
 
+    /// Record the microphone permission; a running stream follows it on the next tick.
+    ///
+    /// # Errors
+    /// [`SessionError::Gone`] if the session thread has exited.
+    pub fn set_microphone_access(&self, access: MicrophoneAccess) -> Result<(), SessionError> {
+        self.send(Control::SetMicrophoneAccess(access))
+    }
+
     /// Play a test tone, kept across rebuilds until stopped.
     ///
     /// # Errors
@@ -146,6 +155,7 @@ fn run<B: AudioBackend>(mut supervisor: Supervisor<B>, requests: &mpsc::Receiver
             Ok(Control::Shutdown) | Err(RecvTimeoutError::Disconnected) => break,
             Ok(Control::Start { input }) => supervisor.start(input, now_ns()),
             Ok(Control::Stop) => supervisor.stop(),
+            Ok(Control::SetMicrophoneAccess(access)) => supervisor.set_microphone_access(access),
             Ok(Control::StartTone {
                 frequency_hz,
                 amplitude,
@@ -200,6 +210,43 @@ mod tests {
         assert_eq!(running.backend, "offline");
         // Dropping stops the stream and joins the thread; a hang here is the failure.
         drop(session);
+    }
+
+    /// The denied half of `verifyEngineContract` (`audio_engine`), in its exact order, on the
+    /// real driver thread: the order that the device run would otherwise be first to try.
+    #[test]
+    fn the_engine_contracts_denied_order_reports_the_permission() {
+        let session = Session::spawn(OfflineBackend::new(BlockPattern::Fixed(256))).expect("spawn");
+        let (sender, snapshots) = mpsc::channel();
+        session
+            .subscribe(move |snapshot| sender.send(snapshot.clone()).is_ok())
+            .expect("subscribe");
+        // Snapshots keep coming, so the deadline bounds the whole wait, not each receive.
+        let until = |holds: &dyn Fn(&SessionSnapshot) -> bool| {
+            let started = Instant::now();
+            loop {
+                assert!(
+                    started.elapsed() < DEADLINE,
+                    "the snapshot awaited never came"
+                );
+                let snapshot = snapshots.recv_timeout(DEADLINE).expect("a snapshot");
+                if holds(&snapshot) {
+                    break snapshot;
+                }
+            }
+        };
+
+        session.start(false).expect("start");
+        until(&|s| s.state == SessionState::Running);
+        session
+            .set_microphone_access(MicrophoneAccess::Denied)
+            .expect("set access");
+        session.start(true).expect("start with the microphone");
+        let refused = until(&|s| s.input_fault.is_some());
+
+        assert_eq!(refused.state, SessionState::Running);
+        assert!(!refused.input_active);
+        assert_eq!(refused.input_fault, Some(crate::Fault::PermissionDenied));
     }
 
     #[test]
