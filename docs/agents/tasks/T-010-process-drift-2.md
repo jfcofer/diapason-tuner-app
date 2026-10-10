@@ -46,9 +46,9 @@ Found on 2026-10-09:
 
 ## Out of scope
 
-Widening any permission. The `ask` rule for editing `build.gradle.kts` is the owner's to add: the
-agent's edit to `settings.json` was refused by the permission classifier, which is the boundary
-working, so `CLAUDE.md` says "ask first" instead.
+Widening any permission. The `ask` rule for editing `build.gradle.kts` (the signing block) was the
+owner's to add: the permission classifier refused the agent's edit to `settings.json`, which is the
+boundary working. The owner added it on 2026-10-09, and it lands in this PR.
 
 ## Implementation notes
 

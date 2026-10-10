@@ -19,7 +19,7 @@
   parent with its slices, offline in `docs-check`, can.
 - **Adding an `ask` rule for `build.gradle.kts` to `.claude/settings.json`.** The permission
   classifier refused the agent's edit. That is the right boundary, so the rule is left to the
-  owner. Until it exists, `CLAUDE.md` says to ask before touching the signing block.
+  owner, who added it the same day; it lands with T-010.
 
 ## Surprises
 - **The TODO check in `docs-check` had never worked.** A space after `\K` meant it matched nothing,
@@ -35,6 +35,6 @@
   no key loaded. It fell back as designed, and `gh` still saw the PRs.
 
 ## Left for next session
-- The owner: push, open the PR, merge it. Then add the `settings.json` `ask` rule.
+- The owner: review and merge the T-010 PR.
 - `T-011` ktfmt. Maven Central, checked 2026-10-09: 0.64 (2026-06-24) is the latest release. The
   jar is `ktfmt-0.64-with-dependencies.jar` (71 MB), with a published `.sha256`.
