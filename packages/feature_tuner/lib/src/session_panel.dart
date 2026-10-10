@@ -117,6 +117,10 @@ class _Readout extends StatelessWidget {
       if (snapshot.inputActive) 'Microphone: $level' else 'Microphone: off',
       if (snapshot.diagnostics.requestedInputPreset case final requested? when diagnostics)
         'Preset: ${requested.name} requested, ${_presetName(snapshot.diagnostics)} obtained',
+      if (snapshot.callbackLoad case final load? when diagnostics)
+        _callbackLine(snapshot.diagnostics.worstCallback, load),
+      if (snapshot.diagnostics.bufferFrames case final buffer? when diagnostics)
+        _bufferLine(buffer, snapshot.diagnostics),
       if (snapshot.inputFault case final fault?) 'Microphone unavailable: ${fault.name}',
       if (snapshot.fault case final fault?) 'Audio stopped: ${fault.name}',
       if (snapshot.rebuilds > 0) 'Audio route changed ${snapshot.rebuilds}×',
@@ -135,3 +139,12 @@ String _presetName(StreamDiagnostics diagnostics) => switch (diagnostics.inputPr
   InputPreset.other => 'code ${diagnostics.inputPresetCode}',
   final preset => preset.name,
 };
+
+/// The slowest callback, and its share of the time a burst allows (`docs/AUDIO_ENGINE.md` §1).
+String _callbackLine(Duration worst, double load) =>
+    'Callback: worst ${worst.inMicroseconds} µs, ${(load * 100).toStringAsFixed(1)} % of a burst';
+
+/// The output buffer as grown so far, and the microphone backlog shed (`docs/adr/0025`).
+String _bufferLine(int buffer, StreamDiagnostics diagnostics) =>
+    'Buffer: $buffer of ${diagnostics.bufferCapacityFrames ?? '?'} frames, '
+    '${diagnostics.inputFramesShed} input frames shed';

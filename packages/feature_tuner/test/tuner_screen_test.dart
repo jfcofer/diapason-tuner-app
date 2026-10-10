@@ -107,6 +107,27 @@ void main() {
     );
   });
 
+  testWidgets('with diagnostics on, the callback budget and the buffer are shown', (tester) async {
+    final engine = await pumpTuner(tester, permission: FakeMicrophonePermission());
+    engine.emit(
+      const SessionSnapshot(
+        state: SessionState.running,
+        sampleRate: 48000,
+        diagnostics: StreamDiagnostics(
+          backend: 'fake',
+          framesPerBurst: 960,
+          worstCallback: Duration(milliseconds: 3),
+          bufferFrames: 1920,
+          bufferCapacityFrames: 7680,
+          inputFramesShed: 512,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Callback: worst 3000 µs, 15.0 % of a burst'), findsOneWidget);
+    expect(find.text('Buffer: 1920 of 7680 frames, 512 input frames shed'), findsOneWidget);
+  });
+
   testWidgets('without diagnostics, no test tone and no preset readout', (tester) async {
     await pumpTuner(tester, permission: FakeMicrophonePermission(), diagnostics: false);
     await tapAndSettle(tester, const Key('tuner.micAction'));
