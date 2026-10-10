@@ -11,7 +11,7 @@ Created in T-001:
 | `doctor.sh` | Verify every pinned version in `docs/DEVELOPMENT.md` §1. Must fail loudly on an FRB codegen/runtime mismatch — that one mismatch causes more lost hours than anything else in this stack |
 | `check-deps.sh` | Parse `pubspec.yaml` and `Cargo.toml` files; fail on any upward or sideways dependency (`AGENTS.md` §5) |
 | `docs-check.sh` | Resolve every relative link in `docs/`, enforce the line budgets, verify the ADR index matches the directory |
-| `check-android-release.sh` | Assert targetSdk 36, verify 16 KB page alignment on every shipped `.so`, check the AAB size budget |
+| `check-android-release.sh` | Assert targetSdk 36, verify 16 KB page alignment on every shipped `.so`, that the engine links AAudio and no C++ runtime, and the size budgets |
 | `goldens.sh` | Run goldens; refuses to update them until M3 decides how (`docs/adr/0016`) |
 | `bench-compare.sh` | Compare criterion output against `rust/benches/baselines/`; fail on >10 % regression |
 | `session-end.sh` | Verify STATE.md, the active task file and a journal entry were all updated this session |

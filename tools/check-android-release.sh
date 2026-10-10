@@ -7,6 +7,9 @@
 #   - targetSdk / compileSdk match the pins in tools/versions.env
 #   - minSdk matches the pin
 #   - EVERY native .so is 16 KB page-aligned, per ABI
+#   - the engine's .so links AAudio and imports it, links no libc++_shared, and fits its per-ABI
+#     size budget (docs/AUDIO_ENGINE.md §1, docs/adr/0020): compiling against a library is not
+#     linking it, so this reads what actually shipped
 #   - the artifact is under the size budget
 #
 # The 16 KB check is the one that matters most: NDK r28+ aligns by default, so this is expected to
@@ -118,6 +121,37 @@ else
         fi
     done
 fi
+
+# ── The engine library: what it links, and its size, per ABI ──────────────────
+# AUDIO_ENGINE.md §1: added binary size per ABI targets 2.5 MB and fails above 4 MB.
+ENGINE_TARGET_KB=2560
+ENGINE_FAIL_KB=4096
+mapfile -t engines < <(find "$work" -name 'libdiapason_ffi.so' 2>/dev/null)
+if [[ ${#engines[@]} -eq 0 ]]; then
+    fail "libdiapason_ffi.so not found" "the Rust engine must ship in every release artifact"
+fi
+for so in "${engines[@]}"; do
+    abi="$(basename "$(dirname "$so")")"
+    needed="$("$readelf" -d "$so" 2>/dev/null | grep -oP 'NEEDED.*\[\K[^]]+')"
+    imports="$("$readelf" --dyn-syms "$so" 2>/dev/null | awk '$7 == "UND" {print $8}' | grep -c '^AAudio')"
+    if grep -qx 'libc++_shared.so' <<<"$needed"; then
+        fail "$abi: the engine links libc++_shared.so" "adr/0020 chose raw ndk-sys precisely to ship no C++ runtime"
+    elif ! grep -qx 'libaaudio.so' <<<"$needed" || [[ "$imports" -eq 0 ]]; then
+        fail "$abi: the engine does not link AAudio (NEEDED: $(tr '\n' ' ' <<<"$needed"))" \
+             "compiled but not linked: the backend is missing from the shipped library"
+    else
+        ok "$abi: links AAudio, no C++ runtime" "$imports AAudio imports"
+    fi
+    kb=$(( $(stat -c%s "$so") / 1024 ))
+    if (( kb > ENGINE_FAIL_KB )); then
+        fail "$abi: libdiapason_ffi.so is ${kb} KB (fails above ${ENGINE_FAIL_KB} KB)" \
+             "AUDIO_ENGINE.md §1 budgets 2.5 MB per ABI: find out what grew"
+    elif (( kb > ENGINE_TARGET_KB )); then
+        ok "$abi: engine size" "${kb} KB, over the ${ENGINE_TARGET_KB} KB target"
+    else
+        ok "$abi: engine size" "${kb} KB / ${ENGINE_TARGET_KB} KB"
+    fi
+done
 
 # ── Size budget ──────────────────────────────────────────────────────────────
 size_mb=$(( $(stat -c%s "$artifact") / 1024 / 1024 ))
