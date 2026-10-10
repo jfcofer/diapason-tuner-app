@@ -13,6 +13,9 @@
 
 #[cfg(target_os = "android")]
 mod android;
+// Used only by the Android backend; compiled for host tests too, so its arithmetic is tested there.
+#[cfg(any(target_os = "android", test))]
+mod backlog;
 mod callback;
 mod config;
 #[cfg(any(test, feature = "conformance"))]
