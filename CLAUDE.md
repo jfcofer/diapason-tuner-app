@@ -28,10 +28,11 @@ adds Claude-specific mechanics. Keep it short; if a rule matters to all agents, 
 
 ## Permissions
 
-`.claude/settings.json` pre-approves the safe loop (`just *`, `cargo *`, `flutter test`, `dart *`,
-read-only git). Anything destructive — `git push`, `rm -rf`, credential access, editing
-`android/app/build.gradle.kts` signing blocks — will ask. That boundary is deliberate; do not
-propose widening it to move faster.
+`.claude/settings.json` is the only statement of what is pre-approved, asked or denied; read it,
+do not rely on a summary. What it cannot say: its rules match command prefixes, so treat any
+spelling of a destructive command (`git push -f`, `rm -fr`) as denied whatever it matches, and no
+rule guards the signing block in `apps/diapason/android/app/build.gradle.kts`, so ask before
+touching it. That boundary is deliberate; do not propose widening it to move faster.
 
 One recorded exception, approved by the owner on 2026-10-09 (`T-007`): `just session-start` runs
 two **read-only network** calls, `git fetch --prune` and `gh pr list`, without a prompt, even though

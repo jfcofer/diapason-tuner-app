@@ -49,7 +49,10 @@ pub enum AudioError {
     /// Buffers handed to a backend do not match the open stream's channel counts.
     #[error("buffer lengths do not match the stream: {0}")]
     BufferMismatch(&'static str),
-    /// The device went away mid-stream. Oboe reports this from the callback.
+    /// The platform reported the device gone while the stream was opened, started or closed
+    /// (AAudio: `AAUDIO_ERROR_DISCONNECTED`; stopping treats it as stopped). A disconnect while
+    /// running is never returned as an error: the backend sets [`StreamHandle::disconnected`]
+    /// from its error callback or a failed input read.
     #[error("audio device disconnected")]
     Disconnected,
     /// Recording was attempted without the microphone permission having been granted.
