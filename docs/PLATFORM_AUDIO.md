@@ -62,10 +62,15 @@ AGC, noise suppression and a voice-band filter, all of which destroy pitch conte
 `AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED`; otherwise fall back to
 `InputPreset::VoiceRecognition`, which at least disables AGC on most devices. Never
 `VoiceCommunication`. Record the chosen preset in the snapshot so a support report can tell us
-which path a device took.
+which path a device took. The facts come from `core_platform`'s Pigeon channel, and the rule is
+`diapason_session::choose_input_preset`, in Rust (`adr/0024`). The snapshot carries the preset
+requested and the preset obtained.
 
 **Permissions** — `RECORD_AUDIO` at runtime, requested only when the user first opens the tuner,
 with a pre-permission explanation screen. The metronome must work fully with the permission denied.
+Dart tells the session the permission (`set_microphone_access`), because AAudio refuses an input
+opened without it with a generic `-896`. A denied microphone is never opened, and the input fault
+is `PermissionDenied` (`adr/0024`).
 
 **Foreground service** — required for the metronome to keep playing when the app is backgrounded:
 `android:foregroundServiceType="mediaPlayback"`, a `MediaSession` with transport controls, and
