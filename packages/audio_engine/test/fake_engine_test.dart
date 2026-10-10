@@ -1,16 +1,29 @@
 import 'package:audio_engine/audio_engine.dart';
+import 'package:audio_engine/testing.dart';
 import 'package:core_domain/core_domain.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('the fake satisfies EngineHandle without loading a native library', () async {
-    final engine = FakeAudioEngine();
+  test('the fake honours the engine contract with the microphone granted', () async {
+    await verifyEngineContract(FakeAudioEngine());
+  });
 
-    expect(engine, isA<EngineHandle>());
-    await engine.initialize();
+  test('the fake honours the engine contract with the microphone refused', () async {
+    await verifyEngineContract(FakeAudioEngine(microphoneWorks: false), microphoneGranted: false);
+  });
 
-    expect(engine.initializeCount, 1);
-    expect(engine.status().running, isFalse);
-    expect(engine.status(), isA<EngineStatus>());
+  test('a new listener gets the current state at once', () async {
+    final engine = FakeAudioEngine()..start(input: true);
+    final first = await engine.snapshots.first;
+    expect(first.state, SessionState.running);
+    expect(first.inputActive, isTrue);
+  });
+
+  test('the contract catches an engine that drops the microphone silently', () async {
+    final broken = FakeAudioEngine(microphoneWorks: false);
+    await expectLater(
+      verifyEngineContract(broken, deadline: const Duration(milliseconds: 100)),
+      throwsA(isA<EngineContractViolation>()),
+    );
   });
 }

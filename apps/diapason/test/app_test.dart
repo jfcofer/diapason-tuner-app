@@ -1,5 +1,6 @@
 import 'package:audio_engine/audio_engine.dart';
 import 'package:core_domain/core_domain.dart';
+import 'package:core_platform/core_platform.dart';
 import 'package:diapason/app.dart';
 import 'package:diapason/flavor.dart';
 import 'package:feature_tuner/feature_tuner.dart';
@@ -12,13 +13,15 @@ void main() {
       status: const EngineStatus(
         dspBuild: 'diapason_dsp 0.1.0',
         engineBuild: 'diapason_engine 0.1.0',
-        running: false,
       ),
     );
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [engineHandleProvider.overrideWithValue(fake)],
+        overrides: [
+          engineHandleProvider.overrideWithValue(fake),
+          microphonePermissionProvider.overrideWithValue(FakeMicrophonePermission()),
+        ],
         child: const DiapasonApp(),
       ),
     );

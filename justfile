@@ -86,7 +86,7 @@ lint: lint-dart lint-rust
 lint-dart:
     flutter analyze --fatal-infos
 
-lint-rust:
+lint-rust: && lint-rust-android
     cargo clippy --workspace --all-targets -- -D warnings
 
 # Advisories, licences, bans, sources - configured in deny.toml.
@@ -136,9 +136,13 @@ docs-check:
 
 # ── Running ───────────────────────────────────────────────────────────────────
 
+# `flutter run -d` matches a device id or name, not a platform, so `android` is resolved to the
+# connected device's serial (ANDROID_SERIAL picks one of several). Anything else passes through.
 run platform="ios" flavor="dev":
-    cd apps/diapason && flutter run -d {{platform}} --flavor {{flavor}} \
-        --target lib/main_{{flavor}}.dart --dart-define-from-file=flavors/{{flavor}}.json
+    cd apps/diapason && flutter run \
+        -d "$(if [[ {{platform}} == android ]]; then adb get-serialno; else echo {{platform}}; fi)" \
+        --flavor {{flavor}} --target lib/main_{{flavor}}.dart \
+        --dart-define-from-file=flavors/{{flavor}}.json
 
 # ── Performance ───────────────────────────────────────────────────────────────
 
@@ -186,6 +190,25 @@ ios_generated := "'apps/*/ios/Runner.xcodeproj' 'apps/*/ios/Flutter/*.xcconfig' 
 ios-project-check: ios-project
     @test -z "$(git status --porcelain -- {{ios_generated}})" \
         || (git status --short -- {{ios_generated}}; echo "iOS project drifted. Run: just ios-project" && exit 1)
+
+# `--release` measures callback timing instead; it has no allocation trap, so no canary.
+# audio_io's conformance suite and allocation canary on a connected Android device (T-002b).
+test-android-device *args:
+    @tools/test-android-device.sh {{args}}
+
+# The engine contract against the real engine, through the FFI, on a connected Android device: once
+# with the microphone revoked, once granted (T-002b, docs/TESTING.md §1).
+test-integration-android *args:
+    @tools/test-integration-android.sh {{args}}
+
+# No NDK needed: nothing is linked, and rust-toolchain.toml installs the target.
+# Clippy and rustdoc for the Android-only code, which no host build compiles.
+lint-rust-android:
+    cargo clippy --target aarch64-linux-android -p diapason_audio_io --all-targets \
+        --features conformance -- -D warnings
+    cargo clippy --target aarch64-linux-android -p diapason_session --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc --target aarch64-linux-android -p diapason_audio_io \
+        -p diapason_session --no-deps --features diapason_audio_io/conformance
 
 # targetSdk 36, 16 KB page alignment, size budget. See docs/PLATFORM_AUDIO.md §2.
 check-android-release:

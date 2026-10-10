@@ -21,7 +21,8 @@ Each one is real; none blocks `T-002`. Read `docs/CI_RELEASE.md` §1 and
 
 ## Acceptance criteria
 
-- [ ] `just`, `cargo-nextest`, `cargo-deny` and `shellcheck` are installed at versions pinned in
+- [ ] `just`, `cargo-nextest`, `cargo-deny`, `shellcheck` and `cargo-ndk` (used by
+      `just test-android-device`; 4.1.2 locally) are installed at versions pinned in
       `tools/versions.env`. Check that `taiki-e/install-action` accepts `tool@version` before
       relying on it. `doctor` compares versions, not just presence, and the selftest proves it
 - [ ] Xcode is pinned on `build-ios` (`xcode-select` to a version in `versions.env` that exists on

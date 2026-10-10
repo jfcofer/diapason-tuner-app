@@ -11,6 +11,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # MIT, no network calls, ships a privacy manifest, supports SwiftPM. Checked for T-002b. iOS
+  # compiles in only the microphone (PERMISSION_MICROPHONE, tools/ios/configure_project.rb).
+  # Held at 12: 13 pulls permission_handler_android 14, which needs compileSdk 37, and the pin
+  # (ANDROID_COMPILE_SDK in tools/versions.env) moves only in its own task (AGENTS.md §8).
+  permission_handler: ^12.0.3
 
 dev_dependencies:
   flutter_test:

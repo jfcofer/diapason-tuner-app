@@ -75,6 +75,9 @@ impl StreamConfig {
 pub struct StreamTimestamp {
     /// Index of the first frame of the block, counted from the start of the stream.
     pub frame: u64,
-    /// The host clock at that frame, in nanoseconds. Backend-defined epoch.
+    /// When that frame is heard, on the host clock, in nanoseconds (`docs/AUDIO_ENGINE.md` §6).
+    /// Where the platform reports presentation (AAudio's `getTimestamp`), this includes the
+    /// output latency; before it does, and for `OfflineBackend`, it is when the frame is rendered.
+    /// Backend-defined epoch.
     pub host_time_ns: u64,
 }

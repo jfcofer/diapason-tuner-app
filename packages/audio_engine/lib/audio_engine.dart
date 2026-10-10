@@ -4,9 +4,11 @@
 /// Everything in `src/rust/` is generated - regenerate it with `just gen`, never hand-edit it
 /// (`docs/REPO_LAYOUT.md`).
 ///
-/// Depend on `AudioEngine` rather than on the generated bindings: the facade is what keeps the
-/// generated types from leaking into features, and it is what `FakeAudioEngine` can stand in for.
+/// Depend on `EngineHandle` and the providers here rather than on the generated bindings: the
+/// facade is what keeps the generated types from leaking into features, and it is what
+/// `FakeAudioEngine` can stand in for. The shared contract is in `package:audio_engine/testing.dart`.
 library;
 
 export 'src/engine_facade.dart';
 export 'src/fake_engine.dart';
+export 'src/providers.dart';

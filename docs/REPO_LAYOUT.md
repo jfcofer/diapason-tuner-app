@@ -40,7 +40,7 @@ diapason/
 │   │   │       └── fake_engine.dart       In-memory fake used by every UI test
 │   │   ├── rust/                Cargo crate `diapason_ffi` (cargokit builds it)
 │   │   ├── cargokit/            Vendored build integration
-│   │   └── android/  ios/       Plugin platform glue + AVAudioSession/Oboe setup
+│   │   └── android/  ios/       Plugin platform glue + AVAudioSession setup
 │   │
 │   ├── core_domain/             Pure Dart. No Flutter import. Notes, tunings,
 │   │                            temperaments, cents math, settings model
@@ -58,7 +58,8 @@ diapason/
 │   │   │                        Depends on nothing above it. Benches live here
 │   │   ├── engine/              RT graph, command queue, snapshots, scheduler,
 │   │   │                        tuner pipeline, engine state machine
-│   │   ├── audio_io/            AudioBackend trait + oboe/coreaudio/cpal/offline
+│   │   ├── audio_io/            AudioBackend trait + aaudio/coreaudio/cpal/offline
+│   │   ├── session/             Stream supervisor between ffi and engine (adr/0022)
 │   │   └── xtask/               cargo xtask: fixtures, bench-compare, size-report
 │   └── (diapason_ffi lives in packages/audio_engine/rust — see below)
 │

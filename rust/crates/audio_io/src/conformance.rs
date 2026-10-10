@@ -8,7 +8,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
-use crate::{AudioBackend, AudioCallback, AudioError, CallbackInfo, StreamConfig, StreamHandle};
+use crate::{
+    AudioBackend, AudioCallback, AudioError, BackendReport, CallbackInfo, StreamConfig,
+    StreamHandle,
+};
 
 /// How the suite drives one backend.
 pub trait Harness {
@@ -16,8 +19,9 @@ pub trait Harness {
     type Backend: AudioBackend;
 
     /// Whether the stream runs on its own thread, independently of [`advance`](Self::advance).
-    /// A device harness sets this, which relaxes the one check that cannot be exact while audio
-    /// keeps flowing: `timestamp()` may then be newer than the last block the suite observed.
+    /// A device harness sets this, which relaxes the checks that cannot be exact while audio keeps
+    /// flowing: `timestamp()` may already be set straight after `open`, may be newer than the last
+    /// block the suite observed, and the handle's counters may run ahead of the probe's.
     const REALTIME: bool = false;
 
     /// The backend, closed until the suite opens it.
@@ -164,6 +168,11 @@ fn a_closed_backend_reports_nothing<H: Harness>(harness: &mut H) {
         "{name}: timestamp reported before open"
     );
     assert_eq!(
+        backend.report(),
+        BackendReport::default(),
+        "{name}: report filled in before open"
+    );
+    assert_eq!(
         backend.close(),
         Ok(()),
         "{name}: closing a never-opened backend must succeed"
@@ -219,11 +228,14 @@ fn open_grants_a_valid_config_with_the_requested_channels<H: Harness>(harness: &
         (requested.input_channels, requested.output_channels),
         "{name}: channel counts must be honoured or open must fail"
     );
-    assert_eq!(
-        backend.timestamp(),
-        None,
-        "{name}: timestamp before the first block"
-    );
+    // A real device may have run blocks before `open` even returns.
+    if !H::REALTIME {
+        assert_eq!(
+            backend.timestamp(),
+            None,
+            "{name}: timestamp before the first block"
+        );
+    }
 }
 
 fn a_second_open_is_rejected_and_the_first_stream_survives<H: Harness>(harness: &mut H) {
@@ -298,11 +310,23 @@ fn blocks_honour_the_granted_config<H: Harness>(harness: &mut H) {
             "{name}: handle callback count is wrong"
         );
     }
-    assert_eq!(
-        handle.max_block_frames_seen(),
-        largest,
-        "{name}: handle largest block is wrong"
+    // Read after the probe, so on a running stream the handle can only have seen more.
+    let handle_largest = handle.max_block_frames_seen();
+    assert!(
+        handle_largest <= granted.max_block_frames,
+        "{name}: handle reports a block of {handle_largest}, above the granted maximum"
     );
+    if H::REALTIME {
+        assert!(
+            handle_largest >= largest,
+            "{name}: handle largest block {handle_largest} is behind the probe's {largest}"
+        );
+    } else {
+        assert_eq!(
+            handle_largest, largest,
+            "{name}: handle largest block is wrong"
+        );
+    }
 }
 
 fn the_stream_clock_is_contiguous_and_paired_with_a_rising_host_clock<H: Harness>(harness: &mut H) {
@@ -363,6 +387,11 @@ fn close_drops_the_callback_and_is_idempotent<H: Harness>(harness: &mut H) {
         backend.timestamp(),
         None,
         "{name}: timestamp reported after close"
+    );
+    assert_eq!(
+        backend.report(),
+        BackendReport::default(),
+        "{name}: report filled in after close"
     );
     assert_eq!(
         backend.close(),

@@ -35,11 +35,11 @@ Full requirements: [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md).
 
 A pure-Rust DSP core (`rust/crates/dsp`) with no I/O and no allocation in its hot path, driven by a
 real-time engine (`rust/crates/engine`) that owns the audio callback, fed by swappable platform
-backends (`rust/crates/audio_io`: Oboe/AAudio on Android, AudioUnit on iOS, cpal on desktop, and an
-offline backend for deterministic tests). A thin flutter_rust_bridge layer (`rust/crates/ffi`)
-exposes commands in and a ~30 Hz state snapshot out — audio buffers never cross into Dart. Flutter
-consumes that stream through a feature-first package graph with a one-way dependency rule. Full
-reasoning and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+backends (`rust/crates/audio_io`: AAudio on Android, AudioUnit on iOS, cpal on desktop, and an
+offline backend for deterministic tests). A thin flutter_rust_bridge layer (`diapason_ffi`, in
+`packages/audio_engine/rust`) exposes commands in and a ~30 Hz state snapshot out — audio buffers
+never cross into Dart. Flutter consumes that stream through a feature-first package graph with a
+one-way dependency rule. Full reasoning and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Quick start
 

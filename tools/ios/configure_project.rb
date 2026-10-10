@@ -198,6 +198,12 @@ write_if_changed(File.join(IOS, 'Podfile'), <<~PODFILE)
   post_install do |installer|
     installer.pods_project.targets.each do |target|
       flutter_additional_ios_build_settings(target)
+      # permission_handler compiles in only the permissions an app enables. This app asks for the
+      # microphone and nothing else, so no other usage API reaches the binary (T-002b).
+      target.build_configurations.each do |config|
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'PERMISSION_MICROPHONE=1'
+      end
     end
   end
 PODFILE

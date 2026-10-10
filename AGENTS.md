@@ -20,8 +20,9 @@ Flutter owns the UI; **Rust owns all audio and DSP**. Offline-first, zero teleme
 2. `docs/agents/STATE.md` — the current truth: milestone, WIP, blockers, next action.
 3. The active task file named in STATE.md (`docs/agents/tasks/T-###-*.md`).
 4. Only the reference docs the task points to. Do not bulk-read `docs/`.
-5. Reconcile STATE.md with what `session-start` printed (merged or open PRs, unmerged branches,
-   red checks). Those change between sessions; report every contradiction before starting work.
+5. Reconcile STATE.md and the task files with what `session-start` printed (merged or open PRs,
+   unmerged branches, red checks, open tasks whose PR merged). Those change between sessions;
+   report every contradiction before starting work.
 
 **At session end — write, in order:**
 1. Update the task file: check off acceptance criteria, record deviations.
@@ -76,16 +77,16 @@ Full list: `just --list`. If a recipe is missing, add it in the same PR.
 apps/diapason  →  packages/feature_*  →  packages/core_ui, core_domain, core_platform
                                       →  packages/audio_engine (generated FFI facade)
                                               ↓
-                    rust/crates/ffi → engine → dsp        (dsp depends on nothing)
-                                    → audio_io (platform backends)
+          diapason_ffi → session → engine → dsp           (dsp depends on nothing)
+                                 → audio_io (platform backends)
 ```
 
 - `feature_*` packages **never import each other**. Shared code moves down to `core_*`.
 - `core_domain` is pure Dart: no Flutter import, no I/O, no plugins.
 - `rust/crates/dsp` is pure computation: no allocation in hot paths, no I/O, no platform code,
   no `audio_io` dependency. It must stay testable offline with fixture buffers.
-- `rust/crates/ffi` contains **no logic** — only the flutter_rust_bridge API surface and type
-  mapping. Business rules live in `engine`/`dsp`.
+- `diapason_ffi` (`packages/audio_engine/rust`, where cargokit builds it) contains **no logic** —
+  only the flutter_rust_bridge API surface and type mapping. Business rules live in `session`/`engine`/`dsp`.
 - Dart never touches audio buffers. Dart sends commands and receives ~30 Hz state snapshots.
 - No `dart:io`/plugin calls inside `core_ui` widgets; inject via `core_platform` interfaces.
 
@@ -94,8 +95,9 @@ apps/diapason  →  packages/feature_*  →  packages/core_ui, core_domain, core
 The audio callback thread is sacred. Inside it, and anything it calls:
 
 - **No** heap allocation, `Vec::push`, `String`, `format!`, `Box`, or collection growth.
-- **No** locks, `Mutex`, channel that can block, syscall, file, or log statement.
-- **No** panics: the FFI boundary wraps `catch_unwind`; the RT path must not reach it.
+- **No** locks, `Mutex`, channel that can block, syscall, file, or log statement. The audited
+  exceptions are the platform audio calls a backend must make and `clock_gettime` (`adr/0020`).
+- **No** panics: release builds abort on one, and nothing catches it (`adr/0021`).
 - Communicate with the rest of the app only through the lock-free SPSC ring buffers and atomic
   snapshots defined in `docs/AUDIO_ENGINE.md`.
 - Every buffer the RT path needs is preallocated at stream start, sized from the largest supported
