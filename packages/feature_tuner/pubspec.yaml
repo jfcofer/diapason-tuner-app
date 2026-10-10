@@ -15,7 +15,7 @@ dependencies:
   core_ui: ^0.1.0
   flutter:
     sdk: flutter
-  flutter_riverpod: ^3.0.0
+  flutter_riverpod: ^3.4.3
   riverpod_annotation: ^4.0.6
 
 dev_dependencies:
