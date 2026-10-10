@@ -52,8 +52,12 @@ streams on one clock: the output callback reads the input stream without blockin
 *Use* the device's native values rather than forcing 48 kHz/256. The output leaves the rate
 unspecified, so AAudio picks the native one, and the input asks for whatever the output was
 granted. Requesting a rate or buffer the device does not want is the most common cause of the fast
-path silently not being granted. The buffer is two bursts. Read back what was granted:
-`AAudioBackend::granted_paths` reports whether low latency and exclusive mode were actually given.
+path silently not being granted. The buffer starts at two bursts and grows one burst at a time,
+up to its capacity, whenever the output underruns. Microphone frames that queue up behind the
+callback by more than a burst are discarded down to at most 5 ms of slack, so a stall leaves no
+lasting latency beyond that and the device's own delivery granularity (`adr/0025`). Read back
+what was granted: `AAudioBackend::granted_paths` reports whether low latency and exclusive mode
+were actually given.
 
 **Input preset matters more than anything else for tuner accuracy.** Android's default input applies
 AGC, noise suppression and a voice-band filter, all of which destroy pitch content. Request
@@ -89,7 +93,9 @@ the moment the app is not foreground, and the UI says so.
   on affected devices, not a warning.
 - Edge-to-edge is enforced; handle insets explicitly.
 - Predictive back must be supported and tested.
-- 16 KB, edge-to-edge and target API checks live in `just check-android-release`.
+- `just check-android-release` checks 16 KB alignment, target and min SDK (APK), and that the
+  engine links AAudio and no C++ runtime, within its per-ABI size budget. Edge-to-edge and the
+  AAB's manifest are not checked yet (`T-004`).
 
 **Device disconnect** — AAudio's error callback fires on either stream, or the input's read fails,
 and `AAudioBackend` sets `StreamHandle::disconnected`. Nothing is rebuilt on the audio thread or
