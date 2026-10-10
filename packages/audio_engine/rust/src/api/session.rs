@@ -195,6 +195,12 @@ pub struct SessionSnapshotDto {
     pub xruns: Option<u32>,
     /// The output's burst size, in frames.
     pub frames_per_burst: Option<u32>,
+    /// The output buffer, in frames: the stream's latency.
+    pub buffer_frames: Option<u32>,
+    /// The most the output buffer can grow to.
+    pub buffer_capacity_frames: Option<u32>,
+    /// Microphone frames discarded from a backlog.
+    pub input_frames_shed: u64,
     /// The input preset requested.
     pub requested_input_preset: Option<InputPresetDto>,
     /// The input preset obtained.
@@ -240,6 +246,9 @@ impl From<&SessionSnapshot> for SessionSnapshotDto {
             input_underruns: snapshot.input_underruns,
             xruns: report.xruns,
             frames_per_burst: report.frames_per_burst,
+            buffer_frames: report.buffer_frames,
+            buffer_capacity_frames: report.buffer_capacity_frames,
+            input_frames_shed: snapshot.input_frames_shed,
             requested_input_preset: report.requested_input_preset.map(Into::into),
             input_preset: report.input_preset.map(Into::into),
             input_preset_code: report.input_preset.and_then(|preset| match preset {

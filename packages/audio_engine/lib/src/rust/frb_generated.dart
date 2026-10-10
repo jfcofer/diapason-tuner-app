@@ -562,7 +562,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   SessionSnapshotDto dco_decode_session_snapshot_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 25) throw Exception('unexpected arr length: expect 25 but see ${arr.length}');
+    if (arr.length != 28) throw Exception('unexpected arr length: expect 28 but see ${arr.length}');
     return SessionSnapshotDto(
       state: dco_decode_session_state_dto(arr[0]),
       backend: dco_decode_String(arr[1]),
@@ -577,18 +577,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       inputUnderruns: dco_decode_CastedPrimitive_u_64(arr[10]),
       xruns: dco_decode_opt_box_autoadd_u_32(arr[11]),
       framesPerBurst: dco_decode_opt_box_autoadd_u_32(arr[12]),
-      requestedInputPreset: dco_decode_opt_box_autoadd_input_preset_dto(arr[13]),
-      inputPreset: dco_decode_opt_box_autoadd_input_preset_dto(arr[14]),
-      inputPresetCode: dco_decode_opt_box_autoadd_i_32(arr[15]),
-      outputLowLatency: dco_decode_opt_box_autoadd_bool(arr[16]),
-      outputExclusive: dco_decode_opt_box_autoadd_bool(arr[17]),
-      inputLowLatency: dco_decode_opt_box_autoadd_bool(arr[18]),
-      inputExclusive: dco_decode_opt_box_autoadd_bool(arr[19]),
-      rebuilds: dco_decode_u_32(arr[20]),
-      fault: dco_decode_opt_box_autoadd_fault_dto(arr[21]),
-      inputFault: dco_decode_opt_box_autoadd_fault_dto(arr[22]),
-      lastError: dco_decode_opt_String(arr[23]),
-      commandsDropped: dco_decode_u_32(arr[24]),
+      bufferFrames: dco_decode_opt_box_autoadd_u_32(arr[13]),
+      bufferCapacityFrames: dco_decode_opt_box_autoadd_u_32(arr[14]),
+      inputFramesShed: dco_decode_CastedPrimitive_u_64(arr[15]),
+      requestedInputPreset: dco_decode_opt_box_autoadd_input_preset_dto(arr[16]),
+      inputPreset: dco_decode_opt_box_autoadd_input_preset_dto(arr[17]),
+      inputPresetCode: dco_decode_opt_box_autoadd_i_32(arr[18]),
+      outputLowLatency: dco_decode_opt_box_autoadd_bool(arr[19]),
+      outputExclusive: dco_decode_opt_box_autoadd_bool(arr[20]),
+      inputLowLatency: dco_decode_opt_box_autoadd_bool(arr[21]),
+      inputExclusive: dco_decode_opt_box_autoadd_bool(arr[22]),
+      rebuilds: dco_decode_u_32(arr[23]),
+      fault: dco_decode_opt_box_autoadd_fault_dto(arr[24]),
+      inputFault: dco_decode_opt_box_autoadd_fault_dto(arr[25]),
+      lastError: dco_decode_opt_String(arr[26]),
+      commandsDropped: dco_decode_u_32(arr[27]),
     );
   }
 
@@ -895,6 +898,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     final var_inputUnderruns = sse_decode_CastedPrimitive_u_64(deserializer);
     final var_xruns = sse_decode_opt_box_autoadd_u_32(deserializer);
     final var_framesPerBurst = sse_decode_opt_box_autoadd_u_32(deserializer);
+    final var_bufferFrames = sse_decode_opt_box_autoadd_u_32(deserializer);
+    final var_bufferCapacityFrames = sse_decode_opt_box_autoadd_u_32(deserializer);
+    final var_inputFramesShed = sse_decode_CastedPrimitive_u_64(deserializer);
     final var_requestedInputPreset = sse_decode_opt_box_autoadd_input_preset_dto(deserializer);
     final var_inputPreset = sse_decode_opt_box_autoadd_input_preset_dto(deserializer);
     final var_inputPresetCode = sse_decode_opt_box_autoadd_i_32(deserializer);
@@ -921,6 +927,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       inputUnderruns: var_inputUnderruns,
       xruns: var_xruns,
       framesPerBurst: var_framesPerBurst,
+      bufferFrames: var_bufferFrames,
+      bufferCapacityFrames: var_bufferCapacityFrames,
+      inputFramesShed: var_inputFramesShed,
       requestedInputPreset: var_requestedInputPreset,
       inputPreset: var_inputPreset,
       inputPresetCode: var_inputPresetCode,
@@ -1224,6 +1233,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_CastedPrimitive_u_64(self.inputUnderruns, serializer);
     sse_encode_opt_box_autoadd_u_32(self.xruns, serializer);
     sse_encode_opt_box_autoadd_u_32(self.framesPerBurst, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.bufferFrames, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.bufferCapacityFrames, serializer);
+    sse_encode_CastedPrimitive_u_64(self.inputFramesShed, serializer);
     sse_encode_opt_box_autoadd_input_preset_dto(self.requestedInputPreset, serializer);
     sse_encode_opt_box_autoadd_input_preset_dto(self.inputPreset, serializer);
     sse_encode_opt_box_autoadd_i_32(self.inputPresetCode, serializer);

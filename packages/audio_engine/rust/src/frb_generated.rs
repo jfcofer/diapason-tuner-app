@@ -688,6 +688,9 @@ impl SseDecode for crate::api::session::SessionSnapshotDto {
         let mut var_inputUnderruns = <u64>::sse_decode(deserializer);
         let mut var_xruns = <Option<u32>>::sse_decode(deserializer);
         let mut var_framesPerBurst = <Option<u32>>::sse_decode(deserializer);
+        let mut var_bufferFrames = <Option<u32>>::sse_decode(deserializer);
+        let mut var_bufferCapacityFrames = <Option<u32>>::sse_decode(deserializer);
+        let mut var_inputFramesShed = <u64>::sse_decode(deserializer);
         let mut var_requestedInputPreset =
             <Option<crate::api::session::InputPresetDto>>::sse_decode(deserializer);
         let mut var_inputPreset =
@@ -716,6 +719,9 @@ impl SseDecode for crate::api::session::SessionSnapshotDto {
             input_underruns: var_inputUnderruns,
             xruns: var_xruns,
             frames_per_burst: var_framesPerBurst,
+            buffer_frames: var_bufferFrames,
+            buffer_capacity_frames: var_bufferCapacityFrames,
+            input_frames_shed: var_inputFramesShed,
             requested_input_preset: var_requestedInputPreset,
             input_preset: var_inputPreset,
             input_preset_code: var_inputPresetCode,
@@ -961,6 +967,9 @@ impl flutter_rust_bridge::IntoDart for crate::api::session::SessionSnapshotDto {
             self.input_underruns.into_into_dart().into_dart(),
             self.xruns.into_into_dart().into_dart(),
             self.frames_per_burst.into_into_dart().into_dart(),
+            self.buffer_frames.into_into_dart().into_dart(),
+            self.buffer_capacity_frames.into_into_dart().into_dart(),
+            self.input_frames_shed.into_into_dart().into_dart(),
             self.requested_input_preset.into_into_dart().into_dart(),
             self.input_preset.into_into_dart().into_dart(),
             self.input_preset_code.into_into_dart().into_dart(),
@@ -1240,6 +1249,9 @@ impl SseEncode for crate::api::session::SessionSnapshotDto {
         <u64>::sse_encode(self.input_underruns, serializer);
         <Option<u32>>::sse_encode(self.xruns, serializer);
         <Option<u32>>::sse_encode(self.frames_per_burst, serializer);
+        <Option<u32>>::sse_encode(self.buffer_frames, serializer);
+        <Option<u32>>::sse_encode(self.buffer_capacity_frames, serializer);
+        <u64>::sse_encode(self.input_frames_shed, serializer);
         <Option<crate::api::session::InputPresetDto>>::sse_encode(
             self.requested_input_preset,
             serializer,
