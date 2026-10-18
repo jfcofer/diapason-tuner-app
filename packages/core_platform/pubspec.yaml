@@ -23,7 +23,7 @@ dev_dependencies:
     sdk: flutter
   # Typed platform channels (docs/adr/0024). Pinned exactly: its output depends on the version.
   # Run by `just gen-dart`; the output is generated, not committed, like build_runner's.
-  pigeon: 29.0.4
+  pigeon: 29.0.10
 
 # A Flutter plugin, so its Kotlin registers with the engine like any other plugin. Android only:
 # on iOS the capabilities are unknown until T-002c.
