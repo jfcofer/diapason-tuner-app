@@ -43,6 +43,7 @@ Started 2026-10-20, ten days after the last session; ran past midnight.
   are proven by hand (T-012, out of scope).
 
 ## Left for next session
-- The owner merges #24 (T-012), which needs "Update branch" first, then the 2b-ii PR.
+- The owner merged #24 (T-012). 2b-ii was rebased onto it (STATE.md conflicted; this session's
+  rewrite already carried T-012's two edits) and opened as #27. The owner merges it.
 - The profile-app check of `callbackLoad` on the Redmi, if the owner wants it before merge.
 - Then `T-002d` (lifecycle) in plan mode: the microphone still stays open once the tuner listens.
