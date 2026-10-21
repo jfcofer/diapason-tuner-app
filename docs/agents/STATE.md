@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-09 (T-002b part 2b-i)
+# STATE — updated 2026-10-20 (T-012; T-002b part 2b-ii in flight)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -116,5 +116,5 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 1. **The PR for 2b-i** (push when the owner says so).
 2. **`T-002b` 2b-ii**, then **part 3** (overlay, lifecycle, latency).
 3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
-4. `T-004` whenever a slice is waiting on CI. **`T-003-pitch-core` can run in parallel** with M1:
+4. `T-004` whenever a slice is waiting on CI. **`T-003` (pitch core, no task file yet) can run in parallel** with M1:
    it is host-only `dsp` work with no device dependency.

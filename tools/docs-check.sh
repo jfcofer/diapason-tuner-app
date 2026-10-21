@@ -131,7 +131,16 @@ if [[ -n "$active" && -f "docs/agents/tasks/$active" ]]; then
         taskbad=1
     fi
 fi
-[[ $taskbad -eq 0 ]] && ok "task front matter valid, done means done, parents track their slices, active task is open"
+# Every task STATE.md cites by its slug must exist: a slug promises a file the next agent will look
+# for (T-012). A bare ID (`T-003`) may name a task not yet written; a branch (`feat/T-…`) is not a task.
+while read -r cited; do
+    [[ -f "docs/agents/tasks/${cited#docs/agents/tasks/}.md" ]] && continue
+    fail "STATE.md cites $cited, but there is no such task file" \
+         "Write the task file, or cite the bare ID until it exists."
+    taskbad=1
+done < <(grep -oP '(?<![\w/-])(?:docs/agents/tasks/)?T-[0-9]{3}[a-z]?-[a-z0-9]+(?:-[a-z0-9]+)*' \
+    docs/agents/STATE.md 2>/dev/null | sort -u)
+[[ $taskbad -eq 0 ]] && ok "task front matter valid, done means done, parents track their slices, active task is open, cited tasks exist"
 
 # ── Lint suppressions (AGENTS.md §3.2, adr/0018) ─────────────────────────────
 # The gate means nothing if a lint can be switched off where it fires. The single audited home for
