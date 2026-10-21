@@ -43,20 +43,24 @@ work="$(grep -v '^docs/agents/' <<<"$changed")"
 # Anything outside docs/ is code, tooling or configuration: root manifests and pins included.
 code="$(grep -v '^docs/' <<<"$work")"
 
-# 1. STATE.md must have been touched if anything else changed.
+# 1. STATE.md must have been touched, and its header dated today, if anything else changed.
+today="$(date +%Y-%m-%d)"
 if [[ -n "$work" ]]; then
-    if touched docs/agents/STATE.md; then
-        ok "STATE.md updated"
-    else
+    if ! touched docs/agents/STATE.md; then
         fail "STATE.md was not updated" \
              "It is a snapshot of the current truth, not a log. Rewrite it before ending."
+    # A rewrite that keeps the old header tells the next agent the snapshot is older than it is.
+    elif ! grep -qE "^# STATE — updated $today\b" docs/agents/STATE.md; then
+        fail "STATE.md was updated, but its header is not dated $today" \
+             "Rewrite the first line: # STATE — updated $today (<task and part>)."
+    else
+        ok "STATE.md updated, dated $today"
     fi
 else
     ok "nothing changed, STATE.md update not required"
 fi
 
 # 2. A journal entry for today.
-today="$(date +%Y-%m-%d)"
 if compgen -G "docs/agents/journal/${today}-*.md" >/dev/null; then
     ok "journal entry exists for $today"
 else
