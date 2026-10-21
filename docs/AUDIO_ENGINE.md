@@ -174,9 +174,6 @@ The rules are in `AGENTS.md` §6; this is how they are enforced rather than mere
 - The platform calls the backend must make on the RT path are audited, not banned:
   - AAudio's non-blocking `AAudioStream_read` and its `getTimestamp`. On the legacy (non-MMAP)
     path each takes a short platform mutex, the cost Oboe's `FullDuplexStream` also accepts;
-  - the input's `getFramesWritten` and `getFramesRead`, once per callback, to measure the backlog
-    (`adr/0025`). AAudio allows `get*` in a callback; on the legacy path they may take the same
-    `AudioRecord` mutex as `read` (from memory of AOSP, not verified here);
   - `clock_gettime(CLOCK_MONOTONIC)` (`adr/0020`).
 - Command queue: `rtrb` SPSC. Snapshot publishing: `triple_buffer`. No other cross-thread primitive
   is permitted in `engine`.
