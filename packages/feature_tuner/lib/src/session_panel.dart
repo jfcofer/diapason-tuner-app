@@ -144,7 +144,7 @@ String _presetName(StreamDiagnostics diagnostics) => switch (diagnostics.inputPr
 String _callbackLine(Duration worst, double load) =>
     'Callback: worst ${worst.inMicroseconds} µs, ${(load * 100).toStringAsFixed(1)} % of a burst';
 
-/// The output buffer as grown so far, and the microphone backlog shed (`docs/adr/0025`).
+/// The output buffer as grown so far (`docs/adr/0025`), and the microphone frames drained at start.
 String _bufferLine(int buffer, StreamDiagnostics diagnostics) =>
     'Buffer: $buffer of ${diagnostics.bufferCapacityFrames ?? '?'} frames, '
     '${diagnostics.inputFramesShed} input frames shed';

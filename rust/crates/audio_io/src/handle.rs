@@ -64,8 +64,8 @@ impl StreamHandle {
         self.stats.input_underruns.load(Ordering::Relaxed)
     }
 
-    /// Microphone frames discarded unheard because they had queued up behind the callback. Each
-    /// one is latency the tuner did not have to suffer (`docs/adr/0025`).
+    /// Microphone frames the first callback discarded unheard: the backlog that built up while
+    /// the speaker started. Each one is latency the tuner did not have to suffer (`docs/adr/0020`).
     #[must_use]
     pub fn input_frames_shed(&self) -> u64 {
         self.stats.input_frames_shed.load(Ordering::Relaxed)
@@ -93,7 +93,7 @@ impl StreamHandle {
         self.stats.input_underruns.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Record microphone frames discarded from a backlog. Real-time thread: atomics only.
+    /// Record microphone frames discarded by the start-up drain. Real-time thread: atomics only.
     #[cfg(target_os = "android")]
     pub(crate) fn record_shed(&self, frames: usize) {
         self.stats
@@ -102,7 +102,7 @@ impl StreamHandle {
     }
 
     /// Record that the platform broke the stream. Called from the platform's error callback (on
-    /// its own thread or the audio thread), from a failed input read or a backlog shed on the audio
+    /// its own thread or the audio thread), from a failed input read or drain on the audio
     /// thread, or by [`crate::OfflineBackend::simulate_disconnect`].
     pub(crate) fn mark_disconnected(&self) {
         self.stats.disconnected.store(true, Ordering::Relaxed);

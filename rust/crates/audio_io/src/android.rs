@@ -12,7 +12,6 @@ use std::sync::atomic::{AtomicU64, Ordering, fence};
 
 use ndk_sys as aaudio;
 
-use crate::backlog::{Floor, frames_to_shed};
 use crate::{
     AudioBackend, AudioCallback, AudioError, BackendReport, CallbackInfo, GrantedPath, InputPreset,
     Result, SAMPLE_RATES, StreamConfig, StreamHandle, StreamTimestamp,
@@ -21,9 +20,9 @@ use crate::{
 /// How long `close` waits for AAudio to confirm a stop before closing anyway.
 const STOP_TIMEOUT_NS: i64 = 500_000_000;
 
-/// Input reads one callback may spend discarding a backlog, at most: the start-up drain or a shed.
-/// Bounded so that a device delivering faster than the callback reads cannot hold the audio thread.
-const MAX_SHED_READS: usize = 32;
+/// Input reads discarded on the first callback, at most. The microphone starts before the speaker,
+/// so a backlog builds up that would otherwise sit between them as latency.
+const MAX_DRAIN_READS: usize = 32;
 
 impl InputPreset {
     fn to_raw(self) -> aaudio::aaudio_input_preset_t {
@@ -122,20 +121,6 @@ impl AAudioBackend {
         u32::try_from(output.max(0))
             .ok()?
             .checked_add(u32::try_from(input.max(0)).ok()?)
-    }
-
-    /// The input's frames written minus frames read, as AAudio's counters say, with no floor
-    /// taken off. For diagnostics: on the legacy path it includes a pipeline offset that no read
-    /// can return. `None` when closed or without an input.
-    #[must_use]
-    pub fn input_counter_gap(&self) -> Option<i64> {
-        let input = self.stream.as_ref()?.input?;
-        // SAFETY: the input stream is open for as long as `running` exists; `get*` calls are
-        // thread-safe.
-        Some(unsafe {
-            aaudio::AAudioStream_getFramesWritten(input.as_ptr())
-                .saturating_sub(aaudio::AAudioStream_getFramesRead(input.as_ptr()))
-        })
     }
 
     /// The output's underruns alone. `None` when closed.
@@ -280,9 +265,7 @@ impl Running {
             shared: Arc::clone(&shared),
             next_frame: 0,
             last_host_ns: 0,
-            input_burst: 0,
-            floor: Floor::new(),
-            warmed_up: false,
+            drained: false,
         })));
         // From here, `state` is freed on every error path by dropping the half-built `Running`.
         let mut running = Self {
@@ -368,7 +351,6 @@ impl Running {
         // access to `state`.
         let callback_state = unsafe { &mut *state.as_ptr() };
         callback_state.config = granted;
-        callback_state.input_burst = input_burst(input.as_ref(), burst);
         callback_state.input = input;
 
         // The microphone starts first, so the first output callback already has input to read.
@@ -439,13 +421,7 @@ struct CallbackState {
     shared: Arc<Shared>,
     next_frame: u64,
     last_host_ns: u64,
-    /// The input stream's burst, in frames: the unit the microphone delivers in.
-    input_burst: usize,
-    /// The input counters' recent floor, against which a backlog is measured.
-    floor: Floor,
-    /// The first callback has run. It drains the backlog the microphone built before the speaker
-    /// started, a one-off cost left out of the worst callback duration.
-    warmed_up: bool,
+    drained: bool,
 }
 
 impl CallbackState {
@@ -462,31 +438,16 @@ impl CallbackState {
             input_channels,
             output_channels,
         } = self.config;
-        // Start-up sheds the backlog the microphone built before the speaker started. That says
-        // nothing about steady state, so those callbacks are left out of the worst case.
-        let warming_up = !self.warmed_up;
-        self.warmed_up = true;
-        if let Some(input) = &self.input {
-            if warming_up {
+        // The first callback also drains the microphone's backlog, so its duration says nothing
+        // about steady state and is left out of the worst case.
+        let first = !self.drained;
+        if first {
+            self.drained = true;
+            if let Some(input) = &self.input {
                 drain(
                     input,
                     &mut self.input_buffer,
                     max_block_frames,
-                    &self.shared.handle,
-                );
-            } else {
-                shed_backlog(
-                    input,
-                    &mut self.input_buffer,
-                    Shed {
-                        burst: self.input_burst,
-                        slack: self
-                            .input_burst
-                            .min(usize::try_from(sample_rate / 200).unwrap_or(0)),
-                        max_block_frames,
-                        channels: input_channels,
-                    },
-                    &mut self.floor,
                     &self.shared.handle,
                 );
             }
@@ -531,7 +492,7 @@ impl CallbackState {
             self.last_host_ns = host_time_ns;
             offset_frames += frames as u64;
         }
-        if !warming_up {
+        if !first {
             self.shared
                 .handle
                 .record_duration(now_ns().saturating_sub(started_ns));
@@ -609,86 +570,12 @@ fn read_input(stream: &Stream, input: &mut [f32], frames: usize) -> Input {
     Input::Short(got)
 }
 
-/// The input's burst, which sets how much jitter the backlog check tolerates. AAudio's figure "may
-/// or may not match the actual device burst", and a zero would make every surplus frame look like
-/// backlog, so the output's burst stands in for a missing one.
-fn input_burst(input: Option<&Stream>, output_burst: i32) -> usize {
-    input
-        .and_then(|input| {
-            // SAFETY: the input stream is open.
-            usize::try_from(unsafe { aaudio::AAudioStream_getFramesPerBurst(input.ptr()) }).ok()
-        })
-        .filter(|&burst| burst > 0)
-        .unwrap_or_else(|| usize::try_from(output_burst).unwrap_or(0))
-}
-
-/// What one callback's backlog check needs to know, all in frames.
-#[derive(Clone, Copy)]
-struct Shed {
-    /// The input's burst: the microphone's delivery unit, and so its normal jitter.
-    burst: usize,
-    /// What is kept above the floor after shedding: at most one burst and 5 ms. It is standing
-    /// latency, so it is as small as covers the reads' timing (`docs/adr/0025`).
-    slack: usize,
-    max_block_frames: usize,
-    channels: usize,
-}
-
-/// Discard microphone frames that have queued up since the counters' floor, once they exceed it by
-/// more than a burst and the slack, down to the slack. A burst is how unevenly the microphone
-/// delivers, so less than that is not backlog. A stall shows up as exactly such a rise, and
-/// without this its audio would sit between the instrument and the tuner for the life of the
-/// stream (`docs/adr/0025`).
-///
-/// The gap is `getFramesWritten - getFramesRead` on the input. Both are `get*` calls, which
-/// AAudio allows in a data callback, and are on the audited list in `docs/AUDIO_ENGINE.md` §7.
-/// Bounded to [`MAX_SHED_READS`] non-blocking reads, and it stops at the first short read.
-fn shed_backlog(
-    stream: &Stream,
-    buffer: &mut [f32],
-    shed: Shed,
-    floor: &mut Floor,
-    handle: &StreamHandle,
-) {
-    // SAFETY: the input stream is open while the callback that owns it runs.
-    let gap = unsafe {
-        aaudio::AAudioStream_getFramesWritten(stream.ptr())
-            .saturating_sub(aaudio::AAudioStream_getFramesRead(stream.ptr()))
-    };
-    let base = floor.observe(gap);
-    let mut excess = frames_to_shed(gap, base, shed.burst, shed.slack);
-    for _ in 0..MAX_SHED_READS {
-        let frames = excess.min(shed.max_block_frames);
-        if frames == 0 {
-            return;
-        }
-        let Some(block) = buffer.get_mut(..frames * shed.channels) else {
-            return;
-        };
-        match read_input(stream, block, frames) {
-            Input::Full => {
-                handle.record_shed(frames);
-                excess -= frames;
-            }
-            // Fewer frames were readable than the counters said: nothing left to shed.
-            Input::Short(got) => {
-                handle.record_shed(got);
-                return;
-            }
-            Input::Broken => {
-                handle.mark_disconnected();
-                return;
-            }
-        }
-    }
-}
-
 /// Discard whatever the microphone buffered before the speaker started, so input reaches the first
 /// callback with the least delay. Reads until one comes up short, which is where the backlog ended,
 /// so that read is not an underrun. Bounded, because a device that delivers faster than this reads
 /// must not hang the stream. The frames are counted as shed.
 fn drain(stream: &Stream, buffer: &mut [f32], max_block_frames: usize, handle: &StreamHandle) {
-    for _ in 0..MAX_SHED_READS {
+    for _ in 0..MAX_DRAIN_READS {
         match read_input(stream, buffer, max_block_frames) {
             Input::Full => handle.record_shed(max_block_frames),
             Input::Short(got) => {

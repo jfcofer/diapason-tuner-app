@@ -93,7 +93,7 @@ pub struct SessionSnapshot {
     pub worst_callback_ns: u64,
     /// Blocks the microphone had not delivered in time, on the current stream.
     pub input_underruns: u64,
-    /// Microphone frames discarded from a backlog, on the current stream: latency removed.
+    /// Microphone frames the start-up drain discarded, on the current stream: latency removed.
     pub input_frames_shed: u64,
     /// Path, preset, burst and xruns, as the backend reports them.
     pub report: BackendReport,
