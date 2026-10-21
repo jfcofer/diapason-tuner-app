@@ -10,10 +10,9 @@
 **Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
-- **Merged:** T-006, T-002a, T-007, T-008, T-002b parts 1, 2a and 2b-i, T-009, T-010, T-011
-  (PRs #6–#9, #11–#16), and Dependabot #2, #10, #21, #22 and #25. #20 closed (the hold below).
-- **Open, for the owner to merge:** #24 (`T-012`, needs "Update branch" first), then the 2b-ii PR
-  (`feat/T-002b-stream-tuning`).
+- **Merged:** T-006, T-002a, T-007, T-008, T-002b parts 1, 2a and 2b-i, T-009, T-010, T-011,
+  T-012 (PRs #6–#9, #11–#16, #24), and Dependabot #2, #10, #21, #22, #25, #26. #20 closed.
+- **Open, for the owner to merge:** #27, the 2b-ii PR (`feat/T-002b-stream-tuning`).
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
@@ -21,7 +20,7 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. 
 **`docs/agents/tasks/T-002b-android-duplex.md`**: parts 1, 2a and 2b-i merged (#11, #13, #16).
 **2b-ii is device-verified** (`adr/0025`): buffer growth, the preset fallback, the callback budget
 and the shipped-`.so` gate. Backlog shedding was **cut**, because it broke the microphone on the
-Redmi. T-002b closes when its PR merges; its part 3 is now `T-002d`/`T-002e`/`T-002f`.
+Redmi. T-002b closes when #27 merges; its part 3 is now `T-002d`/`T-002e`/`T-002f`.
 
 ## Hardware this project actually has
 
@@ -112,7 +111,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **The owner merges #24, then the 2b-ii PR.** Then mark T-002b done.
+1. **The owner merges #27.** Then mark T-002b done (and tick its CI criterion).
 2. **`T-002d`** (`docs/agents/tasks/T-002d-tuner-lifecycle.md`), in plan mode: release the
    microphone off screen. Privacy first.
 3. **`T-002e`** (overlay and first golden), then **`T-002f`** (latency, the FAST refusal).
