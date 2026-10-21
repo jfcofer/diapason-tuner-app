@@ -58,7 +58,7 @@ pub struct BackendReport {
     /// Output underruns plus input overruns the platform has counted since the stream opened.
     pub xruns: Option<u32>,
     /// The output's share of [`Self::xruns`]: the callback missed the speaker. What a larger buffer
-    /// can prevent, unlike an input overrun, which shedding handles.
+    /// can prevent, unlike an input overrun.
     pub output_xruns: Option<u32>,
     /// Frames the output buffer holds before the speaker would wait: the latency the stream runs
     /// at. Grown one burst at a time when the output underruns (`docs/adr/0025`).

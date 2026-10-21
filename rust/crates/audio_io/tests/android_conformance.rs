@@ -122,8 +122,8 @@ fn the_microphone_keeps_up_once_warmed_up() {
     let shed_steady = handle.input_frames_shed() - shed;
     let ran = handle.callbacks() - blocks;
     backend.close().expect("close");
-    // Shedding in steady state would mean the backlog check misjudges this device's delivery and
-    // throws microphone audio away, which a pitch detector hears as a splice (docs/adr/0025).
+    // Only the first callback may discard input. Discarding later throws microphone audio away,
+    // which a pitch detector hears as a splice (docs/adr/0025, Rejected).
     assert_eq!(
         shed_steady, 0,
         "aaudio: {shed_steady} input frames shed after warm-up, with nothing stalling"
@@ -136,41 +136,6 @@ fn the_microphone_keeps_up_once_warmed_up() {
     assert_eq!(
         short, 0,
         "aaudio: {short} of {ran} blocks were short of input after warm-up"
-    );
-}
-
-#[test]
-fn a_backlog_after_a_stall_is_shed() {
-    // The callback stalls once, 2 s into the stream by its own clock, for 200 ms. The microphone
-    // keeps delivering, so ~9600 frames queue up behind it, which must be discarded rather than
-    // kept as latency (docs/adr/0025). Shedding is counted from 1 s, after start-up, to 4 s.
-    let mut backend = AAudioBackend::new(InputPreset::VoiceRecognition);
-    let stall = StallOnce {
-        at_seconds: 2,
-        stall: Duration::from_millis(200),
-        done: false,
-    };
-    let handle = backend.open(DUPLEX, Box::new(stall)).expect("open");
-    let rate = u64::from(backend.actual_config().expect("open stream").sample_rate);
-    wait_for_frame(&backend, rate);
-    let before = handle.input_frames_shed();
-    wait_for_frame(&backend, 4 * rate);
-    let after = handle.input_frames_shed();
-    backend.close().expect("close");
-    println!(
-        "shed: {before} frames by 1 s, {} more by 4 s",
-        after - before
-    );
-    assert!(
-        !handle.disconnected(),
-        "aaudio: the stream reported a disconnect"
-    );
-    // At least half the stall: the rest may have been read as ordinary input, with one burst of
-    // jitter on either side.
-    assert!(
-        after - before >= rate / 10,
-        "aaudio: only {} frames shed after a 200 ms stall",
-        after - before
     );
 }
 
@@ -207,41 +172,6 @@ fn the_output_buffer_can_be_resized_within_its_capacity() {
     }
 }
 
-/// Wait until the stream clock reaches `frame`. A deadline, never a measurement.
-fn wait_for_frame(backend: &AAudioBackend, frame: u64) {
-    let deadline = Instant::now() + 2 * DEADLINE;
-    while backend.timestamp().is_none_or(|stamp| stamp.frame < frame) {
-        assert!(
-            Instant::now() < deadline,
-            "aaudio: frame {frame} never played"
-        );
-        thread::sleep(Duration::from_millis(2));
-    }
-}
-
-/// Writes silence, and once, when the stream clock passes `at_seconds`, holds the audio thread for
-/// `stall`. Timed by the stream's own frames, so it fires at the same moment whatever the burst.
-struct StallOnce {
-    at_seconds: u64,
-    stall: Duration,
-    done: bool,
-}
-
-impl AudioCallback for StallOnce {
-    fn process(&mut self, _: &[f32], output: &mut [f32], info: &CallbackInfo) {
-        output.fill(0.0);
-        if !self.done && info.timestamp.frame >= self.at_seconds * u64::from(info.sample_rate) {
-            self.done = true;
-            // A spin, not a sleep: allocation-free, and exactly the kind of late callback the
-            // backlog check exists for.
-            let until = Instant::now() + self.stall;
-            while Instant::now() < until {
-                std::hint::spin_loop();
-            }
-        }
-    }
-}
-
 /// Writes silence and does nothing else, so the stream's own numbers are what gets measured.
 struct Silence;
 
@@ -265,18 +195,8 @@ fn report_what_the_device_grants() {
             "requested {preset:?}: input underruns {warm} in the first 2 s, {} in the next 3 s",
             handle.input_underruns() - warm
         );
-        // What the input counters say is queued, sampled from this thread for 1 s: on the legacy
-        // path a pipeline offset that no read returns, which is why shedding measures from a floor.
-        let gaps: Vec<i64> = (0..100)
-            .filter_map(|_| {
-                thread::sleep(Duration::from_millis(10));
-                backend.input_counter_gap()
-            })
-            .collect();
         println!(
-            "requested {preset:?}: counter gap min {:?}, max {:?} frames; {} frames shed",
-            gaps.iter().min(),
-            gaps.iter().max(),
+            "requested {preset:?}: {} frames drained at start-up",
             handle.input_frames_shed()
         );
         let config = backend.actual_config().expect("open stream has a config");

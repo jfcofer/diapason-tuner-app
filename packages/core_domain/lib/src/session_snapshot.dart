@@ -123,7 +123,7 @@ class StreamDiagnostics {
   /// The most [bufferFrames] can grow to.
   final int? bufferCapacityFrames;
 
-  /// Microphone frames discarded from a backlog: latency the tuner was spared.
+  /// Microphone frames the stream's start-up drain discarded: latency the tuner was spared.
   final int inputFramesShed;
 
   /// The microphone processing the engine asked for. `null` without a microphone.
