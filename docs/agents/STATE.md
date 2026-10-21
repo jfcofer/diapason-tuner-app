@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-20 (T-012; T-002b part 2b-ii in flight)
+# STATE — updated 2026-10-21 (T-002b part 2b-ii closed on the Redmi; T-012)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -11,17 +11,17 @@
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
 - **Merged:** T-006, T-002a, T-007, T-008, T-002b parts 1, 2a and 2b-i, T-009, T-010, T-011
-  (PRs #6–#9, #11–#16), and Dependabot #2 and #10.
-- **Branch in flight:** `feat/T-002b-stream-tuning` (2b-ii), not pushed.
-- The dev flavour runs on the Redmi. The tuner screen asks for the microphone and shows the live
-  session.
+  (PRs #6–#9, #11–#16), and Dependabot #2, #10, #21, #22 and #25. #20 closed (the hold below).
+- **Open, for the owner to merge:** #24 (`T-012`, needs "Update branch" first), then the 2b-ii PR
+  (`feat/T-002b-stream-tuning`).
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
 **`docs/agents/tasks/T-002b-android-duplex.md`**: parts 1, 2a and 2b-i merged (#11, #13, #16).
-**2b-ii is built** (`adr/0025`): backlog shedding, buffer growth, the preset fallback, the callback
-budget and the shipped-`.so` gate. It owes the device runs the task file lists, then its PR.
+**2b-ii is device-verified** (`adr/0025`): buffer growth, the preset fallback, the callback budget
+and the shipped-`.so` gate. Backlog shedding was **cut**, because it broke the microphone on the
+Redmi. T-002b closes when its PR merges; its part 3 is now `T-002d`/`T-002e`/`T-002f`.
 
 ## Hardware this project actually has
 
@@ -31,18 +31,15 @@ budget and the shipped-`.so` gate. It owes the device runs the task file lists, 
 
 ## What exists now
 
-- **Pub workspace:** 8 members. **Cargo:** `dsp`, `engine`, `audio_io`, `session`, `xtask`,
-  `diapason_ffi`.
+- **Pub workspace:** 8 members. **Cargo:** `dsp`, `engine`, `audio_io`, `session`, `xtask`, `ffi`.
 - **CI** (`docs/CI_RELEASE.md` §1): six jobs, every step a `just` recipe, toolchain from
   `tools/versions.env` via `.github/actions/toolchain`, SHA-pinned actions, weekly Dependabot.
-- **The gate:** `just verify` = doctor-selftest (15/15), fmt (Dart, Rust, Kotlin), analyze,
-  clippy, Dart + Rust tests and doctests, `deny`, `doc-rust`, codegen drift, `ios-project-check`,
-  deps, docs, `lint-ci`.
+- **The gate:** `just verify` = doctor-selftest, fmt (Dart, Rust, Kotlin), analyze, clippy, tests
+  and doctests, `deny`, `doc-rust`, codegen drift, `ios-project-check`, deps, docs, `lint-ci`.
 - **iOS project** from `just ios-project`; **never edit `project.pbxproj` by hand.** Release checks:
   `check-android-release`, `check-ios-release`.
 - **`AAudioBackend`** (`T-002b`): duplex as two AAudio streams on one clock, device-tested with
-  `just test-android-device`, linted by `lint-rust-android`. On the Redmi the app gets the
-  low-latency (FAST) path, shared not MMAP; only the shell user is refused.
+  `just test-android-device`, linted by `lint-rust-android`. Shared, never MMAP, on the Redmi.
 - **Session** (`T-002b` 2a, `adr/0022`): a sans-IO `Supervisor` on virtual time plus one thread;
   Dart sees `EngineHandle` (commands in, ~30 Hz `SessionSnapshot` out). `verifyEngineContract`
   binds fake and real engine; `just test-integration-android` runs it on a device.
@@ -56,18 +53,17 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - `0011` pins live in `tools/versions.env`.
 - `0015` Rust is pinned to an exact release.
 - `0016` goldens run on the pinned ubuntu-24.04 runner.
-- `0018` lossy casts are allowed only in `dsp::convert`, and `docs-check` rejects every other
-  suppression.
+- `0018` lossy casts only in `dsp::convert`; `docs-check` rejects every other suppression.
 - `0019` minSdk is 28, the first API with AAudio input presets.
 - `0020` Android audio uses raw `ndk-sys` with our own wrapper, and `clock_gettime` is the one RT
   timing call.
 - `0021` release builds abort on panic, and nothing catches it. The FFI `api` module denies
   `unwrap`, `expect`, `panic!` and unchecked indexing, and so must any new crate the FFI calls.
-- `0022` the `session` crate owns the stream. Every (re)open replays the desired state, so every
-  new `Command` needs a replay test.
+- `0022` `session` owns the stream; every (re)open replays desired state: each `Command` needs a
+  replay test.
 - `0023` ktfmt formats the Kotlin we write (not `*.g.kt`, not Gradle `*.kts`), in `verify`.
 - `0024` Pigeon for platform channels; Rust picks the preset; Dart tells the session the permission.
-- `0025` the input backlog is shed on the audio thread; buffer growth is session policy, off it.
+- `0025` buffer growth is session policy; only the start-up drain discards input.
 
 ## Traps a later session will otherwise re-discover
 
@@ -92,15 +88,18 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Known gaps (not blocking)
 
-- **CI reproducibility leftovers** are in `T-004`: unpinned tools (now including cargo-ndk) and
-  Xcode, the AAB manifest, the `Podfile.lock` policy.
-- **Goldens (M3):** `test-dart` will also run `core_ui` goldens locally. Tag them and exclude the tag
-  from `test-dart` when the first golden lands (`adr/0016`).
+- **CI reproducibility leftovers** are in `T-004`: unpinned cargo-ndk and Xcode, the AAB manifest,
+  the `Podfile.lock` policy.
+- **Goldens:** `T-002e` lands the first, and tags them out of `test-dart` (`adr/0016`).
 - **The `audio_engine` plugin has no Swift Package Manager support.** Flutter 3.47 warns this will
   become an error. It needs cargokit SwiftPM support or a `Package.swift`, as its own task.
 - **Rust crate licences are not in the in-app licence page** (`triple_buffer` MPL-2.0; M6).
 - **`permission_handler` held at 12:** 13 needs compileSdk 37, its own task (`AGENTS.md` §8).
-- **Nothing stops the stream yet:** the microphone stays open once the tuner listens (part 3).
+  `T-012` makes Dependabot hold it too.
+- **Nothing stops the stream yet:** the microphone stays open once the tuner listens (`T-002d`).
+- **A stall's input stays queued as latency** until a rebuild (`adr/0025`); none seen yet.
+- **The Redmi now refuses the output the FAST path** (on `main` too), unlike part 1: `T-002f`.
+- **`router.dart` uses plain `GoRoute`s**, not the typed routes `AGENTS.md` §7 requires.
 
 ## Open questions
 
@@ -113,8 +112,9 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **2b-ii's device runs, then its PR** (push when the owner says so).
-2. **`T-002b` part 3**: the overlay (first golden), lifecycle, round-trip latency.
-3. **`T-002c`**, iOS CoreAudio, verified on the CI Simulator.
-4. `T-004` whenever a slice is waiting on CI. **`T-003` (pitch core, no task file yet) can run in parallel** with M1:
-   it is host-only `dsp` work with no device dependency.
+1. **The owner merges #24, then the 2b-ii PR.** Then mark T-002b done.
+2. **`T-002d`** (`docs/agents/tasks/T-002d-tuner-lifecycle.md`), in plan mode: release the
+   microphone off screen. Privacy first.
+3. **`T-002e`** (overlay and first golden), then **`T-002f`** (latency, the FAST refusal).
+4. **`T-002c`**, iOS CoreAudio, on the CI Simulator. `T-004` whenever a slice waits on CI.
+   **`T-003`** (pitch core, no task file yet) can run in parallel: host-only `dsp` work.
