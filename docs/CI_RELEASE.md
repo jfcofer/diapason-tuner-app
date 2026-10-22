@@ -14,7 +14,7 @@ This document owns **everything between a commit and a user**.
 | `checks` | ubuntu-24.04 | `doctor-selftest`, `fmt-check-kotlin`, `check-drift`, `ios-project-check`, `check-deps`, `docs-check`, `lint-ci` | Yes |
 | `build-android` | ubuntu-24.04 | `build-android prod`, `check-android-release` (targetSdk, 16 KB alignment, size, no patrol code or INTERNET), `build-android-tests` (`adr/0026`) | Yes |
 | `build-ios` | macos-26 | `build-ios-unsigned prod`, `check-ios-release` (privacy manifest *in the .app*, mic string, MinimumOSVersion, Rust linked) | Yes |
-| `bench` | — | Criterion vs. committed baselines, ≥ 10 % regression fails | Not yet: nothing to measure until `T-003` |
+| `bench` | — | Criterion vs. the committed baseline, > 10 % regression fails | Local only (`just bench`): the baseline belongs to one host, so a CI job needs a dedicated runner first (`T-003a`) |
 | `integration` | — | Lifecycle matrix on device/simulator | Not yet: `T-002` |
 | `miri` | — | `ffi` and `audio_io` unsafe blocks | Not yet: no `unsafe` exists |
 

@@ -61,6 +61,7 @@ cargo install flutter_rust_bridge_codegen --version 2.13.0 --locked
 #   lefthook    https://github.com/evilmartians/lefthook/releases
 #   actionlint  https://github.com/rhysd/actionlint/releases     (just lint-ci)
 #   shellcheck  https://github.com/koalaman/shellcheck/releases  (just lint-ci)
+#   jq          https://github.com/jqlang/jq/releases            (just bench)
 
 # The iOS project is generated, not edited in Xcode (just ios-project). Needs Ruby and:
 gem install --user-install xcodeproj
