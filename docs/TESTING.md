@@ -24,8 +24,9 @@ deterministic the test must be.
 - **Property tests** (`proptest`) for the pure functions where the invariant is clearer than any
   example: cents↔frequency roundtrips, temperament tables summing correctly, fixed-point phase
   accumulation never losing a beat over arbitrary tempo sequences.
-- **Fixture accuracy tests**: every fixture in `fixtures/audio/` has an expected f₀ and an allowed
-  error; the suite asserts the budgets in `AUDIO_ENGINE.md` §1. These are the tests that decide
+- **Fixture accuracy tests**: every fixture, synthesised in code or recorded in `fixtures/audio/`
+  (`adr/0027`), has an expected f₀ and an allowed error; the suite asserts the budgets in
+  `AUDIO_ENGINE.md` §1. These are the tests that decide
   whether the app is good.
 - **No-allocation test**: 10 s of audio through `OfflineBackend` with `assert_no_alloc` armed.
 - **Scheduling test**: 30 minutes of offline audio, 47 tempos, every onset on its exact sample

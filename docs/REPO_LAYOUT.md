@@ -61,12 +61,12 @@ diapason/
 │   │   │                        tuner pipeline, engine state machine
 │   │   ├── audio_io/            AudioBackend trait + aaudio/coreaudio/cpal/offline
 │   │   ├── session/             Stream supervisor between ffi and engine (adr/0022)
-│   │   └── xtask/               cargo xtask: fixtures, bench-compare, size-report
+│   │   └── xtask/               cargo xtask: size-report; fixtures pending T-003e
 │   └── (diapason_ffi lives in packages/audio_engine/rust — see below)
 │
 ├── fixtures/                    Test vectors shared by Rust and Dart
 │   ├── note_table.json          The shared truth for note/cents math
-│   └── audio/                   Small FLACs: sines, plucks, real instruments
+│   └── audio/                   Recorded instruments only (adr/0027, T-003e)
 │
 ├── docs/                        See docs/README.md
 ├── tools/                       Scripts called by the justfile. Bash, POSIX-ish
@@ -107,7 +107,6 @@ resolver = "3"
 | `**/*.g.dart`, `**/*.freezed.dart` | `just gen` (build_runner) | No |
 | `**/l10n/app_localizations*.dart` | `just gen` (gen-l10n) | No |
 | `**/*.g.dart`, `**/*.g.kt` from `pigeons/*.dart` | `just gen` (Pigeon, `adr/0024`) | No |
-| `fixtures/audio/**` | `cargo xtask fixtures` | Yes — deterministic, small, and CI must not synthesise them |
 
 `just verify` fails if regenerating produces a diff. That is how "someone hand-edited a generated
 file" gets caught the same day.
