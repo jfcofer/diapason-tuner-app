@@ -4,7 +4,7 @@
 #     apps/diapason  ->  packages/feature_*  ->  packages/core_ui, core_domain, core_platform
 #                                            ->  packages/audio_engine
 #                                                    |
-#     diapason_ffi -> session -> engine -> dsp          (dsp depends on nothing)
+#     diapason_ffi -> session -> engine -> dsp          (dsp: no crate of ours, reviewed deps only)
 #                             -> audio_io
 #
 # diapason_ffi lives in packages/audio_engine/rust, where cargokit builds it.
@@ -132,15 +132,37 @@ if imports_match packages/core_platform "^package:audio_engine/"; then
 fi
 [[ $VIOLATIONS -eq $before ]] && ok "audio_engine and core_platform do not import each other"
 
-# ── Rust: dsp depends on nothing ──────────────────────────────────────────────
+# ── Rust: dsp depends on nothing but reviewed pure computation ────────────────
 printf '\n%sRust crate boundaries%s\n' "$BOLD" "$OFF"
 
-dsp_deps="$(sed -n '/^\[dependencies\]/,/^\[/p' rust/crates/dsp/Cargo.toml 2>/dev/null | grep -oP '^[a-z_]+(?=\s*[=.])' || true)"
-if [[ -n "$dsp_deps" ]]; then
-    violation "dsp has dependencies: $(tr '\n' ' ' <<<"$dsp_deps")" \
-        "rust/crates/dsp is pure computation and depends on nothing - especially not audio_io."
+# Each name here is a decision, not a convenience: pure computation with no I/O, no platform code
+# and no threads of its own, whose per-call path can be held to the real-time rules (AGENTS.md §6).
+#   realfft   the NSDF's FFT plans (docs/AUDIO_ENGINE.md §3, T-003a); allocation-free per call when
+#             given scratch, which dsp/tests/no_alloc.rs proves.
+DSP_ALLOWED_DEPS=(realfft)
+
+# Cargo's own reading of the manifest, not a regex over it: every spelling counts (`foo = …`,
+# `[dependencies.foo]`, hyphens and digits in names, `[target.'cfg(…)'.dependencies]`). Direct
+# normal dependencies only, target-specific ones included; dev- and build-dependencies never link
+# into the shipped crate. Fails closed: if cargo or jq cannot answer, that is a violation.
+if ! metadata="$(cargo metadata --format-version 1 --no-deps 2>/dev/null)"; then
+    dsp_deps="<cargo-metadata-failed>"
+elif ! dsp_deps="$(jq -r '
+        .packages | map(select(.name == "diapason_dsp"))
+        | if length == 1 then .[0] else error("diapason_dsp not found") end
+        | [.dependencies[] | select(.kind == null) | .name] | unique | .[]' <<<"$metadata" 2>/dev/null)"; then
+    dsp_deps="<jq-failed>"
+fi
+dsp_unreviewed=""
+for dep in $dsp_deps; do
+    for allowed in "${DSP_ALLOWED_DEPS[@]}"; do [[ "$dep" == "$allowed" ]] && continue 2; done
+    dsp_unreviewed="$dsp_unreviewed$dep "
+done
+if [[ -n "$dsp_unreviewed" ]]; then
+    violation "dsp has direct dependencies: $dsp_unreviewed" \
+        "rust/crates/dsp is pure computation and depends on nothing but ${DSP_ALLOWED_DEPS[*]} - especially not audio_io."
 else
-    ok "dsp depends on nothing"
+    ok "dsp depends on nothing but reviewed pure computation (${DSP_ALLOWED_DEPS[*]})"
 fi
 
 if grep -q "diapason_audio_io" rust/crates/dsp/Cargo.toml 2>/dev/null; then
