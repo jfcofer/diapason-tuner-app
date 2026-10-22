@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-22 (T-002d part 1 built on the host; device rows pending)
+# STATE — updated 2026-10-22 (T-002d part 1 verified on the Redmi; PR next)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -12,14 +12,14 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. 
 
 - **Merged:** T-006, T-002a, T-007, T-008, T-002b (all parts), T-009, T-010, T-011, T-012, T-013
   (PRs #6–#9, #11–#16, #24, #27, #28), and Dependabot #2, #10, #21, #22, #25, #26. #20 closed.
-- **Open:** none. `feat/T-002d-tuner-lifecycle` has part 1, local and unpushed; no PR until the
-  Redmi has run its device rows.
+- **Open:** none yet. `feat/T-002d-tuner-lifecycle` carries part 1, device-verified, for a PR.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-002d-tuner-lifecycle.md`** (in progress). Part 1 is built and green on the
-host (Dart only). **No device was attached**, so its device rows have not run.
+**`docs/agents/tasks/T-002d-tuner-lifecycle.md`** (in progress). Part 1 passed on the Redmi:
+patrol 5/5, and L5, L7 and L8 checked by hand with `just mic-clients`. Still open: L3/L4 (a call)
+and L10 (part 2).
 
 ## Hardware this project actually has
 
@@ -81,7 +81,10 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
   trusting a clean run. CI is unaffected.
 - **HyperOS (the Redmi) wants a tap on every USB install**, even with "USB debugging (Security
   settings)" on (it is). Unanswered: `INSTALL_FAILED_USER_RESTRICTED`, which the runner names.
-- **Run patrol only through `tools/patrol.sh`:** bare, it edits `~/.bashrc` and hangs on Chrome.
+- **Run patrol only through `tools/patrol.sh`:** bare, it edits `~/.bashrc`, hangs on Chrome,
+  sends Google Analytics, and fails offline on a pub.dev update check.
+- **`uiautomator dump` fails while the tuner listens** (30 Hz redraws): `rm` the old XML first,
+  or use `screencap`. **A patrol run uninstalls the app**, and its APK is the test bundle.
 - **`check-drift` diffs against the index and `ios-project-check` against HEAD:** stage (or
   commit) regenerated output before trusting either.
 
@@ -106,14 +109,11 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 | Reference devices beyond the Redmi | M1+ | No iPhone, Pixel or tablet available. `T-002` criteria were amended to "every device available" |
 | Font licences confirmed for bundling | M3 | `DESIGN_SYSTEM.md` §1 assumes OFL faces |
 | Does opening or returning to the tuner start listening unasked? | M3 | `PRODUCT_SPEC.md` §1 and §2 say yes ("opens … listening"). `T-002d` and L11 say no, for privacy. M1 keeps "no". Owner decides, then an ADR |
-| Does the Redmi report recents as `hidden` or `inactive`? | `T-002d` | The L1 recents patrol test assumes `hidden`. If it fails, check this before calling it a regression |
 | Where `audio_io` puts lossy casts | `T-002c` | Android needed none (`try_from` throughout `android.rs`). Core Audio's `mSampleTime` (`f64`) does. Supersede `adr/0018` with a leaf crate, or let `audio_io` depend on `dsp` |
 
 ## Next up (in order)
 
-1. **`T-002d` part 1 on the Redmi.** Measure `dumpsys media.audio_policy`, then add `just
-   mic-clients`. Run `just test-integration-android` and the manual rows (L3–L8), date the passing
-   rows in §5, then open the PR.
+1. **`T-002d` part 1 PR**: push, open, six green checks, owner merges. Then L3/L4 with a call.
 2. **`T-002d` part 2**: measure the silenced microphone (L10), then detect it or record the limit.
 3. **`T-002e`** (overlay and first golden), then **`T-002f`** (latency, the FAST refusal).
 4. **`T-002c`**, iOS CoreAudio, on the CI Simulator. `T-004` whenever a slice waits on CI.
