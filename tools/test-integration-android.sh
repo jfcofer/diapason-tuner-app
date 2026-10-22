@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# The device tests in apps/diapason/patrol_test/ on a connected Android device (T-002b, adr/0026):
-# the engine contract against the real Rust engine, with the microphone denied and then allowed.
+# The device tests in apps/diapason/patrol_test/ on a connected Android device (adr/0026): the
+# engine contract against the real Rust engine, with the microphone denied and then allowed
+# (T-002b), and the tuner's lifecycle rows of PLATFORM_AUDIO.md §5 (T-002d).
 #
 # Patrol clears the app's data before each test, so every test starts with the microphone
 # undecided, and it answers the system dialog the way the test needs. No `pm grant`/`pm revoke`.
@@ -31,4 +32,4 @@ if ! tools/patrol.sh test; then   # every test in patrol_test/ (pubspec.yaml, `p
     fi
     exit 1
 fi
-echo "✓ the real engine honours the contract with and without the microphone"
+echo "✓ the real engine honours the contract, and the tuner releases the microphone off screen"

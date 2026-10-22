@@ -211,7 +211,8 @@ test-android-device *args:
     @tools/test-android-device.sh {{args}}
 
 # The device tests in apps/diapason/patrol_test/ on a connected Android device, through patrol: the
-# engine contract with the microphone denied and allowed (T-002b, docs/TESTING.md §1, adr/0026).
+# engine contract with the microphone denied and allowed (T-002b, docs/TESTING.md §1, adr/0026),
+# and the tuner's lifecycle rows (T-002d, docs/PLATFORM_AUDIO.md §5).
 test-integration-android *args:
     @tools/test-integration-android.sh {{args}}
 
