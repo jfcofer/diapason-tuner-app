@@ -21,6 +21,7 @@ void main() {
         overrides: [
           engineHandleProvider.overrideWithValue(fake),
           microphonePermissionProvider.overrideWithValue(FakeMicrophonePermission()),
+          appLifecycleProvider.overrideWithValue(FakeAppLifecycle()),
         ],
         child: const DiapasonApp(),
       ),

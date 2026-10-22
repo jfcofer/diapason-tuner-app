@@ -36,6 +36,7 @@ Future<void> bootstrap() async {
       overrides: [
         engineHandleProvider.overrideWithValue(engine),
         microphonePermissionProvider.overrideWithValue(const PlatformMicrophonePermission()),
+        appLifecycleProvider.overrideWithValue(FlutterAppLifecycle()),
         showEngineDiagnosticsProvider.overrideWithValue(Flavor.showEngineDiagnostics),
       ],
       child: const DiapasonApp(),

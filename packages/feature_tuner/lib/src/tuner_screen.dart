@@ -1,5 +1,6 @@
 import 'package:audio_engine/audio_engine.dart';
 import 'package:feature_tuner/src/session_panel.dart';
+import 'package:feature_tuner/src/tuner_visibility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,26 +20,32 @@ class TunerScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Diapason')),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text('Engine reports', style: textTheme.labelLarge),
-                const SizedBox(height: 12),
-                Text(
-                  status.dspBuild,
-                  key: const Key('tuner.dspBuild'),
-                  style: textTheme.headlineSmall,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 4),
-                Text(status.engineBuild, style: textTheme.bodyMedium, textAlign: TextAlign.center),
-                const SizedBox(height: 32),
-                const SessionPanel(),
-              ],
+      body: TunerVisibility(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text('Engine reports', style: textTheme.labelLarge),
+                  const SizedBox(height: 12),
+                  Text(
+                    status.dspBuild,
+                    key: const Key('tuner.dspBuild'),
+                    style: textTheme.headlineSmall,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    status.engineBuild,
+                    style: textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+                  const SessionPanel(),
+                ],
+              ),
             ),
           ),
         ),
