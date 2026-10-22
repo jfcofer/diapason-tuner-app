@@ -1,19 +1,14 @@
 #!/usr/bin/env bash
-# The engine contract against the real Rust engine on a connected Android device (T-002b).
+# The device tests in apps/diapason/patrol_test/ on a connected Android device (T-002b, adr/0026):
+# the engine contract against the real Rust engine, with the microphone denied and then allowed.
 #
-# Runs apps/diapason/integration_test/engine_roundtrip_test.dart twice:
-#   1. without RECORD_AUDIO, so asking for the microphone must leave the output running and
-#      report an input fault: the metronome never depends on the microphone;
-#   2. with it, so the duplex stream opens.
-# The test is told which to expect, and fails if the device did not keep the permission.
+# Patrol clears the app's data before each test, so every test starts with the microphone
+# undecided, and it answers the system dialog the way the test needs. No `pm grant`/`pm revoke`.
+# A person is needed only where the vendor confirms installs: HyperOS asks for every USB install,
+# at the start of the run.
 #
-# Setting the permission: `pm revoke`/`pm grant` where the shell may change permissions. Some
-# vendors forbid it, and `adb uninstall` too (Xiaomi HyperOS, unless "USB debugging (Security
-# settings)" is on). There, the first run needs the permission off (a fresh install, or turned off
-# in Settings), and the second shows the system prompt, which a person must allow on the device.
-
 # The debug build installs the allocation trap as the global allocator, so any Rust allocation on
-# the audio thread during either run aborts the app (docs/AUDIO_ENGINE.md §7).
+# the audio thread during a test aborts the app (docs/AUDIO_ENGINE.md §7).
 #
 # Usage: tools/test-integration-android.sh [adb-serial]
 
@@ -25,36 +20,15 @@ if ! adb get-state >/dev/null 2>&1; then
     echo "✗ no Android device reachable over adb (pass a serial, or set ANDROID_SERIAL)" >&2
     exit 1
 fi
-serial="$(adb get-serialno)"
-package=dev.jfcofer.diapason.dev
-permission=android.permission.RECORD_AUDIO
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
+ANDROID_SERIAL="$(adb get-serialno)"
+export ANDROID_SERIAL
 
-run() {
-    (cd apps/diapason && flutter test integration_test/engine_roundtrip_test.dart \
-        --flavor dev -d "$serial" --dart-define=DIAPASON_MIC="$1")
-}
-
-# `pm` prints its SecurityException and still exits 0 on some builds, so judge it by its output.
-pm_permission() {
-    local out
-    out="$(adb shell -n pm "$1" "$package" "$permission" 2>&1)"
-    [[ -z "$out" ]]
-}
-
-echo "── without the microphone: output only, with an input fault"
-if adb shell -n pm path "$package" >/dev/null 2>&1 && pm_permission revoke; then
-    run denied
-    echo "── with the microphone: duplex"
-    pm_permission grant || { echo "✗ pm could revoke but not grant $permission" >&2; exit 1; }
-    run granted
-else
-    echo "   this device does not let the shell change permissions. If the next run fails because"
-    echo "   the microphone is allowed, turn it off for Diapason (Dev) in Settings and run again."
-    run denied
-    echo "── with the microphone: duplex"
-    echo "   ▶ allow the microphone prompt on the device"
-    run request
+# Patrol reports a refused install only as "Gradle test execution failed", so name the cause.
+results=apps/diapason/build/app/outputs/androidTest-results
+if ! tools/patrol.sh test; then   # every test in patrol_test/ (pubspec.yaml, `patrol:`)
+    if grep -rqs INSTALL_FAILED_USER_RESTRICTED "$results"; then
+        echo "✗ the device refused the install: approve the USB install prompts on it, and run again" >&2
+    fi
+    exit 1
 fi
-
 echo "✓ the real engine honours the contract with and without the microphone"

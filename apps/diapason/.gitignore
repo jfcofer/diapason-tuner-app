@@ -46,3 +46,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Written by patrol_cli on every run: the entry point bundling every patrol test (docs/adr/0026).
+/patrol_test/test_bundle.dart

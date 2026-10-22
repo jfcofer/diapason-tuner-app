@@ -89,15 +89,23 @@ else
     fail "dart" "not on PATH" "install Flutter $FLUTTER_VERSION"
 fi
 
-# Melos runs as `dart run melos` from the workspace dev_dependencies, so the lockfile is the pin -
-# no global install to drift.
-melos_locked="$(awk '/^  melos:$/{f=1} f&&/version:/{gsub(/"/,"",$2); print $2; exit}' pubspec.lock 2>/dev/null)"
-if [[ "$melos_locked" == "$MELOS_VERSION" ]]; then
-    pass "melos (pubspec.lock)" "$melos_locked"
-else
-    fail "melos (pubspec.lock)" "locked ${melos_locked:-nothing}, pinned $MELOS_VERSION" \
-         "set melos to $MELOS_VERSION in pubspec.yaml, then: dart pub get"
-fi
+# Melos and patrol_cli run as `dart run` from the workspace dev_dependencies, so the lockfile is
+# the pin - no global install to drift. patrol and its CLI must agree, so both are checked
+# (docs/adr/0026).
+check_locked() { # package, pinned version, pubspec that declares it
+    local locked
+    locked="$(awk -v p="  $1:" '$0==p{f=1} f&&/version:/{gsub(/"/,"",$2); print $2; exit}' \
+        pubspec.lock 2>/dev/null)"
+    if [[ "$locked" == "$2" ]]; then
+        pass "$1 (pubspec.lock)" "$locked"
+    else
+        fail "$1 (pubspec.lock)" "locked ${locked:-nothing}, pinned $2" \
+             "set $1 to $2 in $3, then: dart pub get"
+    fi
+}
+check_locked melos "$MELOS_VERSION" pubspec.yaml
+check_locked patrol "$PATROL_VERSION" apps/diapason/pubspec.yaml
+check_locked patrol_cli "$PATROL_CLI_VERSION" apps/diapason/pubspec.yaml
 fi
 
 # ── Java ──────────────────────────────────────────────────────────────────────

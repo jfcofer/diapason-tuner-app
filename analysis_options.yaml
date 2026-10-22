@@ -31,6 +31,8 @@ analyzer:
     # Regenerate it with `just gen`; never hand-edit it (docs/REPO_LAYOUT.md).
     - "**/lib/src/rust/**"
     - "**/l10n/app_localizations*.dart"
+    # patrol_cli writes the entry point that bundles every patrol test, on each run (docs/adr/0026).
+    - "**/patrol_test/test_bundle.dart"
     # cargokit's vendored build tool: third-party, its own pubspec and language version, and not a
     # workspace member. It is updated by re-vendoring, never edited (docs/adr/0012).
     - "packages/audio_engine/cargokit/**"

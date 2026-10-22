@@ -210,10 +210,20 @@ ios-project-check: ios-project
 test-android-device *args:
     @tools/test-android-device.sh {{args}}
 
-# The engine contract against the real engine, through the FFI, on a connected Android device: once
-# with the microphone revoked, once granted (T-002b, docs/TESTING.md §1).
+# The device tests in apps/diapason/patrol_test/ on a connected Android device, through patrol: the
+# engine contract with the microphone denied and allowed (T-002b, docs/TESTING.md §1, adr/0026).
 test-integration-android *args:
     @tools/test-integration-android.sh {{args}}
+
+# patrol_cli at its pin, with its traps handled (adr/0026). `just patrol test --target …`
+patrol *args:
+    @tools/patrol.sh {{args}}
+
+# Run after an Android build, which writes the Gradle wrapper and local.properties.
+# Compile the patrol test APK's Kotlin, so test code no CI device runs cannot rot (adr/0026).
+build-android-tests:
+    cd apps/diapason/android && ./gradlew --no-daemon :app:compileDevDebugAndroidTestKotlin \
+        -Ptarget=lib/main_dev.dart   # the Kotlin compile waits on the Dart build of this entry point
 
 # No NDK needed: nothing is linked, and rust-toolchain.toml installs the target.
 # Clippy and rustdoc for the Android-only code, which no host build compiles.
