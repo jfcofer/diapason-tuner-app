@@ -167,17 +167,17 @@ its shell branch goes offstage; a dialog, a menu or a bottom sheet over it does 
 
 | ID | Event | Tuner | Metronome | Tuner verified by |
 |---|---|---|---|---|
-| L1 | App backgrounded | Stop, release mic | Continue (FGS / background audio) | open: T-002d |
-| L2 | App foregrounded | Restart if it was active | Continue | open: T-002d |
+| L1 | App backgrounded | Stop, release mic | Continue (FGS / background audio) | patrol: Redmi 23117RA68G, Android 16 (HyperOS), 2026-10-22 |
+| L2 | App foregrounded | Restart if it was active | Continue | patrol: Redmi 23117RA68G, Android 16 (HyperOS), 2026-10-22 |
 | L3 | Phone call begins | Stop | Pause, remember | open: T-002d |
 | L4 | Call ends | Resume if it was active | Resume if it was playing | open: T-002d |
 | L5 | Headphones unplugged | Continue (route change) | Pause | open: T-002d |
 | L6 | Bluetooth connects mid-session | Rebuild stream, recalibrate latency | Rebuild, warn once | open: T-002d |
-| L7 | Permission revoked in Settings | Stop, show recovery UI | Unaffected | open: T-002d |
-| L8 | Screen locked | Stop | Continue, show lock-screen controls | open: T-002d |
+| L7 | Permission revoked in Settings | Stop, show recovery UI | Unaffected | manual: Redmi 23117RA68G, Android 16 (HyperOS), 2026-10-22 |
+| L8 | Screen locked | Stop | Continue, show lock-screen controls | manual: Redmi 23117RA68G, Android 16 (HyperOS), 2026-10-22 |
 | L9 | Low-power mode | Reduce update rate to 20 Hz | Unaffected | deferred: M3 |
 | L10 | Another app takes exclusive audio | Stop with a clear message | Pause | open: T-002d |
-| L11 | User leaves the screen | Stop; returning does not restart it (M1, open question for M3) | Decided in M4 | open: T-002d |
+| L11 | User leaves the screen | Stop; returning does not restart it (M1, open question for M3) | Decided in M4 | patrol: Redmi 23117RA68G, Android 16 (HyperOS), 2026-10-22 |
 
 ## 6. Battery and thermals
 

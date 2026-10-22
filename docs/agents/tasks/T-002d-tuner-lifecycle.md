@@ -41,14 +41,14 @@ part 3.
 
 ## Acceptance criteria
 
-- [ ] Backgrounded (home, app switcher, screen locked): the stream stops and the microphone is
+- [x] Backgrounded (home, app switcher, screen locked): the stream stops and the microphone is
       released. On the Redmi, `dumpsys media.audio_policy` shows no capture client from the app
       within 1 s
-- [ ] Foregrounded: listening resumes only if it was active before; the permission is re-checked
-- [ ] Navigating away from the tuner stops the stream; returning does not start it unasked
+- [x] Foregrounded: listening resumes only if it was active before; the permission is re-checked
+- [x] Navigating away from the tuner stops the stream; returning does not start it unasked
 - [ ] Headphones unplugged / Bluetooth connected mid-session: the tuner keeps listening (rebuild
       already done in `T-002b`; re-verified here with the lifecycle code in place)
-- [ ] Permission revoked in Settings, then the app reopened: the recovery UI, no crash
+- [x] Permission revoked in Settings, then the app reopened: the recovery UI, no crash
 - [ ] Phone call begins: the tuner stops; the call ends: it resumes only if it was listening
 - [ ] Another app capturing: behaviour measured on the Redmi and recorded; the tuner says so if it
       can be detected, or the limit is recorded in `PLATFORM_AUDIO.md` §5 if it cannot
@@ -98,8 +98,15 @@ Dart only: no new session `Command`, no FFI change. The existing `stop()`, `star
     device. So L1, L2 and L11 stay `open` until the Redmi runs them.
 - **`diapasonRoot()` in `bootstrap.dart`** is what the patrol tests pump, so they run the app with
   the same overrides it ships with.
-- **Deferred: `just mic-clients`.** Its `dumpsys` output must be measured on the Redmi before
-  anything parses it (`AGENTS.md` §3.3). No device was attached.
+- **`just mic-clients`**, written once the Redmi was attached and its two `dumpsys` formats had
+  been read. The `media.audio_policy` Inputs section gives the open AudioRecord clients; Outputs
+  lists AudioTrack clients in the same format, so it is excluded. The `dumpsys audio`
+  recording-event log gives millisecond timestamps.
+- **`tools/patrol.sh` sets `PATROL_ANALYTICS_ENABLED=false` and `CI`.**
+  - patrol_cli had been posting usage analytics to Google Analytics from this host since T-013.
+    It reads the variable, then its config file, then defaults to on.
+  - It also checks pub.dev for a newer CLI before every command, and failed offline. The CLI is
+    pinned, so the check is only done on CI.
 - **Open for the owner:** L11 (returning does not listen) contradicts `PRODUCT_SPEC.md` §1 and §2
   ("opens … listening"). It is kept for M1, and logged in STATE's open questions for M3.
 
@@ -110,4 +117,27 @@ Dart only: no new session `Command`, no FFI change. The existing `stop()`, `star
 - Each race test was checked by putting the bug back: the test then fails.
 - `docs-check` was checked the same way, on purpose-broken matrices: no ID, a malformed ID, a bare
   `patrol`, `deferred: M1`, a duplicate ID, a missing task, and a renamed heading. Each one fails.
-- **The device rows are not run yet: no adb device was attached.**
+- 2026-10-22, Redmi 23117RA68G, Android 16 (HyperOS). `just test-integration-android`: 5/5 pass.
+  These are the two contract tests, plus L1/L2 by Home, L1/L2 by recents, and L11.
+- **Manual timings,** from the `wm_on_*_called` lines of the activity's events log against the
+  `rec` events in `just mic-clients`:
+
+  | Row | Action | Released | Measured from |
+  |---|---|---|---|
+  | L1 | Home | 0.89 s | the key press |
+  | L1 | Home | 50 ms | `onStop` |
+  | L1 | Recents | 38 ms | `onStop` |
+  | L8 | Lock | 142 ms | the key press |
+
+  **Recents:** HyperOS stops the activity behind the app switcher, so the app is hidden, not
+  inactive. Android itself took 1.05 s from pause to stop there.
+- **L2:** resumed, then the microphone reopened 0.42 s later. After a screen unlock it reopened
+  too.
+- **Not listening, then Home and back:** no capture client.
+- **Stop listening:** the capture client is gone, and so is the green privacy dot.
+- **L7:** `pm revoke` killed the process. The relaunch showed the explanation, with Start
+  listening asking again, and did not crash.
+- **A false alarm:** a "permission dialog" in one UI dump was a stale `/sdcard/ui.xml`.
+  `uiautomator dump` fails ("could not get idle state") while the tuner redraws at 30 Hz.
+- **For part 2:** an earlier install's last session shows `rec update … silenced` just before
+  `release`, so this ROM reports silencing.
