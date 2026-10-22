@@ -63,7 +63,7 @@ Read: `docs/AUDIO_ENGINE.md` §1, §3 and §8, `docs/adr/0005`, `docs/adr/0018` 
   measurement still owed, not a claim.
 - [x] An ADR records that synthetic fixtures are generated in code and only recordings are checked
   in, and `AUDIO_ENGINE.md` §8 links it
-- [ ] `just verify` passes; all six CI jobs green
+- [x] `just verify` passes; all six CI jobs green (#30)
 
 ## Out of scope
 
