@@ -144,8 +144,11 @@ done < <(grep -oP '(?<![\w/-])(?:docs/agents/tasks/)?T-[0-9]{3}[a-z]?-[a-z0-9]+(
 
 # ── Lifecycle matrix coverage (PLATFORM_AUDIO.md §5, T-002d) ─────────────────
 # The M1 exit criterion is "every row of the lifecycle matrix". Each row says how its Tuner
-# behaviour is proven, and this holds the column to it: a patrol row needs a test that names it, a
-# manual row a device, an OS and a date, an open row a task still open, a deferred row a milestone.
+# behaviour is proven, and this holds the column to it. A patrol row needs a test named for it and
+# the run that passed it (CI has no device, so a name alone proves nothing). A manual row needs a
+# device, an OS and a date. An open row needs a task that is still open. A deferred row needs a
+# milestone after M1 that is not closed. A table line without an ID fails too, or it would never
+# be checked at all.
 printf '\n%sLifecycle matrix%s\n' "$BOLD" "$OFF"
 matrix=docs/PLATFORM_AUDIO.md
 lifecycle_test=apps/diapason/patrol_test/lifecycle_test.dart
@@ -155,47 +158,64 @@ if [[ "$(grep -oP "$test_ids" <<<"  patrolTest('L1 L2: home', (\$) {")" != "L1 L
     fail "the lifecycle test-name pattern no longer extracts IDs" "Fix test_ids in tools/docs-check.sh."
 fi
 covered=" $(grep -oP "$test_ids" "$lifecycle_test" 2>/dev/null | tr '\n' ' ') "
+run='[^,]+, [^,]+, [0-9]{4}-[0-9]{2}-[0-9]{2}'   # <device>, <OS>, <YYYY-MM-DD>
+trim() { sed -E 's/^[[:space:]]+|[[:space:]]+$//g' <<<"$1"; }
 matrixbad=0
 rows=0
 declare -A seen=()
-while IFS='|' read -r _ id _ _ _ proof _; do
-    id="$(xargs <<<"$id")"; proof="$(xargs <<<"$proof")"
-    [[ "$id" =~ ^L[0-9]+$ ]] || continue
+while IFS= read -r line; do
+    [[ "$line" == '|'* ]] || continue
+    [[ "$line" =~ ^\|[[:space:]]*ID[[:space:]]*\| || "$line" =~ ^\|[-|[:space:]]+$ ]] && continue
+    IFS='|' read -r _ id _ _ _ proof _ <<<"$line"
+    id="$(trim "$id")"; proof="$(trim "$proof")"
+    if [[ ! "$id" =~ ^L[0-9]+$ ]]; then
+        fail "lifecycle matrix line has no ID (L<n>), so nothing checks it" "$line"
+        matrixbad=1
+        continue
+    fi
     rows=$((rows + 1))
     if [[ -n "${seen[$id]:-}" ]]; then
         fail "lifecycle row $id appears twice" "IDs are permanent: give the new row the next number."
         matrixbad=1
     fi
     seen[$id]=1
-    case "$proof" in
-        patrol)
-            if [[ "$covered" != *" $id "* ]]; then
-                fail "lifecycle row $id says patrol, but no test in $lifecycle_test starts with it" \
-                     "Name the test '$id: …', or say how the row is verified instead."
-                matrixbad=1
-            fi ;;
-        manual:\ *,\ *,\ [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
-        open:\ T-[0-9][0-9][0-9]*)
-            owner="${proof#open: }"
-            file="$(compgen -G "docs/agents/tasks/${owner}-*.md" | head -1)"
-            status="$([[ -n "$file" ]] && front_matter "$file" | sed -n 's/^status: *//p')"
-            if [[ -z "$file" ]]; then
-                fail "lifecycle row $id is owed by $owner, which has no task file" "Write the task first."
-                matrixbad=1
-            elif [[ "$status" == "done" || "$status" == "abandoned" ]]; then
-                fail "lifecycle row $id is still open, but $owner is $status" \
-                     "Verify the row (patrol or manual), or hand it to an open task."
-                matrixbad=1
-            fi ;;
-        deferred:\ M[0-9])
-            grep -q "^## ${proof#deferred: } " docs/ROADMAP.md || {
-                fail "lifecycle row $id is deferred to ${proof#deferred: }, which ROADMAP.md lacks"
-                matrixbad=1
-            } ;;
-        *)
-            fail "lifecycle row $id: '$proof' is not patrol, manual: <device>, <OS>, <date>, open: T-###, or deferred: M#"
-            matrixbad=1 ;;
-    esac
+    if [[ "$proof" =~ ^patrol:\ $run$ ]]; then
+        if [[ "$covered" != *" $id "* ]]; then
+            fail "lifecycle row $id says patrol, but no test in $lifecycle_test starts with it" \
+                 "Name the test '$id: …', or say how the row is verified instead."
+            matrixbad=1
+        fi
+    elif [[ "$proof" =~ ^manual:\ $run$ ]]; then
+        :
+    elif [[ "$proof" =~ ^open:\ (T-[0-9]{3}[a-z]?)$ ]]; then
+        owner="${BASH_REMATCH[1]}"
+        file="$(compgen -G "docs/agents/tasks/${owner}-*.md" | head -1)"
+        status="$([[ -n "$file" ]] && front_matter "$file" | sed -n 's/^status: *//p')"
+        if [[ -z "$file" ]]; then
+            fail "lifecycle row $id is owed by $owner, which has no task file" "Write the task first."
+            matrixbad=1
+        elif [[ "$status" == "done" || "$status" == "abandoned" ]]; then
+            fail "lifecycle row $id is still open, but $owner is $status" \
+                 "Verify the row (patrol or manual), or hand it to an open task."
+            matrixbad=1
+        fi
+    elif [[ "$proof" =~ ^deferred:\ M([0-9])$ ]]; then
+        milestone="M${BASH_REMATCH[1]}"
+        section="$(awk -v m="## $milestone " 'index($0, m) == 1 {f=1; next} f && /^## / {exit} f' docs/ROADMAP.md)"
+        if [[ "${BASH_REMATCH[1]}" -le 1 ]]; then
+            fail "lifecycle row $id is deferred to $milestone, but M1 is the milestone that needs every row"
+            matrixbad=1
+        elif ! grep -q "^## $milestone " docs/ROADMAP.md; then
+            fail "lifecycle row $id is deferred to $milestone, which ROADMAP.md lacks"
+            matrixbad=1
+        elif grep -q '^\*\*Closed' <<<"$section"; then
+            fail "lifecycle row $id is deferred to $milestone, which is already closed"
+            matrixbad=1
+        fi
+    else
+        fail "lifecycle row $id: '$proof' is not patrol: or manual: <device>, <OS>, <date>, open: T-###, or deferred: M#"
+        matrixbad=1
+    fi
 done < <(awk '/^## 5\. Lifecycle matrix/ {f=1; next} f && /^## / {exit} f' "$matrix")
 for id in $covered; do
     [[ -n "${seen[$id]:-}" ]] && continue
@@ -205,7 +225,7 @@ done
 if [[ $rows -eq 0 ]]; then
     fail "no rows read from the lifecycle matrix in $matrix" "Its heading or table layout changed."
 elif [[ $matrixbad -eq 0 ]]; then
-    ok "$rows lifecycle rows, each proven, owed by an open task, or deferred to a milestone"
+    ok "$rows lifecycle rows, each proven, owed by an open task, or deferred to a later milestone"
 fi
 
 # ── Lint suppressions (AGENTS.md §3.2, adr/0018) ─────────────────────────────

@@ -149,16 +149,26 @@ latency of 150–250 ms makes a metronome unusable for ensemble timing and users
 
 ## 5. Lifecycle matrix
 
-Every row has an ID, and the last column says how the Tuner behaviour is proven: `patrol` (a test
-in `apps/diapason/patrol_test/lifecycle_test.dart` whose name starts with the ID), `manual:
-<device>, <OS>, <YYYY-MM-DD>` where patrol cannot drive the OS, `open: T-###` for the task that
-owes it, or `deferred: M#` for the milestone that builds what it needs. `docs-check` enforces the
-column, so the M1 exit criterion "every row" is a check, not a claim (`T-002d`).
+Every row has an ID, and the last column says how the Tuner behaviour is proven:
+- `patrol: <device>, <OS>, <YYYY-MM-DD>`: a test in `apps/diapason/patrol_test/lifecycle_test.dart`
+  whose name starts with the ID passed on that device that day. A name alone proves nothing: CI
+  has no device.
+- `manual: <device>, <OS>, <YYYY-MM-DD>`: checked by hand where patrol cannot drive the OS.
+- `open: T-###`: the open task that owes it.
+- `deferred: M#`: the later milestone that builds what it needs.
+
+`docs-check` enforces the column, so the M1 exit criterion "every row" is a check, not a claim
+(`T-002d`).
+
+"Backgrounded" means the app is `hidden`, `paused` or `detached`. `inactive` is still in front of
+the user: the permission dialog and the notification shade only make the app inactive, and the
+tuner must not stop under its own prompt. "Leaves the screen" means an opaque screen covers it or
+its shell branch goes offstage; a dialog, a menu or a bottom sheet over it does not.
 
 | ID | Event | Tuner | Metronome | Tuner verified by |
 |---|---|---|---|---|
-| L1 | App backgrounded | Stop, release mic | Continue (FGS / background audio) | patrol |
-| L2 | App foregrounded | Restart if it was active | Continue | patrol |
+| L1 | App backgrounded | Stop, release mic | Continue (FGS / background audio) | open: T-002d |
+| L2 | App foregrounded | Restart if it was active | Continue | open: T-002d |
 | L3 | Phone call begins | Stop | Pause, remember | open: T-002d |
 | L4 | Call ends | Resume if it was active | Resume if it was playing | open: T-002d |
 | L5 | Headphones unplugged | Continue (route change) | Pause | open: T-002d |
@@ -167,7 +177,7 @@ column, so the M1 exit criterion "every row" is a check, not a claim (`T-002d`).
 | L8 | Screen locked | Stop | Continue, show lock-screen controls | open: T-002d |
 | L9 | Low-power mode | Reduce update rate to 20 Hz | Unaffected | deferred: M3 |
 | L10 | Another app takes exclusive audio | Stop with a clear message | Pause | open: T-002d |
-| L11 | User leaves the screen | Stop; returning does not restart it | Decided in M4 | patrol |
+| L11 | User leaves the screen | Stop; returning does not restart it (M1, open question for M3) | Decided in M4 | open: T-002d |
 
 ## 6. Battery and thermals
 
