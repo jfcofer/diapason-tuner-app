@@ -146,6 +146,33 @@ void main() {
     });
   });
 
+  test('an answer that arrives after the tuner was left does not revive listening', () {
+    withTuner((tuner, async) {
+      unawaited(tuner.controller.listen()); // the dialog is up
+      tuner.controller.setVisible(visible: false);
+      async.flushMicrotasks(); // then answered
+
+      tuner.controller.setVisible(visible: true);
+      expect(tuner.state.listenWanted, isFalse);
+      expect(tuner.session.state, SessionState.stopped);
+    });
+  });
+
+  test('a return to the foreground that is already over does not reopen the microphone', () {
+    withTuner((tuner, async) {
+      unawaited(tuner.controller.listen());
+      async.flushMicrotasks();
+
+      tuner.lifecycle
+        ..set(AppLifecycleState.hidden)
+        ..set(AppLifecycleState.resumed) // the permission is being read again…
+        ..set(AppLifecycleState.hidden); // …when the app leaves once more
+      async.flushMicrotasks();
+
+      expect(tuner.session.state, SessionState.stopped);
+    });
+  });
+
   test('the tone plays without the microphone and survives the background', () {
     withTuner((tuner, async) {
       tuner.controller.toggleTestTone();
