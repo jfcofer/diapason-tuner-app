@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-21 (T-002b done; T-013 patrol, ahead of T-002d)
+# STATE — updated 2026-10-22 (T-002b done; T-013 patrol, ahead of T-002d)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -12,16 +12,14 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. 
 
 - **Merged:** T-006, T-002a, T-007, T-008, T-002b (all parts), T-009, T-010, T-011, T-012
   (PRs #6–#9, #11–#16, #24, #27), and Dependabot #2, #10, #21, #22, #25, #26. #20 closed.
-- **Open:** none. This session's branch is `chore/T-013-patrol`.
+- **Open:** the T-013 PR (`chore/T-013-patrol`), for the owner to merge once CI is green.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-013-patrol.md`**: adopt patrol for device tests (owner's choice,
-2026-10-21), so `T-002d`'s lifecycle rows test the OS side, not only our reaction. Spike on the
-Redmi first: HyperOS may refuse the orchestrator's `pm clear`. **T-002b is done** (#27); its part 3
-is `T-002d`/`T-002e`/`T-002f`. Plan for both, approved 2026-10-21: three PRs, T-013, then T-002d
-lifecycle (Dart only), then T-002d's silenced microphone (measure on the Redmi, then detect).
+**`docs/agents/tasks/T-013-patrol.md`** (`adr/0026`): patrol runs the device tests, verified on the
+Redmi. Left: CI green, and its minutes. Plan approved 2026-10-21: then T-002d lifecycle (Dart
+only), then T-002d's silenced microphone (measure on the Redmi, then detect). T-002b is done.
 
 ## Hardware this project actually has
 
@@ -42,7 +40,7 @@ lifecycle (Dart only), then T-002d's silenced microphone (measure on the Redmi, 
   `just test-android-device`, linted by `lint-rust-android`. Shared, never MMAP, on the Redmi.
 - **Session** (`T-002b` 2a, `adr/0022`): a sans-IO `Supervisor` on virtual time plus one thread;
   Dart sees `EngineHandle` (commands in, ~30 Hz `SessionSnapshot` out). `verifyEngineContract`
-  binds fake and real engine; `just test-integration-android` runs it on a device.
+  binds fake and real engine; `just test-integration-android` runs it on a device, via patrol.
 - **Engine core** (`T-002a`): `Engine::prepare` → `(Engine, Processor)` over `rtrb` and
   `triple_buffer`; zero allocation proven by test with an armed canary; `engine/clippy.toml`.
 
@@ -64,6 +62,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - `0023` ktfmt formats the Kotlin we write (not `*.g.kt`, not Gradle `*.kts`), in `verify`.
 - `0024` Pigeon for platform channels; Rust picks the preset; Dart tells the session the permission.
 - `0025` buffer growth is session policy; only the start-up drain discards input.
+- `0026` patrol runs device tests, CLI pinned in the lockfile, never in a release. It applies KGP,
+  which a future Flutter refuses: check patrol before any Flutter bump.
 
 ## Traps a later session will otherwise re-discover
 
@@ -81,8 +81,9 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - **`cargo fmt` reformats FRB's generated file.** That is why formatting is part of `just gen`.
 - **Editing a `clippy.toml` does not invalidate clippy's cache.** `touch` a source file before
   trusting a clean run. CI is unaffected.
-- **HyperOS (the Redmi) refuses shell `pm grant`/`revoke` and `adb uninstall`; USB installs wait
-  for a tap.** "USB debugging (Security settings)" would lift it.
+- **HyperOS (the Redmi) wants a tap on every USB install**, even with "USB debugging (Security
+  settings)" on (it is). Unanswered: `INSTALL_FAILED_USER_RESTRICTED`, which the runner names.
+- **Run patrol only through `tools/patrol.sh`:** bare, it edits `~/.bashrc` and hangs on Chrome.
 - **`check-drift` diffs against the index and `ios-project-check` against HEAD:** stage (or
   commit) regenerated output before trusting either.
 
@@ -111,8 +112,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **`T-013`** (`docs/agents/tasks/T-013-patrol.md`): patrol, pinned, in CI and in
-   `test-integration-android`. Edits to `build.gradle.kts` ask the owner (signing block).
+1. **The owner merges the T-013 PR** once CI is green; record the minutes `build-android` gained.
 2. **`T-002d`** (`docs/agents/tasks/T-002d-tuner-lifecycle.md`): release the microphone off
    screen. Privacy first. Plan approved; no new session `Command` is needed.
 3. **`T-002e`** (overlay and first golden), then **`T-002f`** (latency, the FAST refusal).
