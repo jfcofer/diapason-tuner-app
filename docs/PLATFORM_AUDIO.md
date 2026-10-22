@@ -171,8 +171,8 @@ its shell branch goes offstage; a dialog, a menu or a bottom sheet over it does 
 | L2 | App foregrounded | Restart if it was active | Continue | patrol: Redmi 23117RA68G, Android 16 (HyperOS), 2026-10-22 |
 | L3 | Phone call begins | Stop | Pause, remember | open: T-002d |
 | L4 | Call ends | Resume if it was active | Resume if it was playing | open: T-002d |
-| L5 | Headphones unplugged | Continue (route change) | Pause | open: T-002d |
-| L6 | Bluetooth connects mid-session | Rebuild stream, recalibrate latency | Rebuild, warn once | open: T-002d |
+| L5 | Headphones unplugged | Continue (route change) | Pause | manual: Redmi 23117RA68G, Android 16 (HyperOS), 2026-10-22 |
+| L6 | Bluetooth connects mid-session | Rebuild stream, recalibrate latency | Rebuild, warn once | open: T-002f |
 | L7 | Permission revoked in Settings | Stop, show recovery UI | Unaffected | manual: Redmi 23117RA68G, Android 16 (HyperOS), 2026-10-22 |
 | L8 | Screen locked | Stop | Continue, show lock-screen controls | manual: Redmi 23117RA68G, Android 16 (HyperOS), 2026-10-22 |
 | L9 | Low-power mode | Reduce update rate to 20 Hz | Unaffected | deferred: M3 |
