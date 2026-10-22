@@ -1,9 +1,9 @@
 ---
 id: T-002d
 title: Release the microphone whenever the tuner is not in front of the user
-status: todo
+status: in-progress
 milestone: M1
-owner: unassigned
+owner: claude
 created: 2026-10-20
 ---
 
@@ -63,5 +63,27 @@ Metronome-column rows (M4: FGS, MediaSession, lock-screen controls). Low-power 2
 the 60 s silence stop (`PLATFORM_AUDIO.md` §6; tuner analysis does not exist until M2/M3). iOS.
 
 ## Implementation notes
+
+**Part 1 design** (2026-10-22, from the plan approved 2026-10-21, checked against the live code).
+Dart only: no new session `Command`, no FFI change. The existing `stop()`, `start(input:)` and
+`startTone`/`stopTone` give every transition, so `adr/0022` needs no new replay test.
+
+- A pure `engineTarget(...)` in `feature_tuner` maps the user's intent (listen, tone), the
+  permission, foreground and visibility onto `stopped`, `outputOnly` or `duplex`. `inactive`
+  counts as foreground: the permission dialog only makes the app inactive.
+- `core_platform` gains an `AppLifecycle` seam (`FlutterAppLifecycle`, `FakeAppLifecycle`), as
+  `MicrophonePermission` has; the metronome will need it in M4.
+- `TunerController` owns the intent, applies the target on every change, re-reads the permission
+  on return from the background, and stops everything when disposed. Visibility comes from
+  `ModalRoute.isCurrentOf` and `TickerMode.valuesOf` (`TickerMode.of` is deprecated in 3.47.1).
+- The controller tracks the tone itself: after `stop()` the snapshot says no tone, but the session
+  still holds it and would replay it on the next start.
+- **Deviation:** leaving the tuner stops the dev A4 tone too, instead of keeping it. A tone kept
+  past the tuner either outlives its owner in the background or is replayed by the metronome's
+  first `start()`. It is development scaffolding, so nothing user-facing is lost.
+- A granted permission with no stream showed no control at all; the panel now has Start and Stop
+  listening, the user's own control of the microphone.
+- On build only `granted` and `permanentlyDenied` are taken from `status()`: Android reports
+  "never asked" as denied, and that must still show the explanation first.
 
 ## Verification performed
