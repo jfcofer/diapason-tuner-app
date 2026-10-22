@@ -32,9 +32,12 @@ part 3.
 - "Another app takes exclusive audio": on Android 10+, concurrent capture silences one client
   rather than failing it (the input keeps delivering zeros). Detecting that is an open question.
   Measure on the Redmi before designing.
-- `TESTING.md` §3 names `patrol` for backgrounding tests. It is not a dependency yet. Adopting it is
-  a decision (an ADR). The alternative is driving `AppLifecycleState` through the binding in
-  `integration_test`, which tests our reaction but not the OS's.
+- **Patrol is adopted first, in `T-013`** (owner's choice, 2026-10-21): it presses Home and
+  recents and answers the permission dialog. It cannot lock the screen or revoke in Settings, so
+  those rows are manual, recorded with device and OS.
+- A call and another app capturing both silence our input (Android 10+).
+  `AudioRecordingConfiguration.isClientSilenced()` (API 29) may detect both: measure, then detect
+  (owner, 2026-10-21).
 
 ## Acceptance criteria
 
@@ -46,9 +49,10 @@ part 3.
 - [ ] Headphones unplugged / Bluetooth connected mid-session: the tuner keeps listening (rebuild
       already done in `T-002b`; re-verified here with the lifecycle code in place)
 - [ ] Permission revoked in Settings, then the app reopened: the recovery UI, no crash
+- [ ] Phone call begins: the tuner stops; the call ends: it resumes only if it was listening
 - [ ] Another app capturing: behaviour measured on the Redmi and recorded; the tuner says so if it
       can be detected, or the limit is recorded in `PLATFORM_AUDIO.md` §5 if it cannot
-- [ ] Automatable rows are in `apps/diapason/integration_test/lifecycle_test.dart`, run by
+- [ ] Automatable rows are in `apps/diapason/patrol_test/lifecycle_test.dart`, run by
       `just test-integration-android`; the manual rows are recorded with device and OS
 - [ ] View-model tests against `FakeEngine` for every transition, with `fakeAsync` (no wall clock)
 - [ ] `just verify` passes; all six CI jobs green

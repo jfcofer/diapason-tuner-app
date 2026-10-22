@@ -149,7 +149,8 @@ latency of 150–250 ms makes a metronome unusable for ensemble timing and users
 
 ## 5. Lifecycle matrix
 
-Each row is an integration test in `test/integration/lifecycle_test.dart`:
+Each row is a device test in `apps/diapason/patrol_test/lifecycle_test.dart` (`T-002d`), or,
+where patrol cannot drive the OS, a manual check recorded with device and OS:
 
 | Event | Tuner | Metronome |
 |---|---|---|
