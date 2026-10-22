@@ -55,7 +55,7 @@ part 3.
 - [ ] Automatable rows are in `apps/diapason/patrol_test/lifecycle_test.dart`, run by
       `just test-integration-android`; the manual rows are recorded with device and OS
 - [x] View-model tests against `FakeEngine` for every transition, with `fakeAsync` (no wall clock)
-- [ ] `just verify` passes; all six CI jobs green
+- [x] `just verify` passes; all six CI jobs green (part 1: #29)
 
 ## Out of scope
 
