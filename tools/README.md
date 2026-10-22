@@ -22,4 +22,5 @@ Created in T-001:
 | `check-ios-release.sh` | Assert on a built `.app`: privacy manifest, mic string, MinimumOSVersion, Rust linked. Bash 3.2/BSD only — it runs on macOS |
 | `ios/configure_project.rb` | Generate the iOS flavour configs, schemes, xcconfigs and Podfile (`just ios-project`). Ruby + the pinned `xcodeproj` gem |
 | `jvm.sh` | Sourced, not run: what `doctor.sh` and `ktfmt.sh` must agree on (the JDK Flutter builds with, the ktfmt jar path, SHA-256) |
+| `patrol.sh` | Run the pinned patrol_cli with its traps handled: no shell-profile edits, the device always named, no stdin (`adr/0026`) |
 | `ktfmt.sh` | Install the pinned ktfmt jar (checksum-verified), and format or check our Kotlin (`adr/0023`) |

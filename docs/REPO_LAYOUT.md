@@ -27,7 +27,7 @@ diapason/
 │       │   ├── app.dart            MaterialApp, theme wiring, router
 │       │   └── router.dart
 │       ├── android/  ios/          Native projects, manifests, privacy manifest
-│       ├── integration_test/       Lifecycle + device tests (patrol)
+│       ├── patrol_test/            Device tests: engine contract, lifecycle (patrol, adr/0026)
 │       └── pubspec.yaml
 │
 ├── packages/

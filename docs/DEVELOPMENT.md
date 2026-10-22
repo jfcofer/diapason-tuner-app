@@ -21,6 +21,7 @@ and CI reads the same file. This table explains *why* each pin is what it is; wh
 | iOS deployment target | 15.0 | Flutter 3.47's own iOS minimum |
 | Xcode | the `macos-26` runner image default (**not pinned**) | `.github/workflows/ci.yml`; iOS is built only on CI (see §2) |
 | Melos | 8.5.0 | Workspace dev_dependency, run as `dart run melos`; `pubspec.lock` is the pin. No `melos.yaml` (`adr/0006`) |
+| patrol + patrol_cli | 4.10.0 + 4.8.0, together | Device tests (`adr/0026`). Dev dependencies of `apps/diapason`; `pubspec.lock` is the pin. Run only through `tools/patrol.sh` |
 | ktfmt | 0.64, pinned by SHA-256 | Kotlin formatter, kotlinlang style (`adr/0023`). A jar in the user cache, run on the JDK above |
 
 Two failure modes are worth calling out because they cost hours and produce misleading errors:
