@@ -30,8 +30,8 @@ deterministic the test must be.
 - **No-allocation test**: 10 s of audio through `OfflineBackend` with `assert_no_alloc` armed.
 - **Scheduling test**: 30 minutes of offline audio, 47 tempos, every onset on its exact sample
   index. Zero tolerance — this test exists to make drift impossible to reintroduce.
-- **Benches**: criterion, with baselines committed under `rust/benches/baselines/`.
-  `just bench` fails a regression over 10 %.
+- **Benches**: criterion, in `rust/crates/dsp/benches/`. `just bench` fails a regression over 10 %
+  against the baseline `tools/bench-compare.sh` names; how it is recorded is in that script.
 - `miri` runs over `ffi` and `audio_io` unsafe blocks in a weekly CI job, not on every PR.
 
 ## 3. Dart
