@@ -1,0 +1,11 @@
+{
+  "host": "Linux x86_64; AMD Ryzen 7 8840HS w/ Radeon 780M Graphics",
+  "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+  "date": "2026-10-22",
+  "unit": "ns (median)",
+  "benches": {
+    "nsdf/2048": 13226.732096266307,
+    "nsdf/4096": 28552.72625910675,
+    "nsdf/8192": 58895.28238885298
+  }
+}

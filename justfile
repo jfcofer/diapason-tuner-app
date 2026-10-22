@@ -165,7 +165,7 @@ bench group="":
     @tools/bench-compare.sh                # [T-001] fails on >10% regression vs baseline
 
 bench-baseline:
-    @tools/bench-compare.sh --save
+    @tools/bench-compare.sh --save         # runs every bench afresh; adopts only that run's results
 
 size-report:
     cargo xtask size-report

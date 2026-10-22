@@ -273,6 +273,12 @@ if command -v shellcheck >/dev/null 2>&1; then
 else
     fail "shellcheck" "not on PATH" "see docs/DEVELOPMENT.md §2"
 fi
+# tools/bench-compare.sh reads Criterion's JSON estimates with it (T-003a).
+if command -v jq >/dev/null 2>&1; then
+    pass "jq" "$(semver_of jq --version)"
+else
+    fail "jq" "not on PATH" "see docs/DEVELOPMENT.md §2"
+fi
 # `just ios-project` generates the Xcode project; it needs CocoaPods' xcodeproj gem, not Xcode.
 xcodeproj_fix="gem install --user-install xcodeproj -v $XCODEPROJ_VERSION"
 if ! xcodeproj="$(ruby -e "gem 'xcodeproj', '$XCODEPROJ_VERSION'; require 'xcodeproj'; print Xcodeproj::VERSION" 2>/dev/null)"; then
