@@ -149,21 +149,25 @@ latency of 150–250 ms makes a metronome unusable for ensemble timing and users
 
 ## 5. Lifecycle matrix
 
-Each row is a device test in `apps/diapason/patrol_test/lifecycle_test.dart` (`T-002d`), or,
-where patrol cannot drive the OS, a manual check recorded with device and OS:
+Every row has an ID, and the last column says how the Tuner behaviour is proven: `patrol` (a test
+in `apps/diapason/patrol_test/lifecycle_test.dart` whose name starts with the ID), `manual:
+<device>, <OS>, <YYYY-MM-DD>` where patrol cannot drive the OS, `open: T-###` for the task that
+owes it, or `deferred: M#` for the milestone that builds what it needs. `docs-check` enforces the
+column, so the M1 exit criterion "every row" is a check, not a claim (`T-002d`).
 
-| Event | Tuner | Metronome |
-|---|---|---|
-| App backgrounded | Stop, release mic | Continue (FGS / background audio) |
-| App foregrounded | Restart if it was active | Continue |
-| Phone call begins | Stop | Pause, remember |
-| Call ends | Resume if it was active | Resume if it was playing |
-| Headphones unplugged | Continue (route change) | Pause |
-| Bluetooth connects mid-session | Rebuild stream, recalibrate latency | Rebuild, warn once |
-| Permission revoked in Settings | Stop, show recovery UI | Unaffected |
-| Screen locked | Stop | Continue, show lock-screen controls |
-| Low-power mode | Reduce update rate to 20 Hz | Unaffected |
-| Another app takes exclusive audio | Stop with a clear message | Pause |
+| ID | Event | Tuner | Metronome | Tuner verified by |
+|---|---|---|---|---|
+| L1 | App backgrounded | Stop, release mic | Continue (FGS / background audio) | patrol |
+| L2 | App foregrounded | Restart if it was active | Continue | patrol |
+| L3 | Phone call begins | Stop | Pause, remember | open: T-002d |
+| L4 | Call ends | Resume if it was active | Resume if it was playing | open: T-002d |
+| L5 | Headphones unplugged | Continue (route change) | Pause | open: T-002d |
+| L6 | Bluetooth connects mid-session | Rebuild stream, recalibrate latency | Rebuild, warn once | open: T-002d |
+| L7 | Permission revoked in Settings | Stop, show recovery UI | Unaffected | open: T-002d |
+| L8 | Screen locked | Stop | Continue, show lock-screen controls | open: T-002d |
+| L9 | Low-power mode | Reduce update rate to 20 Hz | Unaffected | deferred: M3 |
+| L10 | Another app takes exclusive audio | Stop with a clear message | Pause | open: T-002d |
+| L11 | User leaves the screen | Stop; returning does not restart it | Decided in M4 | patrol |
 
 ## 6. Battery and thermals
 
