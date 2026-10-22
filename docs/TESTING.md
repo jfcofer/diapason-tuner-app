@@ -36,8 +36,9 @@ deterministic the test must be.
 
 ## 3. Dart
 
-- Unit and widget tests with `flutter_test` + `mocktail`. Every view model is tested against
-  `FakeEngine`, never the real one — UI tests must not need an audio device or a Rust build.
+- Unit and widget tests with `flutter_test` and the repo's own fakes (`FakeAudioEngine`,
+  `FakeMicrophonePermission`), no mocking library. Every view model is tested against the fake
+  engine, never the real one — UI tests must not need an audio device or a Rust build.
 - **The fake is a contract, not a stub.** `FakeEngine` and the real engine are both driven through
   the same abstract interface, and a shared conformance suite runs against both (the real one only
   in the integration job). A fake that drifts from the real engine is worse than no fake.
@@ -46,8 +47,11 @@ deterministic the test must be.
   Font rendering differs by platform, and goldens generated on a Mac will fail on CI forever. The
   regeneration path is decided with the first golden in M3; until then `just goldens-update`
   refuses to run (`adr/0016`).
-- Integration tests with `patrol` for anything that touches a system dialog (microphone permission),
-  the lock screen, or backgrounding.
+- Device tests with `patrol` (`adr/0026`) in `apps/diapason/patrol_test/`, run by
+  `just test-integration-android`: the real engine, the microphone dialog, Home and recents. Each
+  test starts from cleared app data. Patrol cannot lock the screen or revoke a permission in
+  Settings (revoking kills the app on Android), so those rows are manual, recorded with device and
+  OS.
 - Accessibility assertions in widget tests: `meetsGuideline(textContrastGuideline)`,
   `androidTapTargetGuideline`, `iOSTapTargetGuideline`, `labeledTapTargetGuideline`.
 

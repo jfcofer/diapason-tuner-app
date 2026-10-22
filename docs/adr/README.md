@@ -43,3 +43,4 @@ agent from "improving" a deliberate choice.
 | [0023](0023-kotlin-formatting.md) | Format Kotlin with a pinned ktfmt, kotlinlang style | Accepted |
 | [0024](0024-platform-channels-and-device-capabilities.md) | Pigeon platform channels; Rust picks the preset; the session is told the permission | Accepted |
 | [0025](0025-stream-tuning.md) | Grow the output buffer as session policy; discard input only at start-up | Accepted |
+| [0026](0026-patrol-device-tests.md) | Device tests run through patrol, pinned with its CLI, never shipped | Accepted |

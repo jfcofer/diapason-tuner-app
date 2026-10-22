@@ -12,7 +12,7 @@ This document owns **everything between a commit and a user**.
 | `dart` | ubuntu-24.04 | `fmt-check-dart`, `lint-dart` (analyze incl. riverpod_lint, `adr/0014`), `test-dart` | Yes |
 | `goldens` | ubuntu-24.04 | `goldens` (`adr/0016`) | Yes |
 | `checks` | ubuntu-24.04 | `doctor-selftest`, `fmt-check-kotlin`, `check-drift`, `ios-project-check`, `check-deps`, `docs-check`, `lint-ci` | Yes |
-| `build-android` | ubuntu-24.04 | `build-android prod`, `check-android-release` (targetSdk, 16 KB alignment, size) | Yes |
+| `build-android` | ubuntu-24.04 | `build-android prod`, `check-android-release` (targetSdk, 16 KB alignment, size, no patrol code or INTERNET), `build-android-tests` (`adr/0026`) | Yes |
 | `build-ios` | macos-26 | `build-ios-unsigned prod`, `check-ios-release` (privacy manifest *in the .app*, mic string, MinimumOSVersion, Rust linked) | Yes |
 | `bench` | — | Criterion vs. committed baselines, ≥ 10 % regression fails | Not yet: nothing to measure until `T-003` |
 | `integration` | — | Lifecycle matrix on device/simulator | Not yet: `T-002` |
