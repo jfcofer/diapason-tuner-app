@@ -150,6 +150,11 @@ expect_failure flutter "melos lockfile drift" \
     'sed -i "s/^MELOS_VERSION=.*/MELOS_VERSION=0.0.1/" tools/versions.env' \
     'melos \(pubspec\.lock\).*pinned 0\.0\.1'
 
+# 8b. patrol and its CLI move together (docs/adr/0026): a pin that drifts from the lockfile fails.
+expect_failure flutter "patrol_cli lockfile drift" \
+    'sed -i "s/^PATROL_CLI_VERSION=.*/PATROL_CLI_VERSION=0.0.1/" tools/versions.env' \
+    'patrol_cli \(pubspec\.lock\).*pinned 0\.0\.1'
+
 # 9. And the control: unmutated, doctor must be green on this machine.
 printf '\n%scontrol%s\n' "$BOLD" "$OFF"
 if bash "$REPO/tools/doctor.sh" "${REQUESTED[@]}" >/dev/null 2>&1; then

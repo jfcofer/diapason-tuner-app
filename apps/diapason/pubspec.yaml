@@ -27,8 +27,20 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  integration_test:
-    sdk: flutter
+  # Exact, and only together: PATROL_VERSION and PATROL_CLI_VERSION in tools/versions.env are the
+  # pins, and doctor checks pubspec.lock against them (docs/adr/0026). The CLI runs from here as
+  # `dart run patrol_cli:main`, like melos, so the lockfile is its install.
+  patrol: 4.10.0
+  patrol_cli: 4.8.0
 
 flutter:
   uses-material-design: true
+
+# Read by patrol_cli (docs/adr/0026). Device tests run against the dev flavour, which installs
+# beside the others.
+patrol:
+  app_name: Diapasón
+  flavor: dev
+  test_directory: patrol_test
+  android:
+    package_name: dev.jfcofer.diapason.dev

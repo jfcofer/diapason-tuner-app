@@ -28,6 +28,16 @@ android {
         targetSdk = pinned.getValue("ANDROID_TARGET_SDK").toInt()
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Device tests run through patrol (docs/adr/0026). Its runner reaches the app over a
+        // localhost port; none of this is part of a release build, which
+        // tools/check-android-release.sh proves on the artifact.
+        testInstrumentationRunner = "pl.leancode.patrol.PatrolJUnitRunner"
+        testInstrumentationRunnerArguments["clearPackageData"] = "true"
+    }
+
+    testOptions {
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 
     // Three flavours that install side by side (docs/CI_RELEASE.md §2). Each supplies its own
@@ -61,4 +71,9 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+dependencies {
+    // Each patrol test in its own instrumentation, so one test's state cannot leak into the next.
+    androidTestUtil("androidx.test:orchestrator:1.5.1")
 }
