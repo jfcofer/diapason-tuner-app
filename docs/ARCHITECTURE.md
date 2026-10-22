@@ -60,7 +60,8 @@ UI is a *subscriber* to a state snapshot, never a participant in timing.
 
 **Dependency rule:** arrows point downward only, and are enforced in CI (`just check-deps` parses
 `pubspec.yaml` and `Cargo.toml` files and fails on an upward or sideways edge). `feature_*`
-packages never import each other. `dsp` depends on nothing but `core` numeric crates.
+packages never import each other. `dsp` depends on no crate of ours, and directly only on the
+third-party crates listed in `tools/check-deps.sh`.
 
 ## 3. Why these seams
 
