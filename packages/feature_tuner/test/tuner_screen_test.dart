@@ -12,6 +12,7 @@ Future<FakeAudioEngine> pumpTuner(
   WidgetTester tester, {
   required FakeMicrophonePermission permission,
   FakeAudioEngine? engine,
+  FakeAppLifecycle? lifecycle,
   bool diagnostics = true,
 }) async {
   final fake = engine ?? FakeAudioEngine();
@@ -20,6 +21,7 @@ Future<FakeAudioEngine> pumpTuner(
       overrides: [
         engineHandleProvider.overrideWithValue(fake),
         microphonePermissionProvider.overrideWithValue(permission),
+        appLifecycleProvider.overrideWithValue(lifecycle ?? FakeAppLifecycle()),
         showEngineDiagnosticsProvider.overrideWithValue(diagnostics),
       ],
       child: const MaterialApp(home: TunerScreen()),
@@ -135,18 +137,100 @@ void main() {
     expect(find.textContaining('Preset:'), findsNothing);
   });
 
-  testWidgets('a permanent refusal sends the user to Settings, without prompting', (tester) async {
+  testWidgets('a permanent refusal sends the user to Settings at once, without prompting', (
+    tester,
+  ) async {
+    // A relaunch after the microphone was turned off in Settings (L7): recovery, not a crash.
     final permission = FakeMicrophonePermission(
       initial: MicrophonePermissionStatus.permanentlyDenied,
       onRequest: MicrophonePermissionStatus.permanentlyDenied,
     );
     await pumpTuner(tester, permission: permission);
-    await tapAndSettle(tester, const Key('tuner.micAction'));
-    expect(permission.requestCount, 0, reason: 'the OS would not show the prompt anyway');
     expect(micMessage(tester), contains('Turn it on in Settings'));
 
     await tapAndSettle(tester, const Key('tuner.micAction'));
     expect(permission.settingsOpened, 1);
+    expect(permission.requestCount, 0, reason: 'the OS would not show the prompt anyway');
+  });
+
+  testWidgets('a relaunch with a refusal that may be "never asked" still explains first', (
+    tester,
+  ) async {
+    final permission = FakeMicrophonePermission(initial: MicrophonePermissionStatus.denied);
+    await pumpTuner(tester, permission: permission);
+    expect(micMessage(tester), contains('nothing is recorded or sent'));
+  });
+
+  testWidgets('with the permission already granted, listening waits for the user', (tester) async {
+    final permission = FakeMicrophonePermission(initial: MicrophonePermissionStatus.granted);
+    final engine = await pumpTuner(tester, permission: permission);
+    expect(engine.current.state, SessionState.stopped);
+    expect(find.text('Start listening'), findsOneWidget);
+
+    await tapAndSettle(tester, const Key('tuner.listenToggle'));
+    expect(engine.current.inputActive, isTrue);
+    expect(find.text('Stop listening'), findsOneWidget);
+    expect(permission.requestCount, 0);
+
+    await tapAndSettle(tester, const Key('tuner.listenToggle'));
+    expect(engine.current.state, SessionState.stopped);
+    expect(find.text('Start listening'), findsOneWidget);
+  });
+
+  testWidgets(
+    'a screen pushed over the tuner releases the microphone; popping does not reopen it',
+    (tester) async {
+      final engine = await pumpTuner(tester, permission: FakeMicrophonePermission());
+      await tapAndSettle(tester, const Key('tuner.micAction'));
+      expect(engine.current.inputActive, isTrue);
+
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator))
+        ..push(MaterialPageRoute<void>(builder: (_) => const Text('elsewhere')));
+      await tester.pumpAndSettle();
+      expect(engine.current.state, SessionState.stopped);
+
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(engine.current.state, SessionState.stopped);
+      expect(find.text('Start listening'), findsOneWidget);
+    },
+  );
+
+  testWidgets('leaving the tuner stops the stream and the tone', (tester) async {
+    final engine = await pumpTuner(tester, permission: FakeMicrophonePermission());
+    await tapAndSettle(tester, const Key('tuner.micAction'));
+    await tapAndSettle(tester, const Key('tuner.testTone'));
+    expect(engine.current.toneHz, 440);
+
+    await tester.pumpWidget(const SizedBox());
+    expect(engine.current.state, SessionState.stopped);
+
+    engine.start(input: false); // the metronome, later
+    expect(engine.current.toneHz, isNull, reason: 'the A4 must not be replayed');
+  });
+
+  testWidgets('the background releases the microphone; the foreground brings it back', (
+    tester,
+  ) async {
+    final lifecycle = FakeAppLifecycle();
+    final engine = await pumpTuner(
+      tester,
+      permission: FakeMicrophonePermission(),
+      lifecycle: lifecycle,
+    );
+    await tapAndSettle(tester, const Key('tuner.micAction'));
+
+    lifecycle
+      ..set(AppLifecycleState.inactive)
+      ..set(AppLifecycleState.hidden);
+    await tester.pump();
+    expect(engine.current.state, SessionState.stopped);
+
+    lifecycle
+      ..set(AppLifecycleState.inactive)
+      ..set(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(engine.current.inputActive, isTrue);
   });
 
   testWidgets('the test tone plays with the microphone refused, as the metronome must', (
