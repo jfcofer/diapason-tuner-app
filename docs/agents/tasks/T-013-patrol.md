@@ -1,7 +1,7 @@
 ---
 id: T-013
 title: Run device tests with patrol, so the OS side of a lifecycle row is tested
-status: in-progress
+status: done
 milestone: M1
 owner: claude
 created: 2026-10-21
@@ -46,12 +46,12 @@ Read: `docs/TESTING.md` §3, `tools/test-integration-android.sh`, `docs/adr/0011
 - [x] Dependabot never bumps `patrol` alone (it moves with the CLI pin)
 - [x] `just test-integration-android` runs the engine contract through `patrol test` on the Redmi,
       with and without the microphone
-- [ ] CI compiles the patrol test APK in the `build-android` job (still six jobs), with a `just`
-      recipe; the minutes it adds are recorded
+- [x] CI compiles the patrol test APK in the `build-android` job (still six jobs), with a `just`
+      recipe; the minutes it adds are recorded (55 s on #28's run)
 - [x] `check-android-release` fails a release artifact that contains patrol classes or declares
       `android.permission.INTERNET`
 - [x] `TESTING.md` §3 says what patrol covers and what stays manual; `DEVELOPMENT.md` lists the CLI
-- [ ] `just verify` passes; all six CI jobs green
+- [x] `just verify` passes; all six CI jobs green (#28)
 
 ## Out of scope
 
@@ -88,3 +88,5 @@ and its own Xcode target). Cloud device farms.
   owner approving the two install prompts (two earlier attempts unanswered: refused, and named).
   After review made the dialog's appearance an explicit assertion: 2/2 in 49 s.
 - `just verify`: green but for STATE's line budget, fixed at session end.
+- **CI on #28, all six green:** `build-android` 7m18s, of which `build-android-tests` 55 s;
+  `check-android-release` on the real prod AAB: no INTERNET (RECORD_AUDIO seen), no patrol code.
