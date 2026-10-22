@@ -1,7 +1,7 @@
 ---
 id: T-002b
 title: Android duplex stream on the budget reference device
-status: in-progress
+status: done
 milestone: M1
 owner: claude
 created: 2026-10-04
@@ -51,7 +51,7 @@ timing; emulated audio says nothing about real devices.
 - [ ] Round-trip latency on the Redmi recorded in the journal. **Closed here: moved to `T-002f`**
 - [x] The RT clock exception (`clock_gettime` in the callback) has its ADR, and `AGENTS.md` §6
       cites it, so the documented RT rule stays true
-- [ ] `just verify` green; `build-android` CI green
+- [x] `just verify` green; `build-android` CI green (all six checks on #27, merged 2026-10-22)
 
 ## Out of scope
 

@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-21 (T-002b part 2b-ii closed on the Redmi; T-012)
+# STATE — updated 2026-10-21 (T-002b done; T-013 patrol, ahead of T-002d)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -10,17 +10,18 @@
 **Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
-- **Merged:** T-006, T-002a, T-007, T-008, T-002b parts 1, 2a and 2b-i, T-009, T-010, T-011,
-  T-012 (PRs #6–#9, #11–#16, #24), and Dependabot #2, #10, #21, #22, #25, #26. #20 closed.
-- **Open, for the owner to merge:** #27, the 2b-ii PR (`feat/T-002b-stream-tuning`).
+- **Merged:** T-006, T-002a, T-007, T-008, T-002b (all parts), T-009, T-010, T-011, T-012
+  (PRs #6–#9, #11–#16, #24, #27), and Dependabot #2, #10, #21, #22, #25, #26. #20 closed.
+- **Open:** none. This session's branch is `chore/T-013-patrol`.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-002b-android-duplex.md`**: parts 1, 2a and 2b-i merged (#11, #13, #16).
-**2b-ii is device-verified** (`adr/0025`): buffer growth, the preset fallback, the callback budget
-and the shipped-`.so` gate. Backlog shedding was **cut**, because it broke the microphone on the
-Redmi. T-002b closes when #27 merges; its part 3 is now `T-002d`/`T-002e`/`T-002f`.
+**`docs/agents/tasks/T-013-patrol.md`**: adopt patrol for device tests (owner's choice,
+2026-10-21), so `T-002d`'s lifecycle rows test the OS side, not only our reaction. Spike on the
+Redmi first: HyperOS may refuse the orchestrator's `pm clear`. **T-002b is done** (#27); its part 3
+is `T-002d`/`T-002e`/`T-002f`. Plan for both, approved 2026-10-21: three PRs, T-013, then T-002d
+lifecycle (Dart only), then T-002d's silenced microphone (measure on the Redmi, then detect).
 
 ## Hardware this project actually has
 
@@ -93,8 +94,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - **The `audio_engine` plugin has no Swift Package Manager support.** Flutter 3.47 warns this will
   become an error. It needs cargokit SwiftPM support or a `Package.swift`, as its own task.
 - **Rust crate licences are not in the in-app licence page** (`triple_buffer` MPL-2.0; M6).
-- **`permission_handler` held at 12:** 13 needs compileSdk 37, its own task (`AGENTS.md` §8).
-  `T-012` makes Dependabot hold it too.
+- **`permission_handler` held at 12** (Dependabot too): 13 needs compileSdk 37, its own task.
 - **Nothing stops the stream yet:** the microphone stays open once the tuner listens (`T-002d`).
 - **A stall's input stays queued as latency** until a rebuild (`adr/0025`); none seen yet.
 - **The Redmi now refuses the output the FAST path** (on `main` too), unlike part 1: `T-002f`.
@@ -111,9 +111,10 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **The owner merges #27.** Then mark T-002b done (and tick its CI criterion).
-2. **`T-002d`** (`docs/agents/tasks/T-002d-tuner-lifecycle.md`), in plan mode: release the
-   microphone off screen. Privacy first.
+1. **`T-013`** (`docs/agents/tasks/T-013-patrol.md`): patrol, pinned, in CI and in
+   `test-integration-android`. Edits to `build.gradle.kts` ask the owner (signing block).
+2. **`T-002d`** (`docs/agents/tasks/T-002d-tuner-lifecycle.md`): release the microphone off
+   screen. Privacy first. Plan approved; no new session `Command` is needed.
 3. **`T-002e`** (overlay and first golden), then **`T-002f`** (latency, the FAST refusal).
 4. **`T-002c`**, iOS CoreAudio, on the CI Simulator. `T-004` whenever a slice waits on CI.
    **`T-003`** (pitch core, no task file yet) can run in parallel: host-only `dsp` work.
