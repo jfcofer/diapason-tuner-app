@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-22 (T-002d part 1 verified on the Redmi; PR next)
+# STATE — updated 2026-10-22 (#29 merged; T-003a, the pitch core, started while no device is attached)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -10,16 +10,15 @@
 **Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
-- **Merged:** T-006, T-002a, T-007, T-008, T-002b (all parts), T-009, T-010, T-011, T-012, T-013
-  (PRs #6–#9, #11–#16, #24, #27, #28), and Dependabot #2, #10, #21, #22, #25, #26. #20 closed.
-- **Open:** #29 (`T-002d` part 1, device-verified; six checks green on first push).
+- **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1 (PRs #6–#9, #11–#16, #24,
+  #27–#29), Dependabot #2, #10, #21, #22, #25, #26. #20 closed. **Open:** none.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-002d-tuner-lifecycle.md`** (in progress). Part 1 passed on the Redmi:
-patrol 5/5, and L5, L7 and L8 checked by hand with `just mic-clients`. Still open: L3/L4 (a call)
-and L10 (part 2).
+**`docs/agents/tasks/T-003a-mpm-core.md`** (in progress): `T-003`'s first slice, host-only M2 work
+the owner chose on 2026-10-22, when no device was attached.
+**Waiting on the Redmi:** `T-002d` (in progress; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## Hardware this project actually has
 
@@ -113,8 +112,9 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **#29**: owner rebase-merges. Then L3/L4 with a call to the Redmi.
-2. **`T-002d` part 2**: measure the silenced microphone (L10), then detect it or record the limit.
-3. **`T-002e`** (overlay and first golden), then **`T-002f`** (latency, the FAST refusal).
+1. **`T-003a`**: finish, PR, owner rebase-merges. Then `T-003b`–`d` (`T-003` lists the slices).
+2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then part 2: measure the silenced
+   microphone (L10), then detect it or record the limit.
+3. **`T-002e`** (overlay, reached from Settings → Diagnostics, and the first golden), then
+   **`T-002f`** (latency, the FAST refusal).
 4. **`T-002c`**, iOS CoreAudio, on the CI Simulator. `T-004` whenever a slice waits on CI.
-   **`T-003`** (pitch core, no task file yet) can run in parallel: host-only `dsp` work.

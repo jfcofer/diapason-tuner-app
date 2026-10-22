@@ -55,4 +55,8 @@ beyond what `core_ui` already requires.
 
 ## Implementation notes
 
+- **Placement, decided by the owner (2026-10-22):** Settings → Diagnostics, a screen support can
+  name ("open Settings, then Diagnostics"). A hidden gesture on the tuner was rejected as
+  undiscoverable. `PRODUCT_SPEC.md` records it when this task builds the screen.
+
 ## Verification performed
