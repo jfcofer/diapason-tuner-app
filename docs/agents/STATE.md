@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-22 (#29 merged; T-003a, the pitch core, started while no device is attached)
+# STATE — updated 2026-10-22 (T-003a built and verified on the host; PR next)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -22,9 +22,8 @@ the owner chose on 2026-10-22, when no device was attached.
 
 ## Hardware this project actually has
 
-- A Fedora 44 host, and the **Redmi 23117RA68G** (Android 16, arm64): the "budget Android" row of
-  `TESTING.md` §7. An emulator for permissions and lifecycle only, **never** for latency.
-- **No Mac, no iPhone.** iOS is compiled and checked only by CI; from `T-002c`, on the Simulator.
+- Fedora 44 host and the **Redmi 23117RA68G** (Android 16, arm64), `TESTING.md` §7's budget
+  Android. Emulator for lifecycle only, **never** latency. **No Mac, no iPhone:** iOS is CI-only.
 
 ## What exists now
 
@@ -33,8 +32,7 @@ the owner chose on 2026-10-22, when no device was attached.
   `tools/versions.env` via `.github/actions/toolchain`, SHA-pinned actions, weekly Dependabot.
 - **The gate:** `just verify` = doctor-selftest, fmt (Dart, Rust, Kotlin), analyze, clippy, tests
   and doctests, `deny`, `doc-rust`, codegen drift, `ios-project-check`, deps, docs, `lint-ci`.
-- **iOS project** from `just ios-project`; **never edit `project.pbxproj` by hand.** Release checks:
-  `check-android-release`, `check-ios-release`.
+- **iOS project** from `just ios-project`; **never edit `project.pbxproj` by hand.**
 - **`AAudioBackend`** (`T-002b`): duplex as two AAudio streams on one clock, device-tested with
   `just test-android-device`, linted by `lint-rust-android`. Shared, never MMAP, on the Redmi.
 - **Session** (`T-002b` 2a, `adr/0022`): a sans-IO `Supervisor` on virtual time plus one thread;
@@ -44,6 +42,8 @@ the owner chose on 2026-10-22, when no device was attached.
   from `TickerMode`. Matrix rows L1–L11 (`PLATFORM_AUDIO.md` §5); `docs-check` checks each proof.
 - **Engine core** (`T-002a`): `Engine::prepare` → `(Engine, Processor)` over `rtrb` and
   `triple_buffer`; zero allocation proven by test with an armed canary; `engine/clippy.toml`.
+- **Pitch core** (`T-003a`): `dsp::pitch::Mpm` (MPM over realfft, f64, allocation-free) and
+  `dsp::synth` fixtures (`adr/0027`). `just bench` gates medians against a host-tagged baseline.
 
 ## Decisions already made (do not re-litigate without an ADR)
 
@@ -61,23 +61,21 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - `0025` buffer growth is session policy; only the start-up drain discards input.
 - `0026` patrol runs device tests, CLI pinned in the lockfile, never in a release. It applies KGP,
   which a future Flutter refuses: check patrol before any Flutter bump.
+- `0027` synthetic audio fixtures are generated in code; only recordings are checked in.
 
 ## Traps a later session will otherwise re-discover
 
 - **A clean checkout has no `*.g.dart` or `*.g.kt`** (Pigeon). Run `just deps` first. A tree that
   has them hides this, so test CI-shaped changes in a fresh clone.
-- **`flutter build ipa` fails without a development team**, even `--no-codesign`: use
-  `build-ios-unsigned`.
+- **`flutter build ipa` needs a development team**, even `--no-codesign`: use `build-ios-unsigned`.
 - **cargokit's vendored `build_tool` is not our code**, so it is excluded from format and analysis.
 - **`doctor` uses GNU grep `-P`**, so not on macOS; `check-ios-release.sh` is bash 3.2-portable.
 - **JDK 25 breaks Flutter Android builds** (flutter#187223). Flutter uses JDK 21 via `--jdk-dir`.
 - **Compiling against a crate is not linking it.** Verify on the shipped binary.
-- **A cold release build can exhaust this 14 GB host:** fat LTO for every ABI (cargokit ignores
-  `--target-platform`). Build in the main checkout, never a worktree, with `CARGO_BUILD_JOBS=4`
-  and nothing else running.
+- **A cold release build can exhaust this 14 GB host** (fat LTO for every ABI; cargokit ignores
+  `--target-platform`): main checkout only, `CARGO_BUILD_JOBS=4`, nothing else running.
 - **`cargo fmt` reformats FRB's generated file.** That is why formatting is part of `just gen`.
-- **Editing a `clippy.toml` does not invalidate clippy's cache.** `touch` a source file before
-  trusting a clean run. CI is unaffected.
+- **Editing a `clippy.toml` does not invalidate clippy's cache:** `touch` a source file first.
 - **HyperOS (the Redmi) wants a tap on every USB install**, even with "USB debugging (Security
   settings)" on (it is). Unanswered: `INSTALL_FAILED_USER_RESTRICTED`, which the runner names.
 - **Run patrol only through `tools/patrol.sh`:** bare, it edits `~/.bashrc`, hangs on Chrome,
@@ -86,14 +84,15 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
   or use `screencap`. **A patrol run uninstalls the app**, and its APK is the test bundle.
 - **`check-drift` diffs against the index and `ios-project-check` against HEAD:** stage (or
   commit) regenerated output before trusting either.
+- **`dsp`'s clippy list is the RT list, tests included:** no `println!`, no `prop_assert!`.
+  **`just bench` needs a quiet host:** agents running in parallel moved it by +20 %.
 
 ## Known gaps (not blocking)
 
 - **CI reproducibility leftovers** are in `T-004`: unpinned cargo-ndk and Xcode, the AAB manifest,
   the `Podfile.lock` policy.
-- **Goldens:** `T-002e` lands the first, and tags them out of `test-dart` (`adr/0016`).
 - **`audio_engine` lacks SwiftPM support**, which Flutter 3.47 warns will become an error: own task.
-- **Rust crate licences are not in the in-app licence page** (`triple_buffer` MPL-2.0; M6).
+- **Rust crate licences are not in the in-app licence page** (`triple_buffer` MPL-2.0, realfft; M6).
 - **`permission_handler` held at 12** (Dependabot too): 13 needs compileSdk 37, its own task.
 - **`appLifecycleProvider` is in `feature_tuner`**; it moves down when the metronome needs it (M4).
 - **A stall's input stays queued as latency** until a rebuild (`adr/0025`); none seen yet.
@@ -104,6 +103,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 | Question | Needed by | Notes |
 |---|---|---|
+| Who records the instrument fixtures | `T-003e` | Guitar, bass, ukulele, violin at known pitches, under a licence `adr/0009` permits |
 | Monetisation model | M6 | Must not introduce ads, analytics or network calls (`PRODUCT_SPEC.md` §6) |
 | Reference devices beyond the Redmi | M1+ | No iPhone, Pixel or tablet available. `T-002` criteria were amended to "every device available" |
 | Font licences confirmed for bundling | M3 | `DESIGN_SYSTEM.md` §1 assumes OFL faces |
@@ -112,9 +112,9 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **`T-003a`**: finish, PR, owner rebase-merges. Then `T-003b`–`d` (`T-003` lists the slices).
-2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then part 2: measure the silenced
-   microphone (L10), then detect it or record the limit.
-3. **`T-002e`** (overlay, reached from Settings → Diagnostics, and the first golden), then
-   **`T-002f`** (latency, the FAST refusal).
+1. **`T-003a`**: PR, six green checks, owner rebase-merges. Then `T-003b` (its filter decides the
+   sawtooth's ±0.5 ¢, see `T-003a` notes), `T-003c`, `T-003d`.
+2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then L10 (the silenced microphone).
+   Also owed: `T-003a`'s 4096 frame cost on the phone (≤ 1.5 ms).
+3. **`T-002e`** (overlay in Settings → Diagnostics; first golden), then **`T-002f`** (latency, FAST).
 4. **`T-002c`**, iOS CoreAudio, on the CI Simulator. `T-004` whenever a slice waits on CI.
