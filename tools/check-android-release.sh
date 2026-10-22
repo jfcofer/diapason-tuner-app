@@ -10,6 +10,8 @@
 #   - the engine's .so links AAudio and imports it, links no libc++_shared, and fits its per-ABI
 #     size budget (docs/AUDIO_ENGINE.md §1, docs/adr/0020): compiling against a library is not
 #     linking it, so this reads what actually shipped
+#   - nothing from the device tests shipped: no patrol code and no INTERNET permission
+#     (docs/adr/0026, AGENTS.md §8)
 #   - the artifact is under the size budget
 #
 # The 16 KB check is the one that matters most: NDK r28+ aligns by default, so this is expected to
@@ -152,6 +154,34 @@ for so in "${engines[@]}"; do
         ok "$abi: engine size" "${kb} KB / ${ENGINE_TARGET_KB} KB"
     fi
 done
+
+# ── Nothing from the device tests ships (docs/adr/0026, AGENTS.md §8) ────────
+# Patrol is a dev dependency and reaches the app over a localhost port, so its builds declare
+# INTERNET. A release must contain neither its code nor that permission. Both scans prove they can
+# read what they scan first: the manifest must show RECORD_AUDIO, the dex must exist.
+if [[ "$artifact" == *.apk ]]; then
+    permissions="$("$aapt2" dump permissions "$artifact" 2>/dev/null)"
+else
+    # An AAB's manifest is protobuf, which stores its strings as plain UTF-8.
+    permissions="$(grep -a -o 'android\.permission\.[A-Z_]*' "$work/base/manifest/AndroidManifest.xml" 2>/dev/null)"
+fi
+if ! grep -q 'android\.permission\.RECORD_AUDIO' <<<"$permissions"; then
+    fail "could not read the manifest's permissions" "the scan must see RECORD_AUDIO before its silence means anything"
+elif grep -q 'android\.permission\.INTERNET' <<<"$permissions"; then
+    fail "the release declares android.permission.INTERNET" \
+         "This app makes no network requests (AGENTS.md §8). Find the manifest that merged it in."
+else
+    ok "no INTERNET permission" "RECORD_AUDIO seen, so the manifest was read"
+fi
+
+mapfile -t dexes < <(find "$work" -name 'classes*.dex' 2>/dev/null)
+if [[ ${#dexes[@]} -eq 0 ]]; then
+    fail "no classes*.dex found in the artifact" "the scan for test code read nothing"
+elif grep -a -q -l 'pl[./]leancode[./]patrol' "${dexes[@]}"; then
+    fail "the release contains patrol code" "patrol must stay a dev dependency (docs/adr/0026)"
+else
+    ok "no patrol code" "${#dexes[@]} dex file(s) scanned"
+fi
 
 # ── Size budget ──────────────────────────────────────────────────────────────
 size_mb=$(( $(stat -c%s "$artifact") / 1024 / 1024 ))
