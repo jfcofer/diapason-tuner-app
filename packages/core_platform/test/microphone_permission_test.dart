@@ -15,6 +15,14 @@ void main() {
     expect(permission.settingsOpened, 1);
   });
 
+  test('the fake can change in settings without a request', () async {
+    final permission = FakeMicrophonePermission(initial: MicrophonePermissionStatus.granted)
+      ..current = MicrophonePermissionStatus.denied;
+
+    expect(await permission.status(), MicrophonePermissionStatus.denied);
+    expect(permission.requestCount, 0);
+  });
+
   test('every plugin status maps to one of ours, and only final refusals are permanent', () {
     final mapped = {
       for (final status in plugin.PermissionStatus.values) status: fromPluginStatus(status),

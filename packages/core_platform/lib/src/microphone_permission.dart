@@ -39,9 +39,12 @@ class FakeMicrophonePermission implements MicrophonePermission {
   new({
     MicrophonePermissionStatus initial = MicrophonePermissionStatus.notDetermined,
     this.onRequest = MicrophonePermissionStatus.granted,
-  }) : _status = initial;
+  }) : current = initial;
 
-  MicrophonePermissionStatus _status;
+  /// The status as the system would report it now. Set it to play a change made outside the app,
+  /// in system settings: a grant, or a revocation (which on Android kills the process, so a test
+  /// plays it before the next launch).
+  MicrophonePermissionStatus current;
 
   /// The status [request] will settle on.
   final MicrophonePermissionStatus onRequest;
@@ -53,12 +56,12 @@ class FakeMicrophonePermission implements MicrophonePermission {
   int settingsOpened = 0;
 
   @override
-  Future<MicrophonePermissionStatus> status() async => _status;
+  Future<MicrophonePermissionStatus> status() async => current;
 
   @override
   Future<MicrophonePermissionStatus> request() async {
     requestCount++;
-    return _status = onRequest;
+    return current = onRequest;
   }
 
   @override
