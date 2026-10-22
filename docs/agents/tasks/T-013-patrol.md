@@ -36,20 +36,21 @@ Read: `docs/TESTING.md` §3, `tools/test-integration-android.sh`, `docs/adr/0011
 
 ## Acceptance criteria
 
-- [ ] A Redmi spike answers, in the journal: does `clearPackageData` work under HyperOS; how many
+- [x] A Redmi spike answers, in the journal: does `clearPackageData` work under HyperOS; how many
       install taps a run costs; do patrol's permission-dialog selectors match HyperOS's dialog
-- [ ] `adr/0026` records the adoption, the pins, the setup that shipped, and what was rejected
-- [ ] `PATROL_VERSION` and `PATROL_CLI_VERSION` in `tools/versions.env`; `apps/diapason` pins the
+- [x] `adr/0026` records the adoption, the pins, the setup that shipped, and what was rejected
+- [x] `PATROL_VERSION` and `PATROL_CLI_VERSION` in `tools/versions.env`; `apps/diapason` pins the
       package exactly; `just doctor` fails on a CLI or package that disagrees, and
-      `doctor-selftest` proves it; `just setup` installs the pinned CLI
-- [ ] Dependabot never bumps `patrol` alone (it moves with the CLI pin)
-- [ ] `just test-integration-android` runs the engine contract through `patrol test` on the Redmi,
+      `doctor-selftest` proves it; `just setup` installs the pinned CLI. **Deviation:** nothing to
+      install: the CLI is a dev dependency run from the lockfile, like melos
+- [x] Dependabot never bumps `patrol` alone (it moves with the CLI pin)
+- [x] `just test-integration-android` runs the engine contract through `patrol test` on the Redmi,
       with and without the microphone
 - [ ] CI compiles the patrol test APK in the `build-android` job (still six jobs), with a `just`
       recipe; the minutes it adds are recorded
-- [ ] `check-android-release` fails a release artifact that contains patrol classes or declares
+- [x] `check-android-release` fails a release artifact that contains patrol classes or declares
       `android.permission.INTERNET`
-- [ ] `TESTING.md` §3 says what patrol covers and what stays manual; `DEVELOPMENT.md` lists the CLI
+- [x] `TESTING.md` §3 says what patrol covers and what stays manual; `DEVELOPMENT.md` lists the CLI
 - [ ] `just verify` passes; all six CI jobs green
 
 ## Out of scope
@@ -59,4 +60,31 @@ and its own Xcode target). Cloud device farms.
 
 ## Implementation notes
 
+- **The CLI is not installed globally.** `patrol_cli` is an exact dev dependency of
+  `apps/diapason`, run as `dart run patrol_cli:main`, so `pubspec.lock` is the install and doctor
+  checks it (as melos, `adr/0006`). `tools/patrol.sh` is the one entry point.
+- **Two traps found in the spike**, both handled in `tools/patrol.sh`: the CLI writes completion
+  setup into `~/.bashrc` on its first run (`PATROL_NO_COMPLETION` stops it; the block it wrote here
+  was removed with its own `uninstall-completion-files`), and with Chrome attached as a second
+  device it re-asks "select an option" forever on a closed stdin (400 MB of log).
+- **`integration_test/` is gone**, with its dev dependency: the contract runs as two patrol tests,
+  denied then allowed, each from cleared data. patrol_cli writes `patrol_test/test_bundle.dart`
+  on each run; it is gitignored and excluded from analysis.
+- **CI compiles, does not run:** `just build-android-tests` compiles the androidTest Kotlin
+  against the dev entry point (~30 s locally, no Rust build).
+- **patrol 4.10 applies KGP**, which Flutter 3.47 warns a future Flutter will refuse (`adr/0026`).
+
 ## Verification performed
+
+- **Spike, Redmi 23117RA68G (Android 16), 2026-10-21:** both contract tests pass (deny then
+  allow), 81 s with the build; swapped order (allow then deny) passes too, 52 s, which proves
+  `clearPackageData` isolates them. HyperOS asks for every USB install even with "USB debugging
+  (Security settings)" on (`persist.security.adbinput=1`); unanswered, the run fails as
+  `INSTALL_FAILED_USER_RESTRICTED`, which the runner now names.
+- **Release guard, both directions:** a debug APK renamed `*-release.apk` fails it twice (INTERNET,
+  patrol code); a clean release is proved by CI's `build-android`.
+- `just doctor-selftest flutter`: `patrol_cli lockfile drift` caught.
+- **The final runner**, `just test-integration-android`, Redmi, 2026-10-22: 2/2 in 62 s, with the
+  owner approving the two install prompts (two earlier attempts unanswered: refused, and named).
+  After review made the dialog's appearance an explicit assertion: 2/2 in 49 s.
+- `just verify`: green but for STATE's line budget, fixed at session end.
