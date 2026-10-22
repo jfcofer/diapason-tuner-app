@@ -54,7 +54,7 @@ part 3.
       can be detected, or the limit is recorded in `PLATFORM_AUDIO.md` §5 if it cannot
 - [ ] Automatable rows are in `apps/diapason/patrol_test/lifecycle_test.dart`, run by
       `just test-integration-android`; the manual rows are recorded with device and OS
-- [ ] View-model tests against `FakeEngine` for every transition, with `fakeAsync` (no wall clock)
+- [x] View-model tests against `FakeEngine` for every transition, with `fakeAsync` (no wall clock)
 - [ ] `just verify` passes; all six CI jobs green
 
 ## Out of scope
@@ -86,4 +86,28 @@ Dart only: no new session `Command`, no FFI change. The existing `stop()`, `star
 - On build only `granted` and `permanentlyDenied` are taken from `status()`: Android reports
   "never asked" as denied, and that must still show the explanation first.
 
+
+**Built (part 1, 2026-10-22).**
+- **Visibility is `TickerMode` alone, not `ModalRoute.isCurrentOf`.** The review found that
+  `isCurrentOf` is false under every popup route. A dialog, a menu, or the bottom sheet that
+  `DESIGN_SYSTEM.md` gives the compact controls would then have stopped the tuner. An opaque route
+  or an offstage branch stops its tickers; a popup does not.
+- **The matrix (`PLATFORM_AUDIO.md` §5) has IDs L1 to L11, and `docs-check` checks its last
+  column.** L11, leaving the screen, is new.
+  - A `patrol` cell needs the device, the OS and the date of a passing run, because CI has no
+    device. So L1, L2 and L11 stay `open` until the Redmi runs them.
+- **`diapasonRoot()` in `bootstrap.dart`** is what the patrol tests pump, so they run the app with
+  the same overrides it ships with.
+- **Deferred: `just mic-clients`.** Its `dumpsys` output must be measured on the Redmi before
+  anything parses it (`AGENTS.md` §3.3). No device was attached.
+- **Open for the owner:** L11 (returning does not listen) contradicts `PRODUCT_SPEC.md` §1 and §2
+  ("opens … listening"). It is kept for M1, and logged in STATE's open questions for M3.
+
 ## Verification performed
+
+- 2026-10-22, host only. `just verify` passed. The tuner has 36 tests and the policy is tested on
+  all 32 input combinations.
+- Each race test was checked by putting the bug back: the test then fails.
+- `docs-check` was checked the same way, on purpose-broken matrices: no ID, a malformed ID, a bare
+  `patrol`, `deferred: M1`, a duplicate ID, a missing task, and a renamed heading. Each one fails.
+- **The device rows are not run yet: no adb device was attached.**
