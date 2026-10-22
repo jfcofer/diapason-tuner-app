@@ -49,7 +49,7 @@ void main() {
   );
 
   patrolTest(
-    'leaving the tuner releases the microphone, and returning does not reopen it',
+    'L11: leaving the tuner releases the microphone, and returning does not reopen it',
     config: _config,
     ($) async {
       final engine = await _listening($);
