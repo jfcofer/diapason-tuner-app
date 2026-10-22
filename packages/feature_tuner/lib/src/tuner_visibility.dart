@@ -2,10 +2,12 @@ import 'package:feature_tuner/src/tuner_controller.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Tells [TunerController] whether the tuner is on screen: its route is the current one and its
-/// tickers run. A route pushed over the tuner, or an offstage shell branch, hides it.
+/// Tells [TunerController] whether the tuner is on screen, which is whether its tickers run.
 ///
-/// It uses only the framework's own signals, so the feature does not depend on the router.
+/// The navigator stops them under an opaque route once it covers the tuner, and an offstage shell
+/// branch stops them too; a dialog, a menu or a bottom sheet over the tuner does not, so the tuner
+/// keeps listening under its own controls (`docs/DESIGN_SYSTEM.md` puts them in a sheet). It uses
+/// only the framework's own signal, so the feature does not depend on the router.
 class TunerVisibility extends ConsumerStatefulWidget {
   /// Wraps [child], the tuner's content.
   const new({required this.child, super.key});
@@ -23,9 +25,8 @@ class _TunerVisibilityState extends ConsumerState<TunerVisibility> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Both lookups subscribe this state to changes, so this runs again whenever either changes.
-    final visible =
-        (ModalRoute.isCurrentOf(context) ?? true) && TickerMode.valuesOf(context).enabled;
+    // The lookup subscribes this state to changes, so this runs again whenever it changes.
+    final visible = TickerMode.valuesOf(context).enabled;
     if (visible == _visible) return;
     _visible = visible;
     // A provider must not change while widgets build, so report it once this frame is done.

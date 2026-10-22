@@ -88,7 +88,11 @@ class TunerController extends _$TunerController {
     // Captured now: `ref` cannot be used once disposal has begun, which is when it is needed most.
     _engine = ref.read(engineHandleProvider);
     final lifecycle = ref.read(appLifecycleProvider);
+    // A rebuilt notifier starts from nothing sent, like a new one.
     _foreground = _isForeground(lifecycle.current);
+    _visible = true;
+    _applied = EngineTarget.stopped;
+    _toneSent = false;
     final subscription = lifecycle.changes.listen(_onLifecycle);
     ref.onDispose(() {
       unawaited(subscription.cancel());
@@ -110,7 +114,8 @@ class TunerController extends _$TunerController {
     if (!ref.mounted) return;
     // The engine cannot tell a refused microphone from a broken one by itself (docs/adr/0024).
     _engine.setMicrophoneAccess(granted: status == MicrophonePermissionStatus.granted);
-    state = state.copyWith(permission: status, listenWanted: true);
+    // Leaving the tuner while the dialog was up ended the wish; the answer must not revive it.
+    state = state.copyWith(permission: status, listenWanted: _visible);
     _apply();
   }
 
@@ -137,7 +142,7 @@ class TunerController extends _$TunerController {
   }
 
   /// Whether the tuner is on screen, as `TunerVisibility` sees it. Leaving it ends what the user
-  /// asked for, so coming back never starts the microphone unasked.
+  /// asked for, so coming back never starts the microphone unasked (`PLATFORM_AUDIO.md` §5, L11).
   void setVisible({required bool visible}) {
     if (visible == _visible) return;
     _visible = visible;

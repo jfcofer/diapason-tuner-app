@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:audio_engine/audio_engine.dart';
 import 'package:core_domain/core_domain.dart';
 import 'package:core_platform/core_platform.dart';
@@ -195,6 +197,61 @@ void main() {
       expect(find.text('Start listening'), findsOneWidget);
     },
   );
+
+  testWidgets('a bottom sheet over the tuner keeps it listening', (tester) async {
+    final engine = await pumpTuner(tester, permission: FakeMicrophonePermission());
+    await tapAndSettle(tester, const Key('tuner.micAction'));
+
+    unawaited(
+      showModalBottomSheet<void>(
+        context: tester.element(find.byType(TunerScreen)),
+        builder: (_) => const Text('controls'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(engine.current.inputActive, isTrue);
+
+    Navigator.of(tester.element(find.text('controls'))).pop();
+    await tester.pumpAndSettle();
+    expect(engine.current.inputActive, isTrue);
+  });
+
+  testWidgets('an offstage tuner, as in a hidden shell branch, releases the microphone', (
+    tester,
+  ) async {
+    final engine = FakeAudioEngine();
+    final ticking = ValueNotifier(true);
+    addTearDown(ticking.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          engineHandleProvider.overrideWithValue(engine),
+          microphonePermissionProvider.overrideWithValue(FakeMicrophonePermission()),
+          appLifecycleProvider.overrideWithValue(FakeAppLifecycle()),
+        ],
+        child: MaterialApp(
+          home: ValueListenableBuilder<bool>(
+            valueListenable: ticking,
+            builder: (_, enabled, child) => TickerMode(enabled: enabled, child: child!),
+            child: const TunerScreen(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tapAndSettle(tester, const Key('tuner.micAction'));
+    expect(engine.current.inputActive, isTrue);
+
+    ticking.value = false;
+    await tester.pump();
+    await tester.pump();
+    expect(engine.current.state, SessionState.stopped);
+
+    ticking.value = true;
+    await tester.pump();
+    await tester.pump();
+    expect(engine.current.state, SessionState.stopped, reason: 'never reopened unasked');
+  });
 
   testWidgets('leaving the tuner stops the stream and the tone', (tester) async {
     final engine = await pumpTuner(tester, permission: FakeMicrophonePermission());
