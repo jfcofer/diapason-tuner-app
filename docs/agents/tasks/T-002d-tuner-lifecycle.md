@@ -46,7 +46,7 @@ part 3.
       within 1 s
 - [x] Foregrounded: listening resumes only if it was active before; the permission is re-checked
 - [x] Navigating away from the tuner stops the stream; returning does not start it unasked
-- [ ] Headphones unplugged / Bluetooth connected mid-session: the tuner keeps listening (rebuild
+- [x] Headphones unplugged / Bluetooth connected mid-session: the tuner keeps listening (rebuild
       already done in `T-002b`; re-verified here with the lifecycle code in place)
 - [x] Permission revoked in Settings, then the app reopened: the recovery UI, no crash
 - [ ] Phone call begins: the tuner stops; the call ends: it resumes only if it was listening
@@ -139,5 +139,11 @@ Dart only: no new session `Command`, no FFI change. The existing `stop()`, `star
   listening asking again, and did not crash.
 - **A false alarm:** a "permission dialog" in one UI dump was a stale `/sdcard/ui.xml`.
   `uiautomator dump` fails ("could not get idle state") while the tuner redraws at 30 Hz.
+- **L5 and L6, the owner's Bluetooth A2DP device (AAC):**
+  - **Connected** at 09:15:26.085: the stream rebuilt, and the microphone was out for 0.40 s.
+  - **Disconnected** at 09:15:43.225: the microphone was out for 0.16 s.
+  - The tuner kept listening (route changed 2×, −31 dBFS). There is no headphone jack on this
+    model.
+  - L6's "recalibrate latency" belongs to `T-002f`, which owns latency, so the row is handed to it.
 - **For part 2:** an earlier install's last session shows `rec update … silenced` just before
   `release`, so this ROM reports silencing.
