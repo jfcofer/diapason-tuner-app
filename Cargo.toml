@@ -32,6 +32,12 @@ ndk-sys = { version = "0.6", features = ["audio"] }
 libc = "0.2"
 # Dev-only. No fork or timeout features: they pull in a process-forking runner we do not need.
 proptest = { version = "1.11", default-features = false, features = ["std"] }
+# Pitch detection (docs/AUDIO_ENGINE.md §3): real-input FFT plans over rustfft, built once per
+# detector so per-frame analysis never plans or allocates. Default features keep rustfft's SIMD.
+realfft = "3.5"
+# Dev-only: the DSP benches behind `just bench`. No rayon or plotters: tools/bench-compare.sh reads
+# the JSON estimates, and nothing needs the HTML reports or a thread pool.
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 
 diapason_dsp = { path = "rust/crates/dsp" }
 diapason_engine = { path = "rust/crates/engine" }

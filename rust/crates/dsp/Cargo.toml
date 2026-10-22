@@ -7,9 +7,16 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+realfft.workspace = true
 
 [dev-dependencies]
+assert_no_alloc.workspace = true
+criterion.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "nsdf"
+harness = false
 
 [lints]
 workspace = true
