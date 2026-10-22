@@ -10,16 +10,16 @@
 **Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
-- **Merged:** T-006, T-002a, T-007, T-008, T-002b (all parts), T-009, T-010, T-011, T-012
-  (PRs #6–#9, #11–#16, #24, #27), and Dependabot #2, #10, #21, #22, #25, #26. #20 closed.
-- **Open:** the T-013 PR (`chore/T-013-patrol`), for the owner to merge once CI is green.
+- **Merged:** T-006, T-002a, T-007, T-008, T-002b (all parts), T-009, T-010, T-011, T-012, T-013
+  (PRs #6–#9, #11–#16, #24, #27, #28), and Dependabot #2, #10, #21, #22, #25, #26. #20 closed.
+- **Open:** none. Next branch: `feat/T-002d-tuner-lifecycle` (local, unpushed).
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-013-patrol.md`** (`adr/0026`): patrol runs the device tests, verified on the
-Redmi. Left: CI green, and its minutes. Plan approved 2026-10-21: then T-002d lifecycle (Dart
-only), then T-002d's silenced microphone (measure on the Redmi, then detect). T-002b is done.
+**`docs/agents/tasks/T-002d-tuner-lifecycle.md`**: release the microphone off screen. Not started.
+Plan approved 2026-10-21: part 1 lifecycle (Dart only), part 2 the silenced microphone (measure on
+the Redmi, then detect). Device rows run through patrol (`T-013` done, #28, `adr/0026`).
 
 ## Hardware this project actually has
 
@@ -112,9 +112,9 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **The owner merges the T-013 PR** once CI is green; record the minutes `build-android` gained.
-2. **`T-002d`** (`docs/agents/tasks/T-002d-tuner-lifecycle.md`): release the microphone off
-   screen. Privacy first. Plan approved; no new session `Command` is needed.
+1. **`T-002d` part 1** on `feat/T-002d-tuner-lifecycle`: a pure listening policy, an
+   `AppLifecycle` seam in `core_platform`, patrol lifecycle rows. No new session `Command`.
+2. **`T-002d` part 2**: measure the silenced microphone on the Redmi, then detect or record it.
 3. **`T-002e`** (overlay and first golden), then **`T-002f`** (latency, the FAST refusal).
 4. **`T-002c`**, iOS CoreAudio, on the CI Simulator. `T-004` whenever a slice waits on CI.
    **`T-003`** (pitch core, no task file yet) can run in parallel: host-only `dsp` work.
