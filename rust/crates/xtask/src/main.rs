@@ -17,7 +17,9 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
         Some("fixtures") => {
-            eprintln!("xtask: fixtures is not implemented yet (T-003)");
+            eprintln!(
+                "xtask: synthetic fixtures are generated in code (docs/adr/0027); recordings arrive in T-003e"
+            );
             ExitCode::FAILURE
         }
         Some(other) => {
