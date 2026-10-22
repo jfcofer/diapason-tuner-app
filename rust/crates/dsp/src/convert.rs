@@ -23,3 +23,51 @@
 pub fn to_f32(value: f64) -> f32 {
     value as f32
 }
+
+/// Widen a sample index or lag to `f64`.
+///
+/// Exact on every target we ship. On 32-bit ones (`armeabi-v7a`, `docs/adr/0020`) every `usize`
+/// fits in `f64`'s 53-bit significand. On 64-bit ones the conversion is exact below 2⁵³, and every
+/// index and lag here is far below that: they are bounded by the analysis window (at most 2²⁰
+/// samples, see [`crate::pitch::MAX_WINDOW`]) or by a fixture's length. The lint fires because it
+/// cannot know the bound.
+///
+/// ```
+/// use diapason_dsp::convert::index_to_f64;
+/// assert_eq!(index_to_f64(4_096), 4_096.0);
+/// // The largest value a 32-bit usize can hold converts exactly on any target.
+/// assert_eq!(index_to_f64(usize::try_from(u32::MAX).unwrap()), 4_294_967_295.0);
+/// ```
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "indices and lags are far below 2^53, where usize to f64 is exact"
+)]
+#[must_use]
+#[inline]
+pub fn index_to_f64(index: usize) -> f64 {
+    index as f64
+}
+
+/// Truncate a count held in an `f64` to an index: towards zero, saturating at both ends.
+///
+/// Negative values and NaN give 0; values beyond `usize::MAX` give `usize::MAX`. That is what Rust's
+/// float-to-integer `as` does, so the only loss is the fraction, which a count derived from a ratio
+/// (harmonics below Nyquist, say) is meant to drop. Callers that need a bound clamp the result.
+///
+/// ```
+/// use diapason_dsp::convert::index_from_f64;
+/// assert_eq!(index_from_f64(19.9), 19);
+/// assert_eq!(index_from_f64(-3.0), 0);
+/// assert_eq!(index_from_f64(f64::NAN), 0);
+/// assert_eq!(index_from_f64(1e300), usize::MAX);
+/// ```
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "truncation towards zero and saturation are the documented behaviour of this function"
+)]
+#[must_use]
+#[inline]
+pub fn index_from_f64(value: f64) -> usize {
+    value as usize
+}
