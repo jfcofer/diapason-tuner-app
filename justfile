@@ -216,6 +216,11 @@ test-android-device *args:
 test-integration-android *args:
     @tools/test-integration-android.sh {{args}}
 
+# What the OS says about the app's microphone on a connected Android device: open capture clients
+# and recent recording events, timestamped (T-002d). Exit 3 while a client is open. Read-only adb.
+mic-clients *args:
+    @tools/mic-clients.sh {{args}}
+
 # patrol_cli at its pin, with its traps handled (adr/0026). `just patrol test --target …`
 patrol *args:
     @tools/patrol.sh {{args}}
