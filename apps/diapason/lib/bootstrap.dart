@@ -27,19 +27,22 @@ Future<void> bootstrap() async {
     }
   };
 
-  final capabilities = await PlatformAudioCapabilities().read();
-  final engine = AudioEngine(capabilities: capabilities);
-  await engine.initialize();
+  runApp(await diapasonRoot());
+}
 
-  runApp(
-    ProviderScope(
-      overrides: [
-        engineHandleProvider.overrideWithValue(engine),
-        microphonePermissionProvider.overrideWithValue(const PlatformMicrophonePermission()),
-        appLifecycleProvider.overrideWithValue(FlutterAppLifecycle()),
-        showEngineDiagnosticsProvider.overrideWithValue(Flavor.showEngineDiagnostics),
-      ],
-      child: const DiapasonApp(),
-    ),
+/// The app with every platform provider overridden: what [bootstrap] runs, and what the device
+/// tests pump, so the two cannot drift apart. They pass their own [engine] to watch its sessions;
+/// otherwise one is made for this device's audio capabilities.
+Future<Widget> diapasonRoot({EngineHandle? engine}) async {
+  final handle = engine ?? AudioEngine(capabilities: await PlatformAudioCapabilities().read());
+  await handle.initialize();
+  return ProviderScope(
+    overrides: [
+      engineHandleProvider.overrideWithValue(handle),
+      microphonePermissionProvider.overrideWithValue(const PlatformMicrophonePermission()),
+      appLifecycleProvider.overrideWithValue(FlutterAppLifecycle()),
+      showEngineDiagnosticsProvider.overrideWithValue(Flavor.showEngineDiagnostics),
+    ],
+    child: const DiapasonApp(),
   );
 }
