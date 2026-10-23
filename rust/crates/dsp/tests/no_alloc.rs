@@ -1,9 +1,10 @@
 //! `Mpm::analyze` never allocates: every window size the accuracy sweep uses, over tones, noise,
 //! silence and malformed frames, with allocation trapping armed (`docs/AUDIO_ENGINE.md` §7,
 //! `docs/TESTING.md` §2). Nor does the pre-processing chain in front of it: `DcBlock`,
-//! `NoiseGate`, both `Decimator`s, `FrameAssembler`, `RangeSelector`, and all of them streamed
-//! together through the shipped `chain::Front` and `chain::Analysis` (`common::Tuner`), including
-//! the Low reference frames and the gate learning while open. Construction allocates, by design,
+//! `NoiseGate`, both `Decimator`s, `FrameAssembler`, `RangeSelector`, `OctaveGuard` and
+//! `Mpm::peak_near`, and all of them streamed together through the shipped `chain::Front` and
+//! `chain::Analysis` (`common::Tuner`), including the verifier frames of the ranges below the
+//! selected one, the octave guard's jumps and the gate learning while open. Construction allocates, by design,
 //! and runs outside the trap.
 //!
 //! `assert_no_alloc` aborts the process on a trapped allocation; it cannot panic, because
@@ -20,7 +21,8 @@ use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use diapason_dsp::filter::DcBlock;
 use diapason_dsp::frame::FrameAssembler;
 use diapason_dsp::gate::{GateConfig, NoiseGate};
-use diapason_dsp::pitch::{Mpm, MpmConfig};
+use diapason_dsp::octave::{Octave, OctaveGuard};
+use diapason_dsp::pitch::{Mpm, MpmConfig, PitchEstimate};
 use diapason_dsp::range::{Observation, Range, RangeSelector, RangeTable, SUPPORTED_RATES};
 use diapason_dsp::synth::{self, Noise, Pluck};
 
@@ -82,17 +84,32 @@ fn analysis_never_allocates() {
     assert_eq!(estimates, WINDOWS.len() * 8 * 3);
 }
 
-/// Input for the chain: silence, then a tone that walks down through every range (so the selector
-/// switches, and the Low reference catches the octave above), then 2.5 s of loud noise (so the
-/// selector scans, the analysis reports the open gate unpitched, and the gate learns the room).
+/// Input for the chain: silence, then a tone that walks down through every range with no gaps (so
+/// the selector switches, the octave guard holds jumps, and the verifiers decide octaves and catch
+/// the octave above a weak fundamental), then 2.5 s of loud noise (so the selector scans, the
+/// analysis reports the open gate unpitched, and the gate learns the room).
 fn chain_input(rate: u32) -> Vec<f32> {
     let second = usize::try_from(rate).unwrap();
-    let mut signal = vec![0.0_f32; 19 * second / 4];
-    for (k, hz) in [1_000.0, 196.0, 82.41, 41.2].into_iter().enumerate() {
-        let start = second / 4 + k * second / 2;
-        synth::sawtooth(&mut signal[start..start + second / 2], hz, rate, 0.5, 0.0);
+    let mut signal = vec![0.0_f32; 23 * second / 4];
+    for (k, (hz, weak)) in [
+        (1_000.0, false),
+        (196.0, false),
+        (82.41, true),
+        (164.82, false),
+        (41.2, true),
+        (82.41, false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let note = &mut signal[second / 4 + k * second / 2..][..second / 2];
+        if weak {
+            synth::partials(note, hz, rate, 0.5, 0.0, &synth::WEAK_FUNDAMENTAL);
+        } else {
+            synth::sawtooth(note, hz, rate, 0.5, 0.0);
+        }
     }
-    Noise::new(5).fill(&mut signal[5 * second / 2..], 0.1);
+    Noise::new(5).fill(&mut signal[13 * second / 4..], 0.1);
     signal
 }
 
@@ -100,8 +117,8 @@ fn chain_input(rate: u32) -> Vec<f32> {
 /// with the trap armed around each block: home in Mid at both rates, and in the lowest range at one
 /// rate and the highest at the other. `extra` runs inside the trap after
 /// each block. Returns the frames analysed.
-fn stream_armed(extra: impl Fn()) -> usize {
-    let mut frames = 0;
+fn stream_armed(extra: impl Fn()) -> Streamed {
+    let mut streamed = Streamed::default();
     for rate in SUPPORTED_RATES {
         let signal = chain_input(rate);
         let edge = if rate == 48_000 {
@@ -111,20 +128,40 @@ fn stream_armed(extra: impl Fn()) -> usize {
         };
         for home in [edge, Range::Mid] {
             let mut chain = Tuner::new(rate, Selection::Auto(home));
+            let mut previous = None;
             for block in signal.chunks(173) {
                 assert_no_alloc(|| {
-                    chain.push(block, |_| frames += 1);
+                    chain.push(block, |frame| {
+                        streamed.frames += 1;
+                        streamed.ambiguous += usize::from(frame.octave == Octave::Ambiguous);
+                        streamed.switches +=
+                            usize::from(previous.is_some_and(|range| range != frame.range));
+                        previous = Some(frame.range);
+                    });
                     extra();
                 });
             }
         }
     }
-    frames
+    streamed
+}
+
+/// What [`stream_armed`] drove: frames, frames flagged `ambiguous octave`, range switches.
+#[derive(Debug, Default)]
+struct Streamed {
+    frames: usize,
+    ambiguous: usize,
+    switches: usize,
 }
 
 #[test]
 fn the_chain_never_allocates() {
-    assert!(stream_armed(|| {}) > 1_000);
+    let streamed = stream_armed(|| {});
+    // The paths the trap must cover were taken: ambiguity (verifiers pending) and switches.
+    assert!(
+        streamed.frames > 1_000 && streamed.ambiguous > 10 && streamed.switches >= 8,
+        "{streamed:?}"
+    );
 }
 
 /// Each stage's per-call path on its own, with the trap armed, so a failure names the stage.
@@ -139,6 +176,17 @@ fn no_stage_allocates() {
     let mut band_limit = table.band_limit().unwrap();
     let mut frames = FrameAssembler::new(480, 30).unwrap();
     let mut selector = RangeSelector::new(&table, Range::Low);
+    let mut guard = OctaveGuard::new();
+    let mut mpm = Mpm::new(MpmConfig::with_window(480)).unwrap();
+    let mut window = [0.0_f32; 480];
+    synth::partials(
+        &mut window,
+        82.41,
+        12_000,
+        0.5,
+        0.0,
+        &synth::WEAK_FUNDAMENTAL,
+    );
     let mut block = [0.0_f32; 256];
     let mut outputs = 0;
     let mut position = 0;
@@ -165,7 +213,23 @@ fn no_stage_allocates() {
             }
             selector.observe_verifier(Range::Low, Some(82.41), position);
             selector.observe_verifier(Range::Mid, Some(82.41), position);
+            let _ = selector.octave(Range::High, 164.8);
             gate.set_unpitched(true);
+        });
+        assert_no_alloc(|| {
+            if let Some(pick) = mpm.analyze(&window, 12_000) {
+                let up = mpm.peak_near(&window, 12_000, pick.period_samples / 2.0);
+                let down = mpm.peak_near(&window, 12_000, pick.period_samples * 2.0);
+                for _ in 0..20 {
+                    guard.judge(pick, up, down, 16);
+                }
+                let octave = PitchEstimate {
+                    frequency_hz: 2.0 * pick.frequency_hz,
+                    ..pick
+                };
+                guard.judge(octave, None, Some(pick), 16);
+                guard.miss(16);
+            }
         });
     }
     assert!(outputs > signal.len());
