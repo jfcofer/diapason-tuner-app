@@ -97,19 +97,19 @@ fn chain_input(rate: u32) -> Vec<f32> {
 }
 
 /// Stream `chain_input` through the chain at every supported rate, in blocks of awkward sizes,
-/// with the trap armed around each block, home in the lowest range at one rate and the highest at
-/// the other. `extra` runs inside the trap after
+/// with the trap armed around each block: home in Mid at both rates, and in the lowest range at one
+/// rate and the highest at the other. `extra` runs inside the trap after
 /// each block. Returns the frames analysed.
 fn stream_armed(extra: impl Fn()) -> usize {
     let mut frames = 0;
     for rate in SUPPORTED_RATES {
         let signal = chain_input(rate);
-        let home = if rate == 48_000 {
+        let edge = if rate == 48_000 {
             Range::Low
         } else {
             Range::High
         };
-        {
+        for home in [edge, Range::Mid] {
             let mut chain = Tuner::new(rate, Selection::Auto(home));
             for block in signal.chunks(173) {
                 assert_no_alloc(|| {
@@ -141,7 +141,9 @@ fn no_stage_allocates() {
     let mut selector = RangeSelector::new(&table, Range::Low);
     let mut block = [0.0_f32; 256];
     let mut outputs = 0;
+    let mut position = 0;
     for chunk in signal.chunks(256) {
+        position += 256;
         let block = &mut block[..chunk.len()];
         block.copy_from_slice(chunk);
         assert_no_alloc(|| dc.process(block));
@@ -159,9 +161,9 @@ fn no_stage_allocates() {
                 Observation::Pitch(f64::NAN),
                 Observation::Silent,
             ] {
-                selector.observe(observation);
+                selector.observe(observation, position);
             }
-            selector.observe_reference(Some(82.41));
+            selector.observe_reference(Some(82.41), position);
             gate.set_unpitched(true);
         });
     }
