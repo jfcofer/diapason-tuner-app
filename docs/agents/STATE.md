@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-22 (T-003a built and verified on the host; PR next)
+# STATE — updated 2026-10-22 (#30 merged, T-003a done; T-003b planned and started)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -10,14 +10,15 @@
 **Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
-- **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1 (PRs #6–#9, #11–#16, #24,
-  #27–#29), Dependabot #2, #10, #21, #22, #25, #26. #20 closed. **Open:** #30 (`T-003a`, six green).
+- **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a` (PRs #6–#9, #11–#16,
+  #24, #27–#30), Dependabot #2, #10, #21, #22, #25, #26. #20 closed. **Open:** none.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-003a-mpm-core.md`** (in progress): `T-003`'s first slice, host-only M2 work
-the owner chose on 2026-10-22, when no device was attached.
+**`docs/agents/tasks/T-003b-preprocessing.md`** (in progress, branch `feat/T-003b-preprocessing`):
+pre-processing, plus windows and hops from a measured latency ledger (ADR 0028), because
+`AUDIO_ENGINE.md` §2's table breaks §1's latency budgets (six problems, in the task's Context).
 **Waiting on the Redmi:** `T-002d` (in progress; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## Hardware this project actually has
@@ -112,8 +113,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **#30 (`T-003a`)**: owner rebase-merges; then mark `T-003a` done. Then `T-003b` (its filter decides the
-   sawtooth's ±0.5 ¢, see `T-003a` notes), `T-003c`, `T-003d`.
+1. **`T-003b`** (active), then `T-003c` (octave guard, smoothing, in the ledger's reserve), `T-003d`.
 2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then L10 (the silenced microphone).
    Also owed: `T-003a`'s 4096 frame cost on the phone (≤ 1.5 ms).
 3. **`T-002e`** (overlay in Settings → Diagnostics; first golden), then **`T-002f`** (latency, FAST).
