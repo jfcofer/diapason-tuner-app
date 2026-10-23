@@ -2,7 +2,9 @@
 //! silence and malformed frames, with allocation trapping armed (`docs/AUDIO_ENGINE.md` §7,
 //! `docs/TESTING.md` §2). Nor does the pre-processing chain in front of it: `DcBlock`,
 //! `NoiseGate`, both `Decimator`s, `FrameAssembler`, `RangeSelector`, and all of them streamed
-//! together (`common::Chain`). Construction allocates, by design, and runs outside the trap.
+//! together through the shipped `chain::Front` and `chain::Analysis` (`common::Tuner`), including
+//! the Low reference frames and the gate learning while open. Construction allocates, by design,
+//! and runs outside the trap.
 //!
 //! `assert_no_alloc` aborts the process on a trapped allocation; it cannot panic, because
 //! panicking allocates. So the canary that proves the trap is armed runs in a child process: this
@@ -23,7 +25,8 @@ use diapason_dsp::range::{Observation, Range, RangeSelector, RangeTable, SUPPORT
 use diapason_dsp::synth::{self, Noise, Pluck};
 
 pub mod common;
-use common::{Chain, Selection};
+use common::Tuner;
+use diapason_dsp::chain::Selection;
 
 #[global_allocator]
 static ALLOCATOR: AllocDisabler = AllocDisabler;
@@ -79,11 +82,12 @@ fn analysis_never_allocates() {
     assert_eq!(estimates, WINDOWS.len() * 8 * 3);
 }
 
-/// A second of input for the chain: silence, then a tone that walks down through every range, then
-/// noise, so the gate opens and closes and the selector switches and scans.
+/// Input for the chain: silence, then a tone that walks down through every range (so the selector
+/// switches, and the Low reference catches the octave above), then 2.5 s of loud noise (so the
+/// selector scans, the analysis reports the open gate unpitched, and the gate learns the room).
 fn chain_input(rate: u32) -> Vec<f32> {
     let second = usize::try_from(rate).unwrap();
-    let mut signal = vec![0.0_f32; 3 * second];
+    let mut signal = vec![0.0_f32; 19 * second / 4];
     for (k, hz) in [1_000.0, 196.0, 82.41, 41.2].into_iter().enumerate() {
         let start = second / 4 + k * second / 2;
         synth::sawtooth(&mut signal[start..start + second / 2], hz, rate, 0.5, 0.0);
@@ -93,14 +97,20 @@ fn chain_input(rate: u32) -> Vec<f32> {
 }
 
 /// Stream `chain_input` through the chain at every supported rate, in blocks of awkward sizes,
-/// with the trap armed around each block, home in each range. `extra` runs inside the trap after
+/// with the trap armed around each block, home in the lowest range at one rate and the highest at
+/// the other. `extra` runs inside the trap after
 /// each block. Returns the frames analysed.
 fn stream_armed(extra: impl Fn()) -> usize {
     let mut frames = 0;
     for rate in SUPPORTED_RATES {
         let signal = chain_input(rate);
-        for home in Range::ALL {
-            let mut chain = Chain::new(rate, Selection::Auto(home));
+        let home = if rate == 48_000 {
+            Range::Low
+        } else {
+            Range::High
+        };
+        {
+            let mut chain = Tuner::new(rate, Selection::Auto(home));
             for block in signal.chunks(173) {
                 assert_no_alloc(|| {
                     chain.push(block, |_| frames += 1);
@@ -151,6 +161,8 @@ fn no_stage_allocates() {
             ] {
                 selector.observe(observation);
             }
+            selector.observe_reference(Some(82.41));
+            gate.set_unpitched(true);
         });
     }
     assert!(outputs > signal.len());

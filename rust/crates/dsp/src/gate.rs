@@ -50,7 +50,7 @@ impl Default for GateConfig {
 /// Why a [`GateConfig`] was rejected.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GateError {
-    /// A block is shorter than one sample, or longer than the floor history.
+    /// A block is shorter than one sample at the given rate, or not finite.
     Block(f64),
     /// The floor history does not hold at least one block, or is longer than a minute.
     Floor(f64),
@@ -96,9 +96,12 @@ pub const SILENCE_DBFS: f64 = -200.0;
 /// The decisions depend only on the sample sequence, never on how it is cut into blocks. Every
 /// buffer is allocated by [`NoiseGate::new`]; processing is allocation-free and panic-free.
 ///
-/// A room louder than the minimum threshold opens the gate and, since nothing is learned while it
-/// is open, keeps it open; the detector's clarity floor still rejects the noise, so the tuner
-/// listens rather than shows a note.
+/// A room louder than the minimum threshold opens the gate, and nothing is learned while it is
+/// open. The analysis side is what can tell noise from a note: when it has found no clear pitch
+/// for [`crate::chain::UNPITCHED_SECONDS`] it says so ([`NoiseGate::set_unpitched`]), and the
+/// floor then learns while the gate is open, so the threshold rises over the room and the gate
+/// closes (`docs/PRODUCT_SPEC.md` §2: ambient noise raises the gate). A held note keeps a clear
+/// pitch, so it is never learned.
 ///
 /// ```
 /// use diapason_dsp::gate::{GateConfig, NoiseGate};
@@ -125,6 +128,7 @@ pub struct NoiseGate {
     open: bool,
     hold_blocks: usize,
     hold_left: usize,
+    unpitched: bool,
 }
 
 impl NoiseGate {
@@ -167,6 +171,7 @@ impl NoiseGate {
             open: false,
             hold_blocks: index_from_f64((config.hold_seconds / config.block_seconds).round()),
             hold_left: 0,
+            unpitched: false,
         })
     }
 
@@ -200,6 +205,12 @@ impl NoiseGate {
         to_f32(self.open_threshold())
     }
 
+    /// Whether the analysis has found no clear pitch for a while with the gate open: if so, the
+    /// open gate is taken to be noise, and the floor learns from it too.
+    pub fn set_unpitched(&mut self, unpitched: bool) {
+        self.unpitched = unpitched;
+    }
+
     fn open_threshold(&self) -> f64 {
         let c = &self.config;
         (self.floor_dbfs + c.margin_db)
@@ -225,6 +236,9 @@ impl NoiseGate {
         } else {
             SILENCE_DBFS
         };
+        if self.open && self.unpitched {
+            self.learn();
+        }
         let open = self.open_threshold();
         if self.open {
             if self.level_dbfs >= open - self.config.hysteresis_db {
@@ -359,6 +373,51 @@ mod tests {
         }
         assert!(states(&mut gate, &quiet).iter().all(|&s| !s));
         assert!(states(&mut gate, &tone(-40.0, 0.1)).iter().any(|&s| s));
+    }
+
+    /// Opened at −40 dBFS, a second at −53 dBFS sits between the open threshold (−50) and the close
+    /// threshold (−56): open, thanks to the hysteresis, and closed without it.
+    #[test]
+    fn the_hysteresis_holds_a_level_between_the_thresholds() {
+        for (hysteresis_db, stays_open) in [(6.0, true), (0.0, false)] {
+            let config = GateConfig {
+                hysteresis_db,
+                ..GateConfig::default()
+            };
+            let mut gate = NoiseGate::new(RATE, config).unwrap();
+            gate.process(&tone(-40.0, 0.2));
+            assert!(gate.is_open());
+            let states = states(&mut gate, &tone(-53.0, 1.0));
+            assert_eq!(
+                states.iter().all(|&s| s),
+                stays_open,
+                "hysteresis {hysteresis_db} dB"
+            );
+        }
+    }
+
+    /// Start-up noise above the minimum threshold opens the gate. Told the open gate has no pitch,
+    /// the floor learns the noise, the threshold rises over it, and the gate closes: in one block
+    /// of learning and the 250 ms hold.
+    #[test]
+    fn an_unpitched_open_gate_learns_the_room_and_closes() {
+        let mut gate = gate();
+        gate.process(&noise(-45.0, 2.0, 7));
+        assert!(gate.is_open(), "−45 dBFS is over the −50 dBFS minimum");
+        gate.set_unpitched(true);
+        let closed = states(&mut gate, &noise(-45.0, 1.0, 8))
+            .iter()
+            .position(|&s| !s);
+        assert_eq!(closed, Some(25));
+        assert!(
+            gate.open_threshold_dbfs() > -40.0,
+            "{}",
+            gate.open_threshold_dbfs()
+        );
+        // Closed, it stays closed in the same room, and a note still opens it.
+        gate.set_unpitched(false);
+        assert!(states(&mut gate, &noise(-45.0, 1.0, 9)).iter().all(|&s| !s));
+        assert!(states(&mut gate, &tone(-20.0, 0.05)).iter().any(|&s| s));
     }
 
     #[test]

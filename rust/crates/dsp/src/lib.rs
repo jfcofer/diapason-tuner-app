@@ -8,6 +8,8 @@
 //! - [`frame`] and [`range`]: frames of the window and hop each range needs, the range table
 //!   derived from the sample rate, the selector that moves between ranges, and the latency
 //!   ledger they are sized from (`docs/adr/0028`).
+//! - [`chain`]: all of it composed, split at the ring buffer into the callback's [`chain::Front`]
+//!   and the analysis thread's [`chain::Analysis`], so the engine only owns the threads.
 //! - [`synth`]: deterministic, seeded fixture signals that test and bench it.
 //! - [`osc`] and [`level`]: what the audio spine needed first (`T-002a`), a phase-continuous test
 //!   tone and an input level meter.
@@ -32,6 +34,7 @@
     )
 )]
 
+pub mod chain;
 pub mod convert;
 pub mod filter;
 pub mod frame;
