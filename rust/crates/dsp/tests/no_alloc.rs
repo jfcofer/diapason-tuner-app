@@ -29,7 +29,7 @@ use common::{Chain, Selection};
 static ALLOCATOR: AllocDisabler = AllocDisabler;
 
 const RATE: u32 = 48_000;
-/// From the shortest window of the accuracy sweep to the longest of `docs/AUDIO_ENGINE.md` §2.
+/// From the shortest window of the accuracy sweep to the longest it uses (`tests/accuracy.rs`).
 const WINDOWS: [usize; 7] = [128, 256, 512, 1_024, 2_048, 4_096, 8_192];
 const CHILD_MODE: &str = "DIAPASON_DSP_NO_ALLOC_CHILD";
 

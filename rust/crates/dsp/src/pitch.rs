@@ -27,7 +27,7 @@ use crate::convert::{index_to_f64, to_f32};
 pub const MIN_WINDOW: usize = 16;
 
 /// The longest window [`Mpm`] accepts: 2²⁰ samples, about 22 s at 48 kHz, far beyond any analysis
-/// window (`docs/AUDIO_ENGINE.md` §2 tops out at 8192). The bound keeps the FFT length and every
+/// window (the longest in `docs/AUDIO_ENGINE.md` §2 is 1200 samples). The bound keeps the FFT length and every
 /// lag exactly representable in `f64` (see [`crate::convert::index_to_f64`]).
 pub const MAX_WINDOW: usize = 1 << 20;
 
