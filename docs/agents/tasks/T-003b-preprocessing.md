@@ -60,7 +60,8 @@ under the deny list `pitch` uses. Every buffer and coefficient is set in a const
   - identical output for any block split (property test).
 - [x] **A band-limit low-pass on the full-rate path**, at the cutoff the probe chooses. *The
   cutoff, fs/8, came from `T-003a`'s bias figure and the sweep confirmed it; no probe chose it.*
-- [x] **`NoiseGate`** is built on `RmsMeter` blocks, with a 2 s floor in a preallocated ring.
+- [ ] **`NoiseGate`** is built on `RmsMeter` blocks, with a 2 s floor in a preallocated ring.
+  *All of it holds except "only while closed": Deviation 4.*
   - The open threshold is `max(−50 dBFS, floor + margin)`, clamped, with open/close hysteresis
     and a hold time.
   - The floor learns **only while the gate is closed**.
@@ -102,49 +103,48 @@ under the deny list `pitch` uses. Every buffer and coefficient is set in a const
 
 ## Implementation notes
 
-By the `dsp-engineer` agent, 2026-10-22/23 (round 2: owner's decision, review). Design and numbers:
-`adr/0028`, `AUDIO_ENGINE.md` §1–§3, `dsp::range`.
-- **Modules** `filter`, `gate`, `frame`, `range`, `chain`: `Front` (callback) passes its gate state
-  across the ring to `Analysis`, which runs the rest. `tests/common` is only the engine's glue.
-- **Whole-period spikes (review).** The FFT NSDF's three peak samples sum `N − τ` pairs each. A
-  sawtooth's reset at the window's edge tilts them, most when the window holds whole periods
-  (−0.514 ¢ at 75.02 Hz, 44.1 kHz, Mid). Step 5 now uses one common overlap, counted from both ends,
-  in O(1) from the FFT's sums (`Mpm::common_overlap`). Worst in the tuner's windows: 0.50 → 0.087 ¢;
-  T-003a's three-period sine: 0.104 ¢ on its grid (−0.507 ¢ dense, before).
-- **Octave above (review).** High is blind below 107 Hz and Mid below 50 Hz. A Low reference frame
-  per Low hop, while another range is selected, moves a range holding k·p to p's range. Misses now
-  decay instead of resetting. **Loud room (review):** after 2 s open with no clear pitch, the
-  gate's floor learns while open.
+By `dsp-engineer`, 2026-10-22/23, three rounds. New modules `filter`, `gate`, `frame`, `range`,
+`chain`; design and numbers in `adr/0028` and `AUDIO_ENGINE.md`.
+- **Step 5's common overlap** (O(1)) removed whole-period spikes (−0.514 ¢ at 75.02 Hz, 44.1 kHz,
+  Mid); a vertex beyond ±1 lag gives no estimate.
+- **Selector (rounds 2–3).** A Low reference catches a range holding a low note's 2nd partial. A Low
+  window spanning a note change reads the notes' common period, so it acts only when fresh (after
+  the last switch, pitch change > 75 ¢ or end of a window-long reading), with two agreeing and
+  k ≤ 4. Readings below the band move down after holding a window; the scan runs downward; Mid
+  stops at 160 Hz. **Leap matrix** (reviewer's `leap.rs`, wrong clear frames from 60 ms): round 1
+  26/728 cases, 92 frames; round 2 161, 595; now 18, 68, all inside Low's own 100 ms window.
 
-**Deviation 1 — resolved by the owner, 2026-10-23.** The first ledger (30 Hz snapshots) totalled
-97.9/125.2/202.7 ms against 60/140 ms; I/O, snapshot and display alone were 70 ms. The owner kept a
-worst-case ledger, moved tuner snapshots to 60 Hz and set the budgets to 85/110/190 ms
-(fails at 120/150/260). Totals at 48 kHz are 80.2, 108.5 and 186.0 ms. Mid has 1.5 ms of headroom.
+**Deviation 1 — resolved by the owner, 2026-10-23.** The 30 Hz-snapshot ledger totalled
+97.9/125.2/202.7 ms against 60/140 ms. The owner kept a worst-case ledger, moved tuner snapshots to
+60 Hz and set budgets of 85/110/190 ms (fails at 120/150/260). Totals at 48 kHz: 80.2, 108.5,
+186.0 ms. Mid's headroom: 1.5 / 1.1 ms (48 / 44.1 kHz). **Deviation 3:** the ledger adds a
+measured settling line (Low 15 ms, Mid 5, High 0).
 
-**Deviation 2 — the crossover is a range boundary chosen for latency.** In Mid's window the ×4
-path keeps a 2× margin to at least 320 Hz (the probe's cap). A decimated 160 Hz three-period window
-(225 samples) now reads +0.038 ¢ at 160 Hz. Before the common overlap it read −0.82 ¢ (48 kHz, 8
-phases × 48 points per octave, from the uncommitted scratch probe `examples/probe.rs`). Notes above
-160 Hz go to High for its 18.75 ms window. High is full rate because the decimator stops at 1.5 kHz.
+**Deviation 2 — the crossover is a range boundary chosen for latency.** Mid's ×4 window keeps a 2×
+margin to ≥ 320 Hz. A decimated 225-sample window reads +0.038 ¢ at 160 Hz (−0.82 ¢ before the
+common overlap: 48 kHz, 8 phases × 48/octave, scratch `examples/probe.rs`, uncommitted).
 
-**Deviation 3:** the ledger adds a measured settling line: Low 15 ms, Mid 5, High 0 (not needed).
+**Deviation 4 — the gate's floor also learns while open, when unpitched.** The criterion says
+"only while the gate is closed". A room above −50 dBFS then held the gate open for ever, against
+`PRODUCT_SPEC.md` §2. After 2 s open with no clear pitch, `Analysis` reports the gate unpitched and
+the floor learns. A held note keeps a pitch, so the 10 s test still passes.
 
 ## Verification performed
 
 2026-10-23, Fedora 44 host (Ryzen 7 8840HS), rustc 1.98.0. Host only; no device.
-- `just verify` passed: 141 nextest tests (91 in `dsp`), 29 doctests (24). `dsp`'s tests take
-  ~40 s wall in debug, most of it in debug-built FFTs.
-- **Headline** (24/octave plus whole-period frequencies ±0.3 Hz, 8 phases): sawtooth 0.087 ¢, sine
-  0.036 ¢. **Filters:** exact minimum stopband 85.40 dB (×4), 83.71 dB (band-limit); ripple
-  ≤ 0.001 dB; sines agree with the taps to 5·10⁻⁹ beyond 0.1 %.
-- **Latency** against the chain line: Low 117.1/123.0, Mid 49.1/50.5, High 21.7/21.9 ms. **Octave
-  guard:** low E after E4 in Mid in 48–75 ms; bass E after A2 in Low in 95–110 ms. **Loud room:**
-  −45 dBFS closes in 2.26–3.11 s.
-- **Benches** (whole baseline re-saved on AC, quiet): decimate 8.67 µs and band_limit 6.61 µs per
-  10 ms block; frame low 11.76, mid 2.71, high 5.85 µs per hop; nsdf 13.0/28.7/59.7 µs. Two of
-  four confirming runs failed one entry just over 10 % (noisy at this scale). Worst CPU: 0.62 % of
-  a host core (filters, High, Low reference). **The phone figure is owed.**
-- **Mutations**, each failing its test: textbook step 5 (−0.507 ¢ at 75.000 Hz); no Low reference
-  (both octave tests: Mid at 81.45 Hz, High at 165.44 Hz); misses reset; no learning while open
-  (gate and chain); no hysteresis; no NaN reset; `IO_SECONDS` 21 ms (the ledger table). Plus round
-  1's: band-limit bypassed, detune, held note, settling, `vec!`, slowed bench.
+- `just verify` passed: 146 nextest tests (96 in `dsp`), 29 doctests.
+- **Headline** (24/octave + whole-period ±0.3 Hz, 8 phases): saw 0.087 ¢, sine 0.036 ¢. **Filters:**
+  stopband ≥ 85.40 dB (×4), 83.71 dB (band-limit), exact from the taps; ripple ≤ 0.001 dB.
+- **Latency** vs chain line: Low 117.1/123.0, Mid 49.1/50.5, High 21.7/21.9 ms. From either home,
+  160–169 Hz total ≤ 80.1 ms (85); 80 Hz ≤ 103.2 ms (110).
+- **Selector:** no-gap leap sweep, 0 wrong frames, ≤ 1 switch (412 probe leaps; 116 in the test).
+  Low E after E4 settles in Mid in 135–140 ms; bass E after A2 in Low in 158–160 ms. **Loud
+  room:** −45 dBFS closes in 2.26–3.11 s.
+- **Benches** (AC, quiet): decimate 8.67, band_limit 6.61 µs per 10 ms; frame low 11.76, mid 2.71,
+  high 5.85 µs per hop; nsdf 13.0/28.7/59.7 µs (the 10 % gate is noisy at this scale). Worst CPU
+  0.62 % of a host core. **The phone figure is owed.**
+- **Mutations**, each failing a test. Round 3: stale Low reference (11 wrong frames, 13 switches),
+  held-reading end ignored, downward at once, no agreement, uncapped k, Mid to 169.5 Hz (97.2 ms
+  against 85), upward scan, a doc cell or `IO_SECONDS` changed. Round 2: textbook step 5, no Low
+  reference, misses reset, no learning while open, no hysteresis, no NaN reset. Round 1: no
+  band-limit, detune, held note, settling, `vec!`, slowed bench.
