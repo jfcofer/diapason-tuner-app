@@ -8,8 +8,10 @@
 //!
 //! Two window rules:
 //!
-//! - [`analysis_window`], the rule of `docs/AUDIO_ENGINE.md` §2, sizes the window to the *range*
-//!   the tone is in. The budget is gated with it.
+//! - [`analysis_window`], the rule `T-003a` took from `docs/AUDIO_ENGINE.md` §2, sizes the window
+//!   to the *range* the tone is in. The detector's budget is gated with it, on bare frames at
+//!   48 kHz. The windows, ranges and filters the tuner actually uses are gated through the whole
+//!   chain in `tests/chain.rs` (`docs/adr/0028`).
 //! - [`stress_window`] holds only three periods of the tone itself, far shorter than the engine
 //!   ever uses. Its results are recorded under regression ceilings, not gated against the budget.
 //!
@@ -80,12 +82,12 @@ fn three_periods(hz: f64) -> usize {
     window
 }
 
-/// The analysis window for a tone at `hz`, by the rule of `docs/AUDIO_ENGINE.md` §2: three periods
-/// of the *lowest* frequency of the range the tone falls in, so every tone in a range gets the same
-/// window and a high one gets many periods. The ranges are §2's: below 60 Hz, 60–160 Hz, and
-/// 160 Hz and up. §2 states its windows at the decimated 12 kHz; this applies the same rule at
-/// 48 kHz, where `T-003a` analyses (no decimation until `T-003b`): 8192 for 30–60 Hz (floor
-/// 30 Hz, the sweep's lowest), 4096 for 60–160 Hz, 1024 from 160 Hz.
+/// The analysis window for a tone at `hz`, by the rule `T-003a` took from `docs/AUDIO_ENGINE.md`
+/// §2: three periods of the *lowest* frequency of the range the tone falls in, rounded up to a
+/// power of two, so every tone in a range gets the same window and a high one gets many periods.
+/// The ranges are the ones §2 had then: below 60 Hz, 60–160 Hz, and 160 Hz and up, all at 48 kHz:
+/// 8192 for 30–60 Hz (floor 30 Hz, the sweep's lowest), 4096 for 60–160 Hz, 1024 from 160 Hz.
+/// `docs/adr/0028` has since replaced §2's table; this stays as the detector's own test.
 fn analysis_window(hz: f64) -> usize {
     let floor = if hz >= 160.0 {
         160.0
@@ -219,7 +221,7 @@ fn the_sweep_and_the_window_rules_are_as_documented() {
     assert_eq!((stress_window(30.0), stress_window(1_400.0)), (8_192, 128));
 }
 
-/// The budget, gated: `docs/AUDIO_ENGINE.md` §1 with §2's windows.
+/// The budget, gated: `docs/AUDIO_ENGINE.md` §1 with `T-003a`'s range windows.
 ///
 /// A dense probe in `T-003a` (20 001 log-spaced frequencies over 30–1400 Hz × 32 phases) put the
 /// worst case at −0.065 cents (1381.6 Hz, window 1024), a margin of more than 7× on this grid and
@@ -227,7 +229,7 @@ fn the_sweep_and_the_window_rules_are_as_documented() {
 #[test]
 fn a_sine_is_within_half_a_cent_across_the_sweep() {
     let cases = run_sweep(synth::sine, analysis_window);
-    summary("sine, §2 windows", &cases);
+    summary("sine, range windows", &cases);
     assert_within("sine", &cases, BUDGET_CENTS);
 }
 
@@ -243,7 +245,7 @@ fn a_sine_in_three_period_windows_stays_under_its_ceiling() {
 }
 
 /// **Not the budget.** A sawtooth band-limited to Nyquist misses the ±0.5 cent budget even with
-/// §2's windows (`T-003a`; the analysis filter of `T-003b` is where it is meant to be met).
+/// `T-003a`'s range windows. The chain's band-limit meets it (`tests/chain.rs`, `T-003b`).
 ///
 /// Parabolic interpolation assumes the NSDF peak is a parabola over ±1 lag. A sawtooth's peak is
 /// `Σ wₕ cos(hω(τ − T))` with `wₕ ∝ 1/h²`, so every harmonic up to Nyquist adds equally to its
@@ -254,7 +256,7 @@ fn a_sine_in_three_period_windows_stays_under_its_ceiling() {
 #[test]
 fn a_sawtooths_error_stays_under_its_ceiling() {
     let cases = run_sweep(synth::sawtooth, analysis_window);
-    summary("sawtooth, §2 windows", &cases);
+    summary("sawtooth, range windows", &cases);
     assert_within("sawtooth", &cases, 4.0);
 }
 
@@ -375,7 +377,7 @@ proptest! {
     })]
 
     /// Within budget across the range and from −40 to 0 dBFS, and independent of the gain, with
-    /// §2's windows. Over 5000 random cases in `T-003a` the worst error was 0.064 cents, so the
+    /// `T-003a`'s range windows. Over 5000 random cases in `T-003a` the worst error was 0.064 cents, so the
     /// budget is not met by luck of the seed.
     ///
     /// `n = 2r/m` is homogeneous of degree zero in the signal, so in exact arithmetic the gain

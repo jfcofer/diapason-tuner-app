@@ -22,42 +22,75 @@ ones are measured on the reference devices in `TESTING.md` §7.
 | Audio callback worst case | ≤ 15 % of one burst's period (`adr/0025`) | > 40 % |
 | Added binary size per ABI | ≤ 2.5 MB | > 4 MB |
 
+**Latency ledger.** Plucked string to moving needle, worst case, stage by stage, in ms at 48 kHz
+(44.1 kHz is within 0.3 ms). The constants live in `diapason_dsp::range` (`adr/0028`);
+`tests/chain.rs`, `onset_latency_is_within_the_ledger`, asserts each range's chain line at both
+rates, from silence to the first estimate within ±5 ¢ that stays, on the audio clock.
+
+| Stage | Low (from 30 Hz) | Mid (from 75 Hz) | High (from 160 Hz) |
+|---|---|---|---|
+| Input I/O, provisional until `T-002f` (one 960-frame burst) | 20 | 20 | 20 |
+| Filter group delay (129 or 29 samples) | 2.7 | 2.7 | 0.6 |
+| Window fill (three periods of the floor) | 100 | 40 | 18.75 |
+| Settling (the DC block's transient, measured) | 15 | 5 | 1 |
+| One hop, waiting for the next frame | 5 | 2.5 | 2.5 |
+| **Chain line, asserted** (measured worst, both rates) | **122.7** (117.1) | **50.2** (49.1) | **22.9** (21.3) |
+| Smoothing reserve: two hops for `T-003c`'s median of five | 10 | 5 | 5 |
+| Snapshot period (30 Hz) | 33.3 | 33.3 | 33.3 |
+| One display frame (60 Hz) | 16.7 | 16.7 | 16.7 |
+| **Total** | **202.7** | **125.2** | **97.9** |
+
+**These totals miss the latency budgets above** (`T-003b`, Deviation 1): 60 ms for f₀ ≥ 80 Hz and
+140 ms for low B. I/O, the snapshot and the display alone sum to 70 ms before any analysis, so no
+detector meets 60 ms under this ledger. Moving the budgets, the snapshot cadence or the ledger's
+worst-case convention is the owner's decision; until then the budget rows stand, unmet.
+
 ## 2. Signal chain (tuner)
 
 ```
 input ──▶ DC block ──▶ level/gate ──▶ ring buffer ──▶ [analysis thread]
                                                           │
-   decimate ×4 (anti-aliased) for f₀ < 1 kHz ◀────────────┘
+            ┌── f₀ < 160 Hz: decimate ×4 (anti-aliased) ◀─┤
+            └── f₀ ≥ 160 Hz: band-limit at full rate ◀────┘
         │
         ▼
-   window ──▶ NSDF via FFT autocorrelation ──▶ peak pick ──▶ parabolic interp
-        │                                                          │
+   frames per range ──▶ NSDF via FFT autocorrelation ──▶ peak pick ──▶ parabolic interp
+        │                                                                     │
         └──▶ clarity ──▶ octave guard ──▶ median(5) ──▶ one-euro filter ──▶ snapshot
 ```
 
-**Pre-processing.** One-pole high-pass at 20 Hz removes DC and handling rumble. An RMS gate
-(default −50 dBFS, adaptive to the noise floor measured over the last 2 s) suppresses output when
-nothing is being played — a tuner that hunts in silence feels broken.
+**Pre-processing.** One-pole high-pass at 20 Hz removes DC and handling rumble (`dsp::filter::
+DcBlock`). An RMS gate (default −50 dBFS, adaptive to the noise floor measured over the last 2 s)
+decides when nothing is being played — a tuner that hunts in silence feels broken. Its floor
+learns only while it is closed, or a held note would become the floor and close it, and it never
+mutes the audio the detector sees, only whether an estimate is shown (`dsp::gate::NoiseGate`).
 
-**Decimation.** Guitar and bass fundamentals sit below 500 Hz, so analysis runs at 12 kHz
-(48 kHz ÷ 4) through a linear-phase FIR anti-alias filter. This cuts NSDF cost roughly 4× and
-improves low-frequency resolution per window. Above 1 kHz (violin E, harmonics mode) analysis runs
-at full rate. The switch is hysteretic to avoid oscillating at the boundary.
+**Band-limiting and decimation.** Parabolic interpolation is biased by harmonics near the
+*analysis* Nyquist (`T-003a`), so both paths keep their content below an eighth of their analysis
+rate, through linear-phase Kaiser FIRs designed per rate (`dsp::range::RangeTable`). The Low and
+Mid ranges analyse at a quarter of the input rate (12 kHz from 48 kHz, 11.025 kHz from 44.1 kHz),
+which cuts their NSDF cost about 4×. High analyses at the full rate. The crossover sits at the
+Mid/High boundary, 160 Hz. That is not because the decimated path fails above it, since it keeps
+a 2× margin to 605 Hz in Mid's window. It is because a window as short as High's has too few
+samples at the decimated rate. Range changes are hysteretic (a semitone) to avoid oscillating at a
+boundary (`dsp::range::RangeSelector`).
 
 **Window sizing is adaptive**, because a fixed window either misses low strings or is needlessly
-slow for high ones. At least three periods of the lowest expected fundamental must fit:
+slow for high ones. A window holds three periods of its range's floor, and the hop is short,
+because each hop is paid three times in latency (§1, `adr/0028`):
 
-| Expected range | Window @ analysis rate | Hop | Update rate |
-|---|---|---|---|
-| ≥ 160 Hz (guitar D3 and up, violin, uke) | 2048 @ 12 kHz (171 ms of audio… see note) | 512 | 23 Hz |
-| 60–160 Hz (guitar low E, bass upper) | 4096 @ 12 kHz | 1024 | 12 Hz |
-| < 60 Hz (5-string bass B) | 8192 @ 12 kHz | 2048 | 6 Hz |
+| Range | Floor | Analysis rate | Window @ 48 / 44.1 kHz | Hop | Update rate |
+|---|---|---|---|---|---|
+| Low (5-string bass B to the D string) | 30 Hz | ÷ 4 | 1200 / 1103 (100 ms) | 5 ms | 200 Hz |
+| Mid (guitar low E, bass upper) | 75 Hz | ÷ 4 | 480 / 441 (40 ms) | 2.5 ms | 400 Hz |
+| High (guitar D3 and up, violin, uke) | 160 Hz | full | 900 / 827 (18.75 ms) | 2.5 ms | 400 Hz |
 
-*Note on the apparent contradiction with the latency budget:* the window is the **analysis**
-window, but the needle does not wait for a full new window — the hop advances the estimate, and the
-UI is driven by the smoothed estimate that updates every hop. The instrument preset selects the
-starting range so the common case (guitar E-standard) never pays the bass cost. When the preset is
-chromatic, the engine starts wide and narrows after the first confident estimate.
+*Note.* The windows are short because a window that is only partly filled with a new note biases
+the NSDF, so the first good estimate waits for the window to fill (§1's ledger). The selector
+returns to the home range on silence. The instrument preset picks that range (M3), so the common
+case (guitar E-standard, Mid) never pays the bass window. A note the home range cannot see (1.4 kHz
+from Low is in the decimator's stopband) is found by scanning to the next range after a window and
+50 ms of unclear frames. Every range's history is kept full, so a switch costs one hop.
 
 ## 3. Pitch detection: NSDF / McLeod (MPM)
 
