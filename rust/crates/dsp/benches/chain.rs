@@ -5,16 +5,21 @@
 //!   the ×4 decimator and through the full-rate band-limit. Both run on every block.
 //! - `chain/frame/low`, `chain/frame/mid`, `chain/frame/high`: one hop of the range at 48 kHz,
 //!   pushed into its `FrameAssembler`, then its window analysed by `Mpm`. The selected range pays
-//!   this once per hop, so its cost per second is this times `1 / hop`.
+//!   this once per hop, so its cost per second is this times `1 / hop`. Since `T-003c` the
+//!   ranges below the selected one are analysed too, as verifiers: in High, a frame of each.
+//! - `chain/octave`: the octave guard on a frame just analysed, `Mpm::peak_near` at half and
+//!   twice the period and `OctaveGuard::judge`: what each selected frame pays on top of
+//!   `chain/frame` (Mid's shape, a weak low E, the case whose octave Mid cannot test).
 //!
 //! `just bench` compares the medians with `benches/baseline.json` (`tools/bench-compare.sh`): the
 //! ids are the baseline's keys, so renaming one orphans its baseline.
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use diapason_dsp::frame::FrameAssembler;
+use diapason_dsp::octave::OctaveGuard;
 use diapason_dsp::pitch::{Mpm, MpmConfig};
 use diapason_dsp::range::{Path, Range, RangeTable};
-use diapason_dsp::synth::{Pluck, pluck};
+use diapason_dsp::synth::{Pluck, WEAK_FUNDAMENTAL, partials, pluck};
 
 const RATE: u32 = 48_000;
 const BLOCK: usize = 480;
@@ -77,6 +82,31 @@ fn chain(c: &mut Criterion) {
             });
         });
     }
+
+    let mid = table.spec(Range::Mid);
+    let mut window = vec![0.0_f32; mid.window];
+    partials(
+        &mut window,
+        82.41,
+        mid.analysis_rate,
+        0.5,
+        0.0,
+        &WEAK_FUNDAMENTAL,
+    );
+    let mut mpm = Mpm::new(MpmConfig::with_window(mid.window)).expect("valid window");
+    let pick = mpm
+        .analyze(&window, mid.analysis_rate)
+        .expect("a weak low E is clear in Mid");
+    let lock = mid.window.div_ceil(mid.hop);
+    let mut guard = OctaveGuard::new();
+    group.bench_function("octave", |b| {
+        b.iter(|| {
+            let frame = std::hint::black_box(&window);
+            let up = mpm.peak_near(frame, mid.analysis_rate, pick.period_samples / 2.0);
+            let down = mpm.peak_near(frame, mid.analysis_rate, pick.period_samples * 2.0);
+            guard.judge(pick, up, down, lock)
+        });
+    });
     group.finish();
 }
 
