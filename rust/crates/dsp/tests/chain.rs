@@ -163,8 +163,8 @@ fn both_low_passes_meet_their_specification_measured_with_sines() {
 
 // ── The crossover probe ─────────────────────────────────────────────────────────────────────
 
-/// The worst error over the probe's phases for a tone through the ×4 path alone, analysed in a
-/// window of `window` samples at the decimated rate.
+/// The worst error over eight phases for a tone through the ×4 path alone, analysed in a window
+/// of `window` samples at the decimated rate.
 fn decimated_error(rate: u32, generate: Generator, hz: f64, window: usize) -> f64 {
     let table = RangeTable::new(rate).unwrap();
     let mut decimator = table.decimator().unwrap();
@@ -172,7 +172,6 @@ fn decimated_error(rate: u32, generate: Generator, hz: f64, window: usize) -> f6
     let mut input = vec![0.0_f32; 2 * decimator.taps().len() + window * DECIMATION];
     let mut output = vec![0.0_f32; input.len() / DECIMATION];
     (0..PHASES)
-        .step_by(2)
         .map(|p| {
             decimator.reset();
             generate(&mut input, hz, rate, 0.5, phase(p));
@@ -190,47 +189,67 @@ fn decimated_error(rate: u32, generate: Generator, hz: f64, window: usize) -> f6
         )
 }
 
-/// The highest frequency from `from` up to which the decimated path stays within the budget
-/// with [`MARGIN`], in the given window, and the worst error up to it.
-fn decimated_limit(rate: u32, generate: Generator, window: usize, from: f64) -> (f64, f64) {
-    let mut limit: (f64, f64) = (from, 0.0);
-    for hz in sweep(12).into_iter().filter(|&hz| hz >= from) {
-        let error = decimated_error(rate, generate, hz, window);
-        if error.abs() > BUDGET_CENTS / MARGIN {
+/// The highest frequency of `from · 2^(i/12)` up to which the decimated path stays within the
+/// budget with [`MARGIN`] in the given window, and the worst error up to it; `None` if it misses
+/// at `from` already.
+fn decimated_limit(rate: u32, generate: Generator, window: usize, from: f64) -> Option<(f64, f64)> {
+    let mut limit = None;
+    for hz in (0..)
+        .map(|i| from * 2_f64.powf(f64::from(i) / 12.0))
+        .take_while(|&hz| hz <= HIGHEST_HZ)
+    {
+        let error = decimated_error(rate, generate, hz, window).abs();
+        if error > BUDGET_CENTS / MARGIN {
             break;
         }
-        limit = (hz, limit.1.max(error.abs()));
+        let worst = limit.map_or(0.0, |(_, worst): (f64, f64)| worst);
+        limit = Some((hz, worst.max(error)));
     }
     limit
 }
 
-/// The crossover, measured. Through the ×4 path, in the Mid range's window, sine and sawtooth must
-/// stay within the budget with a 2× margin up to the top of what Mid holds, `CROSSOVER_HZ`
-/// raised by the hysteresis. The probe goes on to where that stops, and records it.
+/// How far a probe kept the margin, for its report.
+struct Limit(Option<(f64, f64)>);
+
+impl fmt::Display for Limit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some((hz, worst)) => write!(f, "to {hz:.0} Hz (worst {worst:.3} ¢)"),
+            None => write!(f, "misses at {CROSSOVER_HZ} Hz"),
+        }
+    }
+}
+
+/// The crossover, measured. Through the ×4 path, in the Mid range's window, sine and sawtooth
+/// must stay within the budget with a 2× margin from `CROSSOVER_HZ` to the top of what Mid holds,
+/// `CROSSOVER_HZ` raised by the hysteresis. The probe goes on, a semitone at a time, to where that
+/// stops, and records it. (Below the crossover the headline sweep covers Mid, densely.)
 ///
 /// It also records the window the High range would have at the decimated rate (three periods
-/// of 160 Hz at 12 kHz, 225 samples), to show why High analyses at full rate: there the margin
-/// is gone just above 160 Hz (`T-003b`).
+/// of 160 Hz, 225 samples at 12 kHz), to show why High analyses at full rate: there the sawtooth
+/// is past the margin at 160 Hz already (`T-003b`).
 #[test]
 fn the_decimated_path_holds_the_budget_past_the_crossover() {
-    let top = CROSSOVER_HZ * HYSTERESIS;
+    let top = CROSSOVER_HZ * HYSTERESIS * (1.0 - 1e-9);
     for rate in SUPPORTED_RATES {
         let table = RangeTable::new(rate).unwrap();
         let mid = table.spec(Range::Mid).window;
         let high_if_decimated = index_from_f64((3.0 * f64::from(rate / 4) / CROSSOVER_HZ).ceil());
         for (name, generate) in SIGNALS {
-            let (limit, worst) = decimated_limit(rate, generate, mid, 60.0);
-            let (short, _) = decimated_limit(rate, generate, high_if_decimated, CROSSOVER_HZ);
+            let limit = decimated_limit(rate, generate, mid, CROSSOVER_HZ);
+            let short = decimated_limit(rate, generate, high_if_decimated, CROSSOVER_HZ);
             report(format_args!(
-                "probe, {name} at {rate} Hz, ×4: within {:.2} ¢ up to {limit:.0} Hz in Mid's \
-                 {mid}-sample window (worst {worst:.3} ¢), up to {short:.0} Hz in a \
-                 {high_if_decimated}-sample one",
-                BUDGET_CENTS / MARGIN
+                "probe, {name} at {rate} Hz, ×4, within {:.2} ¢: Mid's {mid}-sample window {}; \
+                 a {high_if_decimated}-sample one {}",
+                BUDGET_CENTS / MARGIN,
+                Limit(limit),
+                Limit(short),
             ));
             assert!(
-                limit >= top,
-                "{name} at {rate} Hz: the decimated path keeps the margin only up to {limit:.1} Hz, \
-                 below the crossover's top, {top:.1} Hz"
+                limit.is_some_and(|(hz, _)| hz >= top),
+                "{name} at {rate} Hz: the decimated path keeps the margin only {}, short of the \
+                 crossover's top, {top:.1} Hz",
+                Limit(limit)
             );
         }
     }

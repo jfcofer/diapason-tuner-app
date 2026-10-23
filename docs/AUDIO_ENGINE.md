@@ -70,9 +70,9 @@ mutes the audio the detector sees, only whether an estimate is shown (`dsp::gate
 rate, through linear-phase Kaiser FIRs designed per rate (`dsp::range::RangeTable`). The Low and
 Mid ranges analyse at a quarter of the input rate (12 kHz from 48 kHz, 11.025 kHz from 44.1 kHz),
 which cuts their NSDF cost about 4×. High analyses at the full rate. The crossover sits at the
-Mid/High boundary, 160 Hz. That is not because the decimated path fails above it, since it keeps
-a 2× margin to 605 Hz in Mid's window. It is because a window as short as High's has too few
-samples at the decimated rate. Range changes are hysteretic (a semitone) to avoid oscillating at a
+Mid/High boundary, 160 Hz, under the decimated path's measured limit. In Mid's window the
+sawtooth keeps a 2× margin to 214 Hz at 44.1 kHz, and to 508 Hz at 48 kHz. A window as short as
+High's has too few samples at the decimated rate: there the sawtooth misses at 160 Hz already. Range changes are hysteretic (a semitone) to avoid oscillating at a
 boundary (`dsp::range::RangeSelector`).
 
 **Window sizing is adaptive**, because a fixed window either misses low strings or is needlessly

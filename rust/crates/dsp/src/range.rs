@@ -6,11 +6,13 @@
 //! measure it are named beside it. In short (both supported rates, `T-003b`):
 //!
 //! - A window holds three periods of its range's floor (`docs/AUDIO_ENGINE.md` §2).
-//! - **Decimation is decided by window length, not by f₀.** Through the ×4 path, a sawtooth meets
-//!   ±0.5 ¢ with a 2× margin only in windows of ≥ 441 samples (Low and Mid). The High range's
-//!   three-period window would be 225 samples at 12 kHz, and there the sawtooth misses by 0.8 ¢
-//!   at 204 Hz. At full rate the same 18.75 ms (900 samples) reads within 0.2 ¢ up to 1400 Hz.
-//!   So the crossover is the Mid/High boundary, [`CROSSOVER_HZ`].
+//! - **Where to decimate depends on the window's length in samples, not on f₀ alone.** Through the
+//!   ×4 path, in Mid's 480/441-sample window, the sawtooth keeps a 2× margin (0.25 ¢) up to
+//!   508 Hz at 48 kHz and 214 Hz at 44.1 kHz. High's three-period window would be 225/207
+//!   samples at the decimated rate, and there the sawtooth already misses the budget at the floor:
+//!   −0.82 ¢ at 160 Hz. At full rate the same 18.75 ms (900 samples) reads within 0.19 ¢ up to
+//!   1400 Hz. So the crossover is the Mid/High boundary, [`CROSSOVER_HZ`], under the tightest
+//!   decimated limit (214 Hz) with its hysteresis band included.
 //! - Both paths keep their content below an eighth of their analysis rate, where `T-003a`
 //!   measured the parabolic-interpolation bias at 0.0035 lag.
 //! - Hops are as short as the CPU budget allows, because each one is paid three times in

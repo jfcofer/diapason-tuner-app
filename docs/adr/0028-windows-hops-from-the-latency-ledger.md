@@ -13,11 +13,14 @@ content stays well below the *analysis* Nyquist.
 
 `T-003b` built the chain and measured it at 44.1 and 48 kHz. These are its findings:
 
-1. **Decimation is limited by window length in samples, not by f₀.** Through the ×4 path, in Mid's
-   480-sample window, sine and sawtooth keep a 2× margin (≤ 0.25 ¢) up to 605 Hz. A three-period
-   window of 160 Hz at 12 kHz holds 225 samples, and there the sawtooth keeps the margin only to
-   202 Hz (160 Hz at 44.1 kHz). The same 18.75 ms at 48 kHz, 900 samples, reads within 0.19 ¢ up
-   to 1400 Hz.
+1. **Where to decimate depends on the window's length in samples, not on f₀ alone.** Through the
+   ×4 path, in Mid's 480/441-sample window, a 2× margin (≤ 0.25 ¢, eight phases) holds:
+   - for the sine, to 604 Hz;
+   - for the sawtooth, to 508 Hz at 48 kHz and to 214 Hz at 44.1 kHz.
+
+   A three-period window of 160 Hz at the decimated rate holds 225/207 samples, and there the
+   sawtooth already misses the budget at the floor (−0.82 ¢ at 160 Hz, −0.52 ¢ at 162 Hz). The
+   same 18.75 ms at full rate, 900/827 samples, reads within 0.19 ¢ up to 1400 Hz.
 2. **Onset latency is the window plus the filter delay**, and for the Low range a little DC-block
    settling. A partly filled window biases the NSDF (its `m(τ)` counts the silent part), so the
    first estimate within 5 ¢ waits for the window to hold only the new note.
@@ -35,8 +38,8 @@ content stays well below the *analysis* Nyquist.
   | High | 160 Hz | full | 900 / 827 (18.75 ms) | 2.5 ms |
 
 - **The crossover is the Mid/High boundary, 160 Hz,** with a semitone of hysteresis on each band.
-  The decimated path holds the budget well past it (to 605 Hz), but not in a window as short as
-  High's.
+  Its top, 169.5 Hz, sits under the tightest decimated limit (214 Hz). The decimated path cannot
+  serve a window as short as High's.
 - **Both paths keep their content below an eighth of their analysis rate**, where `T-003a`
   measured the parabolic bias at 0.0035 lag:
   - the ×4 anti-alias low-pass passes to fs/96 (500 Hz at 48 kHz) and stops from fs/32 (1.5 kHz);
@@ -78,9 +81,10 @@ content stays well below the *analysis* Nyquist.
 
 - **§2's table as written:** it breaks its own three-period rule and §1's latency.
 - **A 1 kHz crossover with High decimated:** at 12 kHz High's window is 225 samples, and the
-  sawtooth misses by 0.8 ¢ at 204 Hz. The budget would fail inside the range meant to meet it.
-- **Decimating only by f₀, with Mid stretched to 605 Hz:** accurate, but notes from 160 to 605 Hz
-  would wait for a 40 ms window instead of 18.75 ms. Latency is the budget that is short.
+  sawtooth misses by 0.82 ¢ at its floor. The budget would fail inside the range meant to meet it.
+- **The crossover at the decimated limit (214 Hz), with Mid stretched to it:** no hysteresis
+  margin at 44.1 kHz, and notes from 160 to 214 Hz would wait for a 40 ms window instead of
+  18.75 ms. Latency is the budget that is short.
 - **Cutting the decimator at fs/4 (fewer taps, 1.3 ms less delay):** the sawtooth reached 0.51 ¢
   in the Mid window.
 - **Running only the selected path's filter:** the first frame after every switch would wait for
