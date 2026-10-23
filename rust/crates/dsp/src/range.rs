@@ -125,6 +125,19 @@ impl Range {
         }
     }
 
+    /// The perceived-latency budget of the notes this range serves, in seconds:
+    /// `docs/AUDIO_ENGINE.md` §1's rows, as the owner set them on 2026-10-23 (`docs/adr/0028`).
+    /// High's is the row for f₀ ≥ 160 Hz, Mid's for 80–160 Hz, Low's for low B. A test reads them
+    /// back from §1.
+    #[must_use]
+    pub fn latency_budget_seconds(self) -> f64 {
+        match self {
+            Self::Low => 0.190,
+            Self::Mid => 0.110,
+            Self::High => 0.085,
+        }
+    }
+
     /// The next range in a scan: downward, wrapping from the lowest to the highest. A range that
     /// hears no pitch is most often below its reach (High is blind under 107 Hz, Mid under 50 Hz),
     /// while Low, which sees down to 20 Hz, misses only what is above its 1.5 kHz content. An
@@ -942,31 +955,109 @@ mod tests {
         assert!(!harmonic(412.0, 82.41) && !harmonic(587.33, 41.2));
     }
 
-    /// The ledger table in `docs/AUDIO_ENGINE.md` §1, at 48 kHz, in ms: each range's chain line and
-    /// total. Changing a constant it is built from (`IO_SECONDS`, a settling, a hop, a filter)
-    /// fails this until the table is updated to match.
+    /// `docs/AUDIO_ENGINE.md`, read at compile time, so that §1 and the code cannot drift apart.
+    const AUDIO_ENGINE: &str = include_str!("../../../../docs/AUDIO_ENGINE.md");
+
+    /// The first number in a table cell, ignoring emphasis and anything in parentheses after it,
+    /// and the rounding its printed digits imply: half the last digit.
+    fn cell_number(cell: &str) -> (f64, f64) {
+        let text: String = cell
+            .trim()
+            .trim_start_matches(['*', '≤', ' '])
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        let decimals = text.split('.').nth(1).map_or(0, str::len);
+        let rounding = 0.5 * 10_f64.powi(-i32::try_from(decimals).unwrap()) + 1e-9;
+        (
+            text.parse()
+                .unwrap_or_else(|_| panic!("no number in {cell:?}")),
+            rounding,
+        )
+    }
+
+    /// §1's ledger table, read from the doc: every row, every range, against `Ledger` at 48 kHz,
+    /// to the precision printed. A row renamed, added or dropped fails too.
     #[test]
-    fn the_ledger_matches_the_table_in_audio_engine_section_1() {
+    fn the_ledger_table_in_audio_engine_section_1_matches_the_code() {
         let table = RangeTable::new(48_000).unwrap();
-        let ms = |range| {
-            let ledger = table.ledger(range);
-            let round = |s: f64| (s * 1e4).round() / 10.0;
-            (round(ledger.chain_seconds()), round(ledger.total_seconds()))
-        };
-        assert_eq!(ms(Range::Low), (122.7, 186.0));
-        assert_eq!(ms(Range::Mid), (50.2, 108.5));
-        assert_eq!(ms(Range::High), (21.9, 80.2));
-        // §1's budgets, by range: High ≤ 85 ms (f₀ ≥ 160 Hz), Mid ≤ 110 ms (80–160 Hz), Low
-        // ≤ 190 ms (low B), at both rates.
+        let start = AUDIO_ENGINE
+            .find("| Stage | Low")
+            .expect("§1's ledger table");
+        let rows: Vec<Vec<&str>> = AUDIO_ENGINE[start..]
+            .lines()
+            .skip(2)
+            .take_while(|line| line.starts_with('|'))
+            .map(|line| line.trim_matches('|').split('|').collect())
+            .collect();
+        type Line = fn(&Ledger) -> f64;
+        let lines: [(&str, Line); 10] = [
+            ("Input I/O", |l| l.io),
+            ("Filter group delay", |l| l.group_delay),
+            ("Window fill", |l| l.window),
+            ("Settling", |l| l.settling),
+            ("One hop", |l| l.hop),
+            ("**Chain line", Ledger::chain_seconds),
+            ("Smoothing reserve", |l| l.smoothing),
+            ("Snapshot period", |l| l.snapshot),
+            ("One display frame", |l| l.display),
+            ("**Total**", Ledger::total_seconds),
+        ];
+        assert_eq!(
+            rows.len(),
+            lines.len(),
+            "§1's ledger has {} rows",
+            rows.len()
+        );
+        for (row, (label, line)) in rows.iter().zip(lines) {
+            assert!(
+                row[0].trim().starts_with(label),
+                "expected {label:?}, found {:?}",
+                row[0]
+            );
+            for (cell, range) in row[1..].iter().zip(Range::ALL) {
+                let (printed, rounding) = cell_number(cell);
+                let code = line(&table.ledger(range)) * 1e3;
+                assert!(
+                    (printed - code).abs() <= rounding,
+                    "§1 {label} for {range:?}: {printed} ms in the doc, {code:.3} ms in the code"
+                );
+            }
+        }
+        // The totals row names each range's budget in parentheses; §1's budget rows state them.
+        let totals = rows.last().unwrap();
+        let rows_for = ["f₀ ≥ 160 Hz", "Same, 80–160 Hz", "Same, bass low B"];
+        for (range, budget_row) in [Range::High, Range::Mid, Range::Low]
+            .into_iter()
+            .zip(rows_for)
+        {
+            let budget = range.latency_budget_seconds() * 1e3;
+            let cell = totals[1 + Range::ALL.iter().position(|r| *r == range).unwrap()];
+            let in_totals = cell.split('(').nth(1).map(cell_number).unwrap().0;
+            let line = AUDIO_ENGINE
+                .lines()
+                .find(|l| l.contains(budget_row))
+                .unwrap();
+            let in_budgets = cell_number(line.split('|').nth(2).unwrap()).0;
+            assert!(
+                (in_totals - budget).abs() < 1e-9 && (in_budgets - budget).abs() < 1e-9,
+                "{range:?}: budget {budget} ms in the code, {in_totals} and {in_budgets} in §1"
+            );
+        }
+    }
+
+    /// Every range's total, at both rates, within its budget.
+    #[test]
+    fn every_total_is_within_its_budget() {
         for rate in SUPPORTED_RATES {
             let table = RangeTable::new(rate).unwrap();
-            for (range, budget) in [
-                (Range::Low, 0.190),
-                (Range::Mid, 0.110),
-                (Range::High, 0.085),
-            ] {
+            for range in Range::ALL {
                 let total = table.ledger(range).total_seconds();
-                assert!(total <= budget, "{range:?} at {rate} Hz: {total} s");
+                let budget = range.latency_budget_seconds();
+                assert!(
+                    total <= budget,
+                    "{range:?} at {rate} Hz: {total} s over {budget} s"
+                );
             }
         }
     }
