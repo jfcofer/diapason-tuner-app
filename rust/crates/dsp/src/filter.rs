@@ -70,8 +70,9 @@ impl std::error::Error for FilterError {}
 /// State is `f64`: at 48 kHz `1 − R = 2.6·10⁻³`, and in `f32` the recursion would round that
 /// small difference coarsely enough to move the corner. An output state below
 /// [`DcBlock::FLUSH`] is set to exactly zero, so silence after a signal never decays into
-/// subnormals, which cost tens of cycles per operation on some cores. Allocation-free and
-/// panic-free.
+/// subnormals, which cost tens of cycles per operation on some cores. A non-finite output (a NaN
+/// or an infinity in the input) resets both states, so it costs one sample, not the stream.
+/// Allocation-free and panic-free.
 ///
 /// ```
 /// use diapason_dsp::filter::DcBlock;
@@ -84,6 +85,7 @@ impl std::error::Error for FilterError {}
 /// ```
 #[derive(Debug, Clone)]
 pub struct DcBlock {
+    sample_rate: u32,
     coefficient: f64,
     previous_input: f64,
     previous_output: f64,
@@ -108,6 +110,7 @@ impl DcBlock {
             return Err(FilterError::SampleRate(sample_rate));
         }
         Ok(Self {
+            sample_rate,
             coefficient: (-TAU * Self::CUTOFF_HZ / f64::from(sample_rate)).exp(),
             previous_input: 0.0,
             previous_output: 0.0,
@@ -120,10 +123,10 @@ impl DcBlock {
         self.coefficient
     }
 
-    /// `|H|` at `frequency_hz`, from the closed form above.
+    /// `|H|` at `frequency_hz`, from the closed form above, at the rate the block was built for.
     #[must_use]
-    pub fn magnitude(&self, frequency_hz: f64, sample_rate: u32) -> f64 {
-        let omega = TAU * frequency_hz / f64::from(sample_rate.max(1));
+    pub fn magnitude(&self, frequency_hz: f64) -> f64 {
+        let omega = TAU * frequency_hz / f64::from(self.sample_rate);
         let r = self.coefficient;
         2.0 * (omega / 2.0).sin().abs() / (1.0 - 2.0 * r * omega.cos() + r * r).sqrt()
     }
@@ -131,7 +134,7 @@ impl DcBlock {
     /// Samples for a step to decay by `attenuation_db`: the smallest `n` with `Rⁿ ≤ 10^{−dB/20}`.
     #[must_use]
     pub fn settling_samples(&self, attenuation_db: f64) -> usize {
-        let target = (-attenuation_db / 20.0 * std::f64::consts::LN_10).max(f64::MIN);
+        let target = -attenuation_db / 20.0 * std::f64::consts::LN_10;
         index_from_f64((target / self.coefficient.ln()).ceil())
     }
 
@@ -140,6 +143,13 @@ impl DcBlock {
     pub fn process_sample(&mut self, sample: f32) -> f32 {
         let input = f64::from(sample);
         let mut output = input - self.previous_input + self.coefficient * self.previous_output;
+        if !output.is_finite() {
+            // A NaN or an infinity would otherwise stay in the recursion for ever: drop it, and
+            // the state with it, and carry on from silence.
+            self.previous_input = 0.0;
+            self.previous_output = 0.0;
+            return 0.0;
+        }
         if output.abs() < Self::FLUSH {
             output = 0.0;
         }
@@ -481,7 +491,7 @@ mod tests {
             dc.process(&mut tone);
             let tail = &tone[settle..];
             let rms = (crate::synth::power(tail) * 2.0).sqrt() / 0.5;
-            let expected = dc.magnitude(hz, rate);
+            let expected = dc.magnitude(hz);
             assert!(
                 (rms - expected).abs() < 2e-5,
                 "{rate} Hz: measured {rms}, closed form {expected}"
@@ -490,6 +500,22 @@ mod tests {
             assert!((expected - 0.839).abs() < 2e-3, "{expected}");
         }
         assert_eq!(DcBlock::new(0).unwrap_err(), FilterError::SampleRate(0));
+    }
+
+    #[test]
+    fn a_nan_or_an_infinity_does_not_poison_later_output() {
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let mut dc = DcBlock::new(48_000).unwrap();
+            let mut block = vec![0.0_f32; 960];
+            sine(&mut block, 440.0, 48_000, 0.5, 0.0);
+            block[100] = bad;
+            dc.process(&mut block);
+            assert_eq!(block[100].to_bits(), 0.0_f32.to_bits());
+            assert!(block.iter().all(|s| s.is_finite()), "{bad}");
+            assert!(dc.state().is_finite());
+            // And the tone is back at its level once the restart has settled.
+            assert!(block[900..].iter().any(|s| s.abs() > 0.4));
+        }
     }
 
     #[test]
