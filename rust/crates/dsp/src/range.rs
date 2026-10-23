@@ -430,8 +430,17 @@ pub const MAX_HARMONIC: f64 = 4.0;
 /// A change of the current range's clear pitch larger than this, in cents, makes every Low frame
 /// whose window started before it stale for [`RangeSelector::observe_reference`]. Three quarters
 /// of a semitone: any change of note, but not the jitter of a weak, barely clear reading (Mid's
-/// reading of a weak bass E wanders by 53 ¢ between frames).
+/// reading of a weak bass E wanders by 53 ¢ between frames). It compares each clear frame with the
+/// previous clear one, so a slow glide (a bend, a peg turned) is never a change, however far it
+/// goes.
 pub const CHANGE_CENTS: f64 = 75.0;
+
+/// How long, in seconds, a streak of agreeing Low reference frames below the band, each consistent
+/// with the current pitch, moves the chain even when none of them is fresh. Freshness can be
+/// starved: a range whose wrong reading breaks every few frames, or flips between two partials,
+/// keeps restarting it (`T-003b` round 4: stuck in High for 10 s). 250 ms is more than twice Low's
+/// span (105 ms), so a streak that long cannot be made only of Low windows that span a note change.
+pub const REFERENCE_PATIENCE_SECONDS: f64 = 0.25;
 
 /// Chooses the range for the next frame from what the last one found. A pure state machine: its
 /// only clock is the stream position each frame reports, and it does no I/O and no allocation.
@@ -462,7 +471,9 @@ pub const CHANGE_CENTS: f64 = 75.0;
 ///     change holds both notes, and its NSDF finds their common period, f/2, f/3, …: acting on
 ///     it showed wrong notes for up to 55 ms, and flipped Mid and High on every frame after an
 ///     upward leap (`T-003b`);
-///   - two such Low frames in a row agree within [`HARMONIC_TOLERANCE_CENTS`].
+///   - two such Low frames in a row agree within [`HARMONIC_TOLERANCE_CENTS`];
+///   - or, whatever freshness says, such Low frames have agreed for
+///     [`REFERENCE_PATIENCE_SECONDS`] on end: a bound on how long a wrong reading can hold a range.
 ///
 /// ```
 /// use diapason_dsp::range::{Observation, Range, RangeSelector, RangeTable};
@@ -498,6 +509,10 @@ pub struct RangeSelector {
     reference: Option<f64>,
     /// Consecutive clear frames in the current range.
     clear_run: usize,
+    /// When the current streak of agreeing candidate Low references began, and its latest pitch.
+    streak: Option<(u64, f64)>,
+    /// [`REFERENCE_PATIENCE_SECONDS`] in input samples.
+    patience: u64,
     /// Input samples a frame of each range depends on, filter taps included.
     spans: [u64; 3],
 }
@@ -524,6 +539,11 @@ impl RangeSelector {
             settled_at: 0,
             reference: None,
             clear_run: 0,
+            streak: None,
+            patience: u64::try_from(index_from_f64(
+                (REFERENCE_PATIENCE_SECONDS * f64::from(table.sample_rate())).round(),
+            ))
+            .unwrap_or(u64::MAX),
             spans,
         }
     }
@@ -571,12 +591,23 @@ impl RangeSelector {
             self.settled_at = at;
             self.reference = None;
             self.clear_run = 0;
+            self.streak = None;
+        }
+    }
+
+    /// A position earlier than the state's own (the stream restarted without a new selector):
+    /// forget the timing, so that nothing waits for a moment that already passed.
+    fn rewind(&mut self, end: u64) {
+        if end < self.settled_at || self.streak.is_some_and(|(start, _)| end < start) {
+            self.settled_at = end;
+            self.streak = None;
         }
     }
 
     /// Take the outcome of the frame that ended at stream position `end`; return the range for the
     /// next frame.
     pub fn observe(&mut self, observation: Observation, end: u64) -> Range {
+        self.rewind(end);
         match observation {
             Observation::Pitch(hz) if hz.is_finite() && hz > 0.0 => {
                 self.misses = self.misses.saturating_sub(1);
@@ -626,20 +657,30 @@ impl RangeSelector {
     /// while another range is selected; return the range for the next frame. See the type's notes
     /// for what it takes to act on it.
     pub fn observe_reference(&mut self, low: Option<f64>, end: u64) -> Range {
-        let fresh = self.fresh(Range::Low, end);
+        self.rewind(end);
         let candidate = low.filter(|&hz| {
             let below = hz < self.current.floor_hz() && !self.table.holds(self.current, hz);
             let consistent = self.pitch.is_none_or(|current| harmonic(current, hz));
-            hz.is_finite() && hz > 0.0 && fresh && below && consistent
+            hz.is_finite() && hz > 0.0 && below && consistent
         });
         let Some(hz) = candidate.filter(|_| self.current != Range::Low) else {
             self.reference = None;
+            self.streak = None;
             return self.current;
         };
-        if self
-            .reference
-            .is_some_and(|previous| cents(hz, previous).abs() <= HARMONIC_TOLERANCE_CENTS)
-        {
+        let agrees = |previous: f64| cents(hz, previous).abs() <= HARMONIC_TOLERANCE_CENTS;
+        let start = match self.streak {
+            Some((start, previous)) if agrees(previous) => start,
+            _ => end,
+        };
+        self.streak = Some((start, hz));
+        let patient = end.saturating_sub(start) >= self.patience;
+        if !self.fresh(Range::Low, end) {
+            self.reference = None;
+            if patient {
+                self.switch(self.table.range_for(hz), end);
+            }
+        } else if self.reference.is_some_and(agrees) || patient {
             self.switch(self.table.range_for(hz), end);
         } else {
             self.reference = Some(hz);
@@ -924,6 +965,72 @@ mod tests {
         assert_eq!(weak.observe_reference(Some(82.41), fresh), Range::High);
         assert_eq!(weak.observe_reference(Some(82.41), fresh + 240), Range::Mid);
         assert_eq!(selector.held_frames(Range::High), 8);
+    }
+
+    /// Frames every 2.5 ms at 48 kHz, a Low reference every other one (Low's 5 ms hop), and the
+    /// frame index at which the selector left High; `None` if it never did in 10 s.
+    fn leaves_high(current: impl Fn(usize) -> Observation) -> Option<usize> {
+        let table = RangeTable::new(48_000).unwrap();
+        let mut selector = RangeSelector::new(&table, Range::High);
+        let mut clock = Clock(0);
+        (0..4_000).find(|&frame| {
+            let end = clock.tick();
+            selector.observe(current(frame), end);
+            if frame % 2 == 1 {
+                selector.observe_reference(Some(82.41), end);
+            }
+            selector.current() != Range::High
+        })
+    }
+
+    /// The bound, in frames: the first reference (frame 1, at 240 samples) plus
+    /// `REFERENCE_PATIENCE_SECONDS` (12 000 samples at 48 kHz) is frame 101, 252.5 ms in.
+    const PATIENCE_BOUND: usize = 101;
+
+    /// Pattern A (`T-003b` round 4): High's wrong reading of a low E, 164.8 Hz, in clear runs of
+    /// nine broken by one unclear frame. Every break ends a held reading and restarts freshness, so
+    /// the fresh path never fires; the agreeing streak of Low references does, within the bound.
+    #[test]
+    fn a_reading_broken_every_few_frames_cannot_hold_a_range_past_the_patience() {
+        let left = leaves_high(|frame| {
+            if frame % 10 == 9 {
+                Observation::Unclear
+            } else {
+                Observation::Pitch(164.8)
+            }
+        });
+        assert_eq!(left, Some(PATIENCE_BOUND));
+    }
+
+    /// Pattern B: High flips between the second and third partials, 164.8 and 247.2 Hz, every
+    /// 75 ms. Each flip is a change of pitch that restarts freshness; both are multiples of the
+    /// Low reference, so the streak holds, and the selector leaves within the bound.
+    #[test]
+    fn a_reading_flipping_between_partials_cannot_hold_a_range_past_the_patience() {
+        let left = leaves_high(|frame| {
+            Observation::Pitch(if (frame / 30) % 2 == 0 { 164.8 } else { 247.2 })
+        });
+        assert_eq!(left, Some(PATIENCE_BOUND));
+    }
+
+    /// A position from before the selector's last change (the stream restarted) is not a moment
+    /// to wait for: the selector rewinds, and the fresh path works again.
+    #[test]
+    fn a_stream_position_going_backwards_does_not_freeze_the_selector() {
+        let table = RangeTable::new(48_000).unwrap();
+        let mut selector = RangeSelector::new(&table, Range::High);
+        selector.observe(Observation::Pitch(164.8), 1_000_000_000);
+        let mut clock = Clock(0);
+        let left = (0..4_000).find(|&frame| {
+            let end = clock.tick();
+            selector.observe(Observation::Pitch(164.8), end);
+            if frame % 2 == 1 {
+                selector.observe_reference(Some(82.41), end);
+            }
+            selector.current() != Range::High
+        });
+        // Fresh once Low's span (5059 samples) has passed since the rewind, then two agree.
+        assert!(left.is_some_and(|frame| frame < 50), "{left:?}");
     }
 
     #[test]
