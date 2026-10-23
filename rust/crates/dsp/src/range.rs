@@ -21,6 +21,7 @@
 
 use crate::convert::{index_from_f64, index_to_f64};
 use crate::filter::{Decimator, FilterError, LowPassSpec};
+use crate::octave::Octave;
 
 /// The input rates the chain is designed for. Coefficients, windows and hops are derived from
 /// the rate, and the accuracy and latency tests run at each of these.
@@ -39,6 +40,13 @@ pub const HYSTERESIS: f64 = 1.059_463_094_359_295_3;
 
 /// Periods of the range floor a window holds (`docs/AUDIO_ENGINE.md` §2).
 pub const PERIODS_PER_WINDOW: f64 = 3.0;
+
+/// The lowest fundamental the tuner reads as a note, in hertz: the Low range's floor less the
+/// semitone of [`HYSTERESIS`] every boundary has, 28.32 Hz, under the five-string bass's low B
+/// (30.87 Hz). An octave below an estimate is a candidate only from here up, and a lower range's
+/// reading below it moves nothing: it is a common period of two notes, not a string (A2 ringing over
+/// a bass E reads 27.5 Hz, `T-003b`).
+pub const LOWEST_FUNDAMENTAL_HZ: f64 = 30.0 / HYSTERESIS;
 
 /// Stopband attenuation, and passband ripple `±10^{−A/20}`, both low-pass filters are designed
 /// for, in dB. The tests measure at least 80 dB and at most 0.1 dB of ripple.
@@ -383,6 +391,26 @@ impl RangeTable {
         hz.is_finite() && hz > 0.0 && above_floor && below_ceiling
     }
 
+    /// Whether `range` can see a period of `hz` at all: `Mpm` searches lags up to half the window,
+    /// and the parabola needs a neighbour beyond the period, so the period must be at most
+    /// `N/2 − 1` samples at the analysis rate. High sees down to 106.9 Hz at 48 kHz (107.0 at
+    /// 44.1), Mid to 50.2 Hz (50.3), Low to 20.0 Hz.
+    #[must_use]
+    pub fn sees(&self, range: Range, hz: f64) -> bool {
+        let spec = self.spec(range);
+        let longest = index_to_f64(spec.window / 2) - 1.0;
+        hz.is_finite() && hz > 0.0 && f64::from(spec.analysis_rate) / hz <= longest
+    }
+
+    /// Whether `range` can test the octave below an estimate at `hz` itself: it sees `hz / 2`, or
+    /// `hz / 2` is below [`LOWEST_FUNDAMENTAL_HZ`] and so no note. Where it cannot, the estimate's
+    /// octave is [`Octave::Ambiguous`] until a lower range that sees `hz / 2` answers
+    /// ([`RangeSelector::observe_verifier`]): High below 213.8 Hz, Mid from 56.6 to 100.4 Hz.
+    #[must_use]
+    pub fn tests_octave(&self, range: Range, hz: f64) -> bool {
+        self.sees(range, hz / 2.0) || hz / 2.0 < LOWEST_FUNDAMENTAL_HZ
+    }
+
     /// The latency ledger of `range` at this rate.
     #[must_use]
     pub fn ledger(&self, range: Range) -> Ledger {
@@ -415,35 +443,36 @@ pub enum Observation {
 /// Seconds without a clear estimate, past one window, before the selector tries the next range.
 pub const MISS_GRACE_SECONDS: f64 = 0.050;
 
-/// How close, in cents, the current range's pitch must be to a whole multiple of the Low range's
-/// for [`RangeSelector::observe_reference`] to take the current one for a harmonic: half a
+/// How close, in cents, the current range's pitch must be to a whole multiple of a verifier's
+/// for [`RangeSelector::observe_verifier`] to take the current one for a harmonic: half a
 /// semitone, wide enough for a stiff string's stretched partials.
 pub const HARMONIC_TOLERANCE_CENTS: f64 = 50.0;
 
-/// The highest multiple [`RangeSelector::observe_reference`] takes for a harmonic. A weak
+/// The highest multiple [`RangeSelector::observe_verifier`] takes for a harmonic. A weak
 /// fundamental leaves the second or third partial strongest, so a range blind to the fundamental
 /// reads 2·f₀ or 3·f₀; 4 leaves one partial of room. Unbounded, ±50 ¢ makes every frequency above
 /// 17·f₀ "a multiple" (587.33 Hz is 14 × 41.2 Hz + 31 ¢), and a melody over a bass note would
 /// fall to the bass's range.
 pub const MAX_HARMONIC: f64 = 4.0;
 
-/// A change of the current range's clear pitch larger than this, in cents, makes every Low frame
-/// whose window started before it stale for [`RangeSelector::observe_reference`]. Three quarters
+/// A change of the current range's clear pitch larger than this, in cents, makes every verifier frame
+/// whose window started before it stale for [`RangeSelector::observe_verifier`]. Three quarters
 /// of a semitone: any change of note, but not the jitter of a weak, barely clear reading (Mid's
 /// reading of a weak bass E wanders by 53 ¢ between frames). It compares each clear frame with the
 /// previous clear one, so a slow glide (a bend, a peg turned) is never a change, however far it
 /// goes.
 pub const CHANGE_CENTS: f64 = 75.0;
 
-/// How long, in seconds, a streak of agreeing Low reference frames below the band, each consistent
+/// How long, in seconds, a streak of agreeing frames of one verifier below the band, each consistent
 /// with the current pitch, moves the chain even when none of them is fresh. Freshness can be
 /// starved: a range whose wrong reading breaks every few frames, or flips between two partials,
 /// keeps restarting it (`T-003b` round 4: stuck in High for 10 s). 250 ms is more than twice Low's
 /// span (105 ms), so a streak that long cannot be made only of Low windows that span a note change.
 pub const REFERENCE_PATIENCE_SECONDS: f64 = 0.25;
 
-/// Chooses the range for the next frame from what the last one found. A pure state machine: its
-/// only clock is the stream position each frame reports, and it does no I/O and no allocation.
+/// Chooses the range for the next frame from what the last one found, and decides the octave of
+/// estimates a range cannot test itself. A pure state machine: its only clock is the stream position
+/// each frame reports, and it does no I/O and no allocation.
 ///
 /// - A clear pitch the current range [`holds`](RangeTable::holds) keeps it. One above its band
 ///   moves at once to [`RangeTable::range_for`] the pitch. One below moves only after it has held
@@ -457,25 +486,32 @@ pub const REFERENCE_PATIENCE_SECONDS: f64 = 0.25;
 ///   ([`Range::next`]). That is how a note no range can see from home (1.4 kHz is in the
 ///   decimated path's stopband) is found: each range's history is kept full, so a switch costs
 ///   one hop, not a window.
-/// - **The octave guard of range selection.** `Mpm` searches lags up to half its window, so a
-///   range cannot see below about 1.5 periods of its floor: High is blind below 107 Hz, Mid below
-///   50 Hz. A low E (82.41 Hz) heard by High reads as its second partial, 164.8 Hz, which High
-///   holds. So the Low range, which sees down to 20 Hz, is analysed as a reference while another
-///   range is selected ([`Self::observe_reference`]). It moves the chain to the Low pitch's range
-///   only on evidence that cannot come from a note change:
-///   - the Low pitch is below the current band, and the current range's latest clear pitch since
-///     the last switch is absent, or 2, 3 or 4 times it ([`MAX_HARMONIC`]);
-///   - **the Low frame's whole window, filter taps included, started after the last switch, the
-///     last change of the current pitch ([`CHANGE_CENTS`]) and the last end of a reading held
-///     for a window ([`Self::held_frames`])**. A Low window that spans a note
-///     change holds both notes, and its NSDF finds their common period, f/2, f/3, …: acting on
-///     it showed wrong notes for up to 55 ms, and flipped Mid and High on every frame after an
-///     upward leap (`T-003b`);
-///   - two such Low frames in a row agree within [`HARMONIC_TOLERANCE_CENTS`];
-///   - or, whatever freshness says, such Low frames have agreed for
-///     [`REFERENCE_PATIENCE_SECONDS`] on end: a bound on how long a wrong reading can hold a range.
+/// - **The octave guard of range selection** (`docs/adr/0029`). `Mpm` searches lags up to half its
+///   window, so a range cannot see below about 1.5 periods of its floor ([`RangeTable::sees`]):
+///   High is blind below 107 Hz, Mid below 50 Hz. A low E (82.41 Hz) heard by High reads as its
+///   second partial, 164.8 Hz, which High holds. So the ranges below the current one are analysed
+///   as **verifiers** ([`Self::observe_verifier`]): Mid and Low while High is selected, Low while
+///   Mid is. An estimate whose octave below the current range cannot see
+///   ([`RangeTable::tests_octave`]) is [`Octave::Ambiguous`] until a verifier that sees it reads
+///   the estimate itself, which makes it [`Octave::Known`] ([`Self::octave`]). A verifier moves the
+///   chain to its pitch's range only on evidence that cannot come from a note change:
+///   - its pitch is below the current band, at least [`LOWEST_FUNDAMENTAL_HZ`], and the current
+///     range's latest clear pitch since the last switch is absent, or 2, 3 or 4 times it
+///     ([`MAX_HARMONIC`]);
+///   - **the verifier frame's whole window, filter taps included, started after the last switch,
+///     the last change of the current pitch ([`CHANGE_CENTS`]) and the last end of a reading held
+///     for a window ([`Self::held_frames`])**. A window that spans a note change holds both notes,
+///     and its NSDF finds their common period, f/2, f/3, …: acting on it showed wrong notes for up
+///     to 55 ms, and flipped Mid and High on every frame after an upward leap (`T-003b`);
+///   - two such frames of the same verifier in a row agree within [`HARMONIC_TOLERANCE_CENTS`];
+///   - or, whatever freshness says, such frames have agreed for [`REFERENCE_PATIENCE_SECONDS`] on
+///     end: a bound on how long a wrong reading can hold a range;
+///   - **except** the octave below a pitch the chain has just moved up an octave to: that is the
+///     lower string still ringing under the one just plucked, the case that is ambiguous by
+///     nature. The estimate stays ambiguous while both sound, and nothing moves (`docs/adr/0029`).
 ///
 /// ```
+/// use diapason_dsp::octave::Octave;
 /// use diapason_dsp::range::{Observation, Range, RangeSelector, RangeTable};
 ///
 /// let table = RangeTable::new(48_000)?;
@@ -486,13 +522,14 @@ pub const REFERENCE_PATIENCE_SECONDS: f64 = 0.25;
 /// assert_eq!(selector.observe(Observation::Pitch(82.41), next()), Range::Mid);
 /// assert_eq!(selector.observe(Observation::Pitch(72.0), next()), Range::Mid); // hysteresis
 /// assert_eq!(selector.observe(Observation::Pitch(330.0), next()), Range::High);
-/// assert_eq!(selector.observe(Observation::Pitch(164.82), next()), Range::High); // octave up
-/// // A Low frame whose window still holds the E4 is stale; 120 ms later, two agree.
-/// assert_eq!(selector.observe_reference(Some(82.41), next()), Range::High);
-/// let later = at + 5_760;
-/// assert_eq!(selector.observe_reference(Some(82.41), later), Range::High);
-/// assert_eq!(selector.observe_reference(Some(82.4), later + 240), Range::Mid);
-/// assert_eq!(selector.observe(Observation::Silent, later + 480), Range::Low);
+/// assert_eq!(selector.observe(Observation::Pitch(164.82), next()), Range::High); // octave up?
+/// assert_eq!(selector.octave(Range::High, 164.82), Octave::Ambiguous); // High cannot see 82.41
+/// // A Mid frame whose window still holds the E4 is stale; 50 ms later, two agree.
+/// assert_eq!(selector.observe_verifier(Range::Mid, Some(82.41), next()), Range::High);
+/// let later = at + 2_400;
+/// assert_eq!(selector.observe_verifier(Range::Mid, Some(82.41), later), Range::High);
+/// assert_eq!(selector.observe_verifier(Range::Mid, Some(82.4), later + 120), Range::Mid);
+/// assert_eq!(selector.observe(Observation::Silent, later + 240), Range::Low);
 /// # Ok::<(), diapason_dsp::filter::FilterError>(())
 /// ```
 #[derive(Debug, Clone)]
@@ -505,16 +542,31 @@ pub struct RangeSelector {
     pitch: Option<f64>,
     /// The stream position of the last switch, return home, or change of `pitch`.
     settled_at: u64,
-    /// The last eligible Low reference pitch, for the agreement of two in a row.
-    reference: Option<f64>,
+    /// `settled_at` when a fresh verifier last read `pitch` itself: the octave is known while
+    /// they are equal.
+    verified_at: Option<u64>,
+    /// The pitch the chain left when it last moved up an octave, while that move stands.
+    came_from: Option<f64>,
+    /// Per verifier (Low, Mid): its last eligible pitch, for the agreement of two in a row.
+    reference: [Option<f64>; 2],
     /// Consecutive clear frames in the current range.
     clear_run: usize,
-    /// When the current streak of agreeing candidate Low references began, and its latest pitch.
-    streak: Option<(u64, f64)>,
+    /// Per verifier (Low, Mid): when its current streak of agreeing candidates began, and its
+    /// latest pitch.
+    streak: [Option<(u64, f64)>; 2],
     /// [`REFERENCE_PATIENCE_SECONDS`] in input samples.
     patience: u64,
     /// Input samples a frame of each range depends on, filter taps included.
     spans: [u64; 3],
+}
+
+/// The index of a verifier's state, `None` for High, which verifies nothing.
+fn verifier(range: Range) -> Option<usize> {
+    match range {
+        Range::Low => Some(0),
+        Range::Mid => Some(1),
+        Range::High => None,
+    }
 }
 
 impl RangeSelector {
@@ -537,9 +589,11 @@ impl RangeSelector {
             misses: 0,
             pitch: None,
             settled_at: 0,
-            reference: None,
+            verified_at: None,
+            came_from: None,
+            reference: [None; 2],
             clear_run: 0,
-            streak: None,
+            streak: [None; 2],
             patience: u64::try_from(index_from_f64(
                 (REFERENCE_PATIENCE_SECONDS * f64::from(table.sample_rate())).round(),
             ))
@@ -551,7 +605,8 @@ impl RangeSelector {
     /// Clear frames covering one window of `range`. A run that long, ended by an unclear frame, is
     /// a held note ending: a change, like a new pitch (see [`CHANGE_CENTS`]). Shorter runs are
     /// not: a range's barely clear reading of a weak fundamental's partial (High's of a low E at
-    /// clarity 0.6) comes and goes in runs of a few frames.
+    /// clarity 0.6) comes and goes in runs of a few frames. The octave guard locks an estimate after
+    /// as many frames (`crate::octave::OctaveGuard`).
     #[must_use]
     pub fn held_frames(&self, range: Range) -> usize {
         let spec = self.table.spec(range);
@@ -575,6 +630,23 @@ impl RangeSelector {
         self.current
     }
 
+    /// The octave of an estimate at `hz` from a frame of `range`: [`Octave::Known`] if `range` can
+    /// test the octave below itself ([`RangeTable::tests_octave`]), or a fresh verifier has read
+    /// the current pitch since it last changed; otherwise [`Octave::Ambiguous`].
+    #[must_use]
+    pub fn octave(&self, range: Range, hz: f64) -> Octave {
+        let verified = self.verified_at == Some(self.settled_at)
+            && range == self.current
+            && self
+                .pitch
+                .is_some_and(|pitch| cents(hz, pitch).abs() <= HARMONIC_TOLERANCE_CENTS);
+        if verified || self.table.tests_octave(range, hz) {
+            Octave::Known
+        } else {
+            Octave::Ambiguous
+        }
+    }
+
     /// Frames without a clear pitch, gate open, before `range` gives way to the next.
     #[must_use]
     pub fn miss_limit(&self, range: Range) -> usize {
@@ -589,18 +661,28 @@ impl RangeSelector {
             self.misses = 0;
             self.pitch = None;
             self.settled_at = at;
-            self.reference = None;
+            self.came_from = None;
+            self.reference = [None; 2];
             self.clear_run = 0;
-            self.streak = None;
+            self.streak = [None; 2];
         }
+    }
+
+    /// A change of the current note: every verifier frame from before `end` is stale.
+    fn changed(&mut self, end: u64) {
+        self.settled_at = end;
+        self.came_from = None;
+        self.reference = [None; 2];
     }
 
     /// A position earlier than the state's own (the stream restarted without a new selector):
     /// forget the timing, so that nothing waits for a moment that already passed.
     fn rewind(&mut self, end: u64) {
-        if end < self.settled_at || self.streak.is_some_and(|(start, _)| end < start) {
+        let ahead = |streak: &Option<(u64, f64)>| streak.is_some_and(|(start, _)| end < start);
+        if end < self.settled_at || self.streak.iter().any(ahead) {
             self.settled_at = end;
-            self.streak = None;
+            self.verified_at = None;
+            self.streak = [None; 2];
         }
     }
 
@@ -612,12 +694,12 @@ impl RangeSelector {
             Observation::Pitch(hz) if hz.is_finite() && hz > 0.0 => {
                 self.misses = self.misses.saturating_sub(1);
                 self.clear_run += 1;
-                if self
-                    .pitch
-                    .is_none_or(|old| cents(hz, old).abs() > CHANGE_CENTS)
-                {
-                    self.settled_at = end;
-                    self.reference = None;
+                let previous = self.pitch;
+                if previous.is_none_or(|old| cents(hz, old).abs() > CHANGE_CENTS) {
+                    let from = self.came_from;
+                    self.changed(end);
+                    // The first reading after an upward octave move is the move itself.
+                    self.came_from = from.filter(|_| previous.is_none());
                 }
                 self.pitch = Some(hz);
                 // Upward at once. Downward only once the reading has held for a whole window: a
@@ -627,20 +709,21 @@ impl RangeSelector {
                 if !self.table.holds(self.current, hz) && (upward || self.fresh(self.current, end))
                 {
                     self.switch(self.table.range_for(hz), end);
+                    if upward {
+                        self.came_from = previous.filter(|&old| octave_apart(hz, old));
+                    }
                 }
             }
             Observation::Silent => {
                 self.misses = 0;
                 self.pitch = None;
                 self.current = self.home;
-                self.settled_at = end;
-                self.reference = None;
+                self.changed(end);
                 self.clear_run = 0;
             }
             Observation::Pitch(_) | Observation::Unclear => {
                 if self.clear_run >= self.held_frames(self.current) {
-                    self.settled_at = end;
-                    self.reference = None;
+                    self.changed(end);
                 }
                 self.clear_run = 0;
                 self.misses += 1;
@@ -653,40 +736,70 @@ impl RangeSelector {
         self.current
     }
 
-    /// Take a frame of the Low range that ended at stream position `end`, analysed as a reference
-    /// while another range is selected; return the range for the next frame. See the type's notes
-    /// for what it takes to act on it.
-    pub fn observe_reference(&mut self, low: Option<f64>, end: u64) -> Range {
+    /// Take a frame of `range`, below the current range, that ended at stream position `end`,
+    /// analysed as a verifier; return the range for the next frame. A frame of any other range
+    /// changes nothing. See the type's notes for what it takes to act on it.
+    pub fn observe_verifier(&mut self, range: Range, reading: Option<f64>, end: u64) -> Range {
         self.rewind(end);
-        let candidate = low.filter(|&hz| {
+        let Some(index) = verifier(range).filter(|_| range < self.current) else {
+            return self.current;
+        };
+        let reading = reading.filter(|&hz| hz.is_finite() && hz > 0.0);
+        let fresh = self.fresh(range, end);
+        // The current pitch itself, from a range that sees its octave below: the octave is known.
+        if let (Some(hz), Some(pitch)) = (reading, self.pitch)
+            && fresh
+            && cents(hz, pitch).abs() <= HARMONIC_TOLERANCE_CENTS
+            && self.table.sees(range, pitch / 2.0)
+        {
+            self.verified_at = Some(self.settled_at);
+        }
+        let candidate = reading.filter(|&hz| {
             let below = hz < self.current.floor_hz() && !self.table.holds(self.current, hz);
+            let ringing = self
+                .came_from
+                .is_some_and(|from| cents(hz, from).abs() <= HARMONIC_TOLERANCE_CENTS);
             let consistent = self.pitch.is_none_or(|current| harmonic(current, hz));
-            hz.is_finite() && hz > 0.0 && below && consistent
+            below && hz >= LOWEST_FUNDAMENTAL_HZ && consistent && !ringing
         });
-        let Some(hz) = candidate.filter(|_| self.current != Range::Low) else {
-            self.reference = None;
-            self.streak = None;
+        let (Some(hz), Some(reference), Some(streak)) = (
+            candidate,
+            self.reference.get_mut(index),
+            self.streak.get_mut(index),
+        ) else {
+            if let Some(reference) = self.reference.get_mut(index) {
+                *reference = None;
+            }
+            if let Some(streak) = self.streak.get_mut(index) {
+                *streak = None;
+            }
             return self.current;
         };
         let agrees = |previous: f64| cents(hz, previous).abs() <= HARMONIC_TOLERANCE_CENTS;
-        let start = match self.streak {
+        let start = match *streak {
             Some((start, previous)) if agrees(previous) => start,
             _ => end,
         };
-        self.streak = Some((start, hz));
+        *streak = Some((start, hz));
         let patient = end.saturating_sub(start) >= self.patience;
-        if !self.fresh(Range::Low, end) {
-            self.reference = None;
-            if patient {
-                self.switch(self.table.range_for(hz), end);
-            }
-        } else if self.reference.is_some_and(agrees) || patient {
-            self.switch(self.table.range_for(hz), end);
+        let move_now = if fresh {
+            let two = reference.is_some_and(agrees);
+            *reference = Some(hz);
+            two || patient
         } else {
-            self.reference = Some(hz);
+            *reference = None;
+            patient
+        };
+        if move_now {
+            self.switch(self.table.range_for(hz), end);
         }
         self.current
     }
+}
+
+/// Whether `a` is within [`HARMONIC_TOLERANCE_CENTS`] of twice `b`.
+fn octave_apart(a: f64, b: f64) -> bool {
+    (cents(a, b) - 1_200.0).abs() <= HARMONIC_TOLERANCE_CENTS
 }
 
 /// `1200 · log₂(a / b)`.
@@ -906,23 +1019,32 @@ mod tests {
         selector.observe(Observation::Pitch(165.35), changed);
         // A Low window that started before the current pitch began is stale, however clear.
         for end in [changed + 120, changed + LOW_SPAN - 1] {
-            assert_eq!(selector.observe_reference(Some(82.41), end), Range::High);
+            assert_eq!(
+                selector.observe_verifier(Range::Low, Some(82.41), end),
+                Range::High
+            );
         }
         // Fresh, but not a harmonic, or inside the band, or unclear: nothing to act on.
         let fresh = changed + LOW_SPAN;
-        assert_eq!(selector.observe_reference(Some(61.0), fresh), Range::High);
         assert_eq!(
-            selector.observe_reference(Some(160.0), fresh + 240),
+            selector.observe_verifier(Range::Low, Some(61.0), fresh),
             Range::High
         );
-        assert_eq!(selector.observe_reference(None, fresh + 480), Range::High);
+        assert_eq!(
+            selector.observe_verifier(Range::Low, Some(160.0), fresh + 240),
+            Range::High
+        );
+        assert_eq!(
+            selector.observe_verifier(Range::Low, None, fresh + 480),
+            Range::High
+        );
         // Fresh and twice the reference: acted on once a second Low frame agrees.
         assert_eq!(
-            selector.observe_reference(Some(82.41), fresh + 720),
+            selector.observe_verifier(Range::Low, Some(82.41), fresh + 720),
             Range::High
         );
         assert_eq!(
-            selector.observe_reference(Some(82.45), fresh + 960),
+            selector.observe_verifier(Range::Low, Some(82.45), fresh + 960),
             Range::Mid
         );
     }
@@ -940,17 +1062,17 @@ mod tests {
         let ended = clock.tick();
         selector.observe(Observation::Unclear, ended);
         assert_eq!(
-            selector.observe_reference(Some(61.0), ended + 120),
+            selector.observe_verifier(Range::Low, Some(61.0), ended + 120),
             Range::Mid
         );
         // And 65.4 Hz, half of it, is now stale: the held reading ended at `ended`, so only Low
         // frames whose window started after it count (the C3 → G3 leap's common period).
         assert_eq!(
-            selector.observe_reference(Some(65.4), ended + 120),
+            selector.observe_verifier(Range::Low, Some(65.4), ended + 120),
             Range::Mid
         );
         assert_eq!(
-            selector.observe_reference(Some(65.4), ended + 240),
+            selector.observe_verifier(Range::Low, Some(65.4), ended + 240),
             Range::Mid
         );
         // A short clear run (a barely clear reading) ending is not a change.
@@ -962,8 +1084,14 @@ mod tests {
         weak.observe(Observation::Pitch(164.9), clock.tick());
         weak.observe(Observation::Unclear, clock.tick());
         let fresh = first + LOW_SPAN;
-        assert_eq!(weak.observe_reference(Some(82.41), fresh), Range::High);
-        assert_eq!(weak.observe_reference(Some(82.41), fresh + 240), Range::Mid);
+        assert_eq!(
+            weak.observe_verifier(Range::Low, Some(82.41), fresh),
+            Range::High
+        );
+        assert_eq!(
+            weak.observe_verifier(Range::Low, Some(82.41), fresh + 240),
+            Range::Mid
+        );
         assert_eq!(selector.held_frames(Range::High), 8);
     }
 
@@ -977,7 +1105,7 @@ mod tests {
             let end = clock.tick();
             selector.observe(current(frame), end);
             if frame % 2 == 1 {
-                selector.observe_reference(Some(82.41), end);
+                selector.observe_verifier(Range::Low, Some(82.41), end);
             }
             selector.current() != Range::High
         })
@@ -1025,12 +1153,145 @@ mod tests {
             let end = clock.tick();
             selector.observe(Observation::Pitch(164.8), end);
             if frame % 2 == 1 {
-                selector.observe_reference(Some(82.41), end);
+                selector.observe_verifier(Range::Low, Some(82.41), end);
             }
             selector.current() != Range::High
         });
         // Fresh once Low's span (5059 samples) has passed since the rewind, then two agree.
         assert!(left.is_some_and(|frame| frame < 50), "{left:?}");
+    }
+
+    #[test]
+    fn a_range_tests_the_octave_below_only_where_it_sees_it() {
+        // rate / (N/2 − 1): 48000/449, 12000/239; 44100/412, 11025/219.
+        for (rate, high, mid) in [(48_000, 106.90, 50.21), (44_100, 107.04, 50.34)] {
+            let table = RangeTable::new(rate).unwrap();
+            let sight = |range| {
+                (1..100_000)
+                    .map(|i| f64::from(i) * 0.01)
+                    .find(|&hz| table.sees(range, hz))
+                    .unwrap()
+            };
+            assert!((sight(Range::High) - high).abs() < 0.02, "{rate}");
+            assert!((sight(Range::Mid) - mid).abs() < 0.02, "{rate}");
+            assert!(sight(Range::Low) < 20.1);
+            // High cannot test 164.8 Hz (a low E's second partial?), can 329.6; Mid cannot test
+            // 82.41 Hz (a bass E's?) but can 110; under 56.6 Hz the octave below is no note.
+            assert!(!table.tests_octave(Range::High, 164.8));
+            assert!(table.tests_octave(Range::High, 329.6));
+            assert!(!table.tests_octave(Range::Mid, 82.41));
+            assert!(table.tests_octave(Range::Mid, 110.0));
+            assert!(table.tests_octave(Range::Mid, 56.0) && !table.tests_octave(Range::Mid, 57.0));
+            assert!(table.tests_octave(Range::Low, 41.2) && table.tests_octave(Range::Low, 79.0));
+        }
+    }
+
+    /// Mid's span at 48 kHz: 480 decimated samples × 4 plus the 259 taps.
+    const MID_SPAN: u64 = 2_179;
+
+    #[test]
+    fn a_fresh_verifier_reading_the_estimate_makes_its_octave_known() {
+        let table = RangeTable::new(48_000).unwrap();
+        let mut selector = RangeSelector::new(&table, Range::High);
+        let start = 10_000;
+        selector.observe(Observation::Pitch(196.0), start);
+        assert_eq!(selector.octave(Range::High, 196.0), Octave::Ambiguous);
+        // A stale Mid frame changes nothing, a fresh one of another pitch neither.
+        selector.observe_verifier(Range::Mid, Some(196.0), start + MID_SPAN - 1);
+        selector.observe_verifier(Range::Mid, Some(130.0), start + MID_SPAN);
+        assert_eq!(selector.octave(Range::High, 196.0), Octave::Ambiguous);
+        selector.observe_verifier(Range::Mid, Some(196.1), start + MID_SPAN + 120);
+        assert_eq!(selector.octave(Range::High, 196.0), Octave::Known);
+        // Known while the pitch holds; a change of note makes the next one ambiguous again.
+        selector.observe(Observation::Pitch(196.2), start + MID_SPAN + 240);
+        assert_eq!(selector.octave(Range::High, 196.2), Octave::Known);
+        selector.observe(Observation::Pitch(174.6), start + MID_SPAN + 360);
+        assert_eq!(selector.octave(Range::High, 174.6), Octave::Ambiguous);
+        // A range that tests its own octave is always known, verified or not.
+        assert_eq!(selector.octave(Range::High, 329.6), Octave::Known);
+    }
+
+    #[test]
+    fn mid_verifies_high_and_moves_the_chain_to_the_octave_below() {
+        let table = RangeTable::new(48_000).unwrap();
+        let mut selector = RangeSelector::new(&table, Range::High);
+        selector.observe(Observation::Pitch(164.8), 10_000);
+        let fresh = 10_000 + MID_SPAN;
+        assert_eq!(
+            selector.observe_verifier(Range::Mid, Some(82.41), fresh),
+            Range::High
+        );
+        assert_eq!(
+            selector.observe_verifier(Range::Mid, Some(82.4), fresh + 120),
+            Range::Mid
+        );
+        // High is never a verifier, nor is a range at or above the current one.
+        assert_eq!(
+            selector.observe_verifier(Range::High, Some(41.2), fresh + 240),
+            Range::Mid
+        );
+        assert_eq!(
+            selector.observe_verifier(Range::Mid, Some(41.2), fresh + 360),
+            Range::Mid
+        );
+    }
+
+    #[test]
+    fn a_verifier_reading_below_the_lowest_fundamental_moves_nothing() {
+        // A2 over a bass E: Mid reads the A2 (110 Hz), Low their common period, 27.5 Hz, a
+        // quarter of it. That is a chord, not a string, however long it lasts.
+        let table = RangeTable::new(48_000).unwrap();
+        let mut selector = RangeSelector::new(&table, Range::Mid);
+        selector.observe(Observation::Pitch(110.0), 10_000);
+        for k in 0..200 {
+            selector.observe(Observation::Pitch(110.0), 10_000 + 120 * k);
+            selector.observe_verifier(Range::Low, Some(27.5), 10_000 + 120 * k + 60);
+        }
+        assert_eq!(selector.current(), Range::Mid);
+        const { assert!(LOWEST_FUNDAMENTAL_HZ > 28.3 && LOWEST_FUNDAMENTAL_HZ < 30.87) };
+    }
+
+    #[test]
+    fn the_octave_below_a_pitch_just_moved_up_to_is_a_ringing_string_and_moves_nothing() {
+        let table = RangeTable::new(48_000).unwrap();
+        let mut selector = RangeSelector::new(&table, Range::Mid);
+        let mut clock = Clock(0);
+        for _ in 0..40 {
+            selector.observe(Observation::Pitch(82.41), clock.tick());
+        }
+        // The E3 plucked over the ringing E2 takes over: up an octave, into High.
+        assert_eq!(
+            selector.observe(Observation::Pitch(164.82), clock.tick()),
+            Range::High
+        );
+        // Mid, seeing both, reads the E2 still ringing: for far longer than the patience, nothing
+        // moves, and the E3 stays ambiguous (`docs/adr/0029`).
+        for _ in 0..400 {
+            let end = clock.tick();
+            selector.observe(Observation::Pitch(164.82), end);
+            selector.observe_verifier(Range::Mid, Some(82.41), end);
+        }
+        assert_eq!(selector.current(), Range::High);
+        assert_eq!(selector.octave(Range::High, 164.82), Octave::Ambiguous);
+        // Once the E2 has decayed, Mid reads the E3 itself: known.
+        selector.observe_verifier(Range::Mid, Some(164.8), clock.tick());
+        assert_eq!(selector.octave(Range::High, 164.82), Octave::Known);
+        // Another move up, from a pitch that is not an octave below, sets nothing up.
+        let mut other = RangeSelector::new(&table, Range::Mid);
+        other.observe(Observation::Pitch(130.81), 1_000);
+        other.observe(Observation::Pitch(164.82), 1_120);
+        // In High, the first reading is a change of pitch: Mid is fresh a span after it.
+        let first = 1_240;
+        other.observe(Observation::Pitch(164.82), first);
+        let fresh = first + MID_SPAN;
+        assert_eq!(
+            other.observe_verifier(Range::Mid, Some(82.41), fresh),
+            Range::High
+        );
+        assert_eq!(
+            other.observe_verifier(Range::Mid, Some(82.41), fresh + 120),
+            Range::Mid
+        );
     }
 
     #[test]

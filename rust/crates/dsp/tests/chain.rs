@@ -26,6 +26,7 @@ use std::io::Write;
 use diapason_dsp::chain::{Frame, Selection, UNPITCHED_SECONDS};
 use diapason_dsp::convert::{index_from_f64, index_to_f64, to_f32};
 use diapason_dsp::filter::{DcBlock, Decimator};
+use diapason_dsp::octave::Octave;
 use diapason_dsp::pitch::{Mpm, MpmConfig};
 use diapason_dsp::range::{
     CROSSOVER_HZ, DECIMATION, HYSTERESIS, Path, Range, RangeTable, SUPPORTED_RATES,
@@ -779,9 +780,9 @@ fn pitch_class_cents(hz: f64, true_hz: f64) -> f64 {
     off - 1_200.0 * (off / 1_200.0).round()
 }
 
-/// Whether a frame's octave is known. Until frames carry the flag (`T-003c`), every frame's is.
-fn octave_known(_frame: &Frame) -> bool {
-    true
+/// Whether a frame's octave is known.
+fn octave_known(frame: &Frame) -> bool {
+    frame.octave == Octave::Known
 }
 
 /// Whether a clear frame shows a note other than `hz`: more than `WRONG_NOTE_CENTS` off it, or,
