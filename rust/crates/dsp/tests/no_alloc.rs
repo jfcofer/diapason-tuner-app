@@ -1,6 +1,8 @@
 //! `Mpm::analyze` never allocates: every window size the accuracy sweep uses, over tones, noise,
 //! silence and malformed frames, with allocation trapping armed (`docs/AUDIO_ENGINE.md` §7,
-//! `docs/TESTING.md` §2). Construction allocates, by design, and runs outside the trap.
+//! `docs/TESTING.md` §2). Nor does the pre-processing chain in front of it: `DcBlock`,
+//! `NoiseGate`, both `Decimator`s, `FrameAssembler`, `RangeSelector`, and all of them streamed
+//! together (`common::Chain`). Construction allocates, by design, and runs outside the trap.
 //!
 //! `assert_no_alloc` aborts the process on a trapped allocation; it cannot panic, because
 //! panicking allocates. So the canary that proves the trap is armed runs in a child process: this
@@ -13,8 +15,15 @@
 use std::process::{Command, ExitStatus, Output};
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
+use diapason_dsp::filter::DcBlock;
+use diapason_dsp::frame::FrameAssembler;
+use diapason_dsp::gate::{GateConfig, NoiseGate};
 use diapason_dsp::pitch::{Mpm, MpmConfig};
+use diapason_dsp::range::{Observation, Range, RangeSelector, RangeTable, SUPPORTED_RATES};
 use diapason_dsp::synth::{self, Noise, Pluck};
+
+pub mod common;
+use common::{Chain, Selection};
 
 #[global_allocator]
 static ALLOCATOR: AllocDisabler = AllocDisabler;
@@ -70,6 +79,83 @@ fn analysis_never_allocates() {
     assert_eq!(estimates, WINDOWS.len() * 8 * 3);
 }
 
+/// A second of input for the chain: silence, then a tone that walks down through every range, then
+/// noise, so the gate opens and closes and the selector switches and scans.
+fn chain_input(rate: u32) -> Vec<f32> {
+    let second = usize::try_from(rate).unwrap();
+    let mut signal = vec![0.0_f32; 3 * second];
+    for (k, hz) in [1_000.0, 196.0, 82.41, 41.2].into_iter().enumerate() {
+        let start = second / 4 + k * second / 2;
+        synth::sawtooth(&mut signal[start..start + second / 2], hz, rate, 0.5, 0.0);
+    }
+    Noise::new(5).fill(&mut signal[5 * second / 2..], 0.1);
+    signal
+}
+
+/// Stream `chain_input` through the chain at every supported rate, in blocks of awkward sizes,
+/// with the trap armed around each block, home in each range. `extra` runs inside the trap after
+/// each block. Returns the frames analysed.
+fn stream_armed(extra: impl Fn()) -> usize {
+    let mut frames = 0;
+    for rate in SUPPORTED_RATES {
+        let signal = chain_input(rate);
+        for home in Range::ALL {
+            let mut chain = Chain::new(rate, Selection::Auto(home));
+            for block in signal.chunks(173) {
+                assert_no_alloc(|| {
+                    chain.push(block, |_| frames += 1);
+                    extra();
+                });
+            }
+        }
+    }
+    frames
+}
+
+#[test]
+fn the_chain_never_allocates() {
+    assert!(stream_armed(|| {}) > 1_000);
+}
+
+/// Each stage's per-call path on its own, with the trap armed, so a failure names the stage.
+#[test]
+fn no_stage_allocates() {
+    let rate = 48_000;
+    let signal = chain_input(rate);
+    let table = RangeTable::new(rate).unwrap();
+    let mut dc = DcBlock::new(rate).unwrap();
+    let mut gate = NoiseGate::new(rate, GateConfig::default()).unwrap();
+    let mut decimator = table.decimator().unwrap();
+    let mut band_limit = table.band_limit().unwrap();
+    let mut frames = FrameAssembler::new(480, 30).unwrap();
+    let mut selector = RangeSelector::new(&table, Range::Low);
+    let mut block = [0.0_f32; 256];
+    let mut outputs = 0;
+    for chunk in signal.chunks(256) {
+        let block = &mut block[..chunk.len()];
+        block.copy_from_slice(chunk);
+        assert_no_alloc(|| dc.process(block));
+        assert_no_alloc(|| gate.process(block));
+        assert_no_alloc(|| band_limit.process(block, |_| outputs += 1));
+        assert_no_alloc(|| {
+            decimator.process(block, |y| {
+                frames.push(&[y], |_, _| outputs += 1);
+            });
+        });
+        assert_no_alloc(|| {
+            for observation in [
+                Observation::Pitch(330.0),
+                Observation::Unclear,
+                Observation::Pitch(f64::NAN),
+                Observation::Silent,
+            ] {
+                selector.observe(observation);
+            }
+        });
+    }
+    assert!(outputs > signal.len());
+}
+
 #[test]
 #[ignore = "runs only as the child of the_trap_is_armed"]
 fn canary_child() {
@@ -81,6 +167,12 @@ fn canary_child() {
             analyse_armed(1, || {
                 drop(std::hint::black_box(Vec::<f32>::with_capacity(16)))
             });
+        }
+        Ok("clean-chain") => {
+            stream_armed(|| {});
+        }
+        Ok("allocate-chain") => {
+            stream_armed(|| drop(std::hint::black_box(Vec::<f32>::with_capacity(16))));
         }
         _ => {} // Not launched by the canary: nothing to prove.
     }
@@ -110,19 +202,22 @@ fn aborted(status: ExitStatus) -> bool {
 #[test]
 fn the_trap_is_armed() {
     // Control: the same harness without the extra allocation runs to completion, so the child is
-    // sound and a failure below can only be the trap firing.
-    let clean = run_child("clean");
-    let stdout = String::from_utf8_lossy(&clean.stdout);
-    assert!(clean.status.success(), "clean child failed: {stdout}");
-    assert!(
-        stdout.contains("1 passed"),
-        "clean child did not run the canary: {stdout}"
-    );
+    // sound and a failure below can only be the trap firing. Once around `analyze`, once around
+    // the whole chain.
+    for (clean, allocate) in [("clean", "allocate"), ("clean-chain", "allocate-chain")] {
+        let control = run_child(clean);
+        let stdout = String::from_utf8_lossy(&control.stdout);
+        assert!(control.status.success(), "{clean} child failed: {stdout}");
+        assert!(
+            stdout.contains("1 passed"),
+            "{clean} child did not run the canary: {stdout}"
+        );
 
-    let dirty = run_child("allocate");
-    assert!(
-        aborted(dirty.status),
-        "an allocation inside the trap was not caught (status {:?})",
-        dirty.status
-    );
+        let dirty = run_child(allocate);
+        assert!(
+            aborted(dirty.status),
+            "{allocate}: an allocation inside the trap was not caught (status {:?})",
+            dirty.status
+        );
+    }
 }
