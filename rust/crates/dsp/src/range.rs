@@ -6,13 +6,14 @@
 //! measure it are named beside it. In short (both supported rates, `T-003b`):
 //!
 //! - A window holds three periods of its range's floor (`docs/AUDIO_ENGINE.md` §2).
-//! - **Where to decimate depends on the window's length in samples, not on f₀ alone.** Through the
-//!   ×4 path, in Mid's 480/441-sample window, the sawtooth keeps a 2× margin (0.25 ¢) up to
-//!   508 Hz at 48 kHz and 214 Hz at 44.1 kHz. High's three-period window would be 225/207
-//!   samples at the decimated rate, and there the sawtooth already misses the budget at the floor:
-//!   −0.82 ¢ at 160 Hz. At full rate the same 18.75 ms (900 samples) reads within 0.19 ¢ up to
-//!   1400 Hz. So the crossover is the Mid/High boundary, [`CROSSOVER_HZ`], under the tightest
-//!   decimated limit (214 Hz) with its hysteresis band included.
+//! - **The crossover is a range boundary, chosen for latency.** Through the ×4 path, in Mid's
+//!   480/441-sample window, sine and sawtooth keep a 2× margin (≤ 0.25 ¢) from the crossover to
+//!   at least twice it (worst 0.10 ¢, probed to 320 Hz at every quarter semitone and whole-period
+//!   frequency: `tests/chain.rs`, `the_decimated_path_holds_the_budget_past_the_crossover`). So
+//!   the decimated path could serve higher notes; stretching Mid to them would give them a 40 ms
+//!   window instead of High's 18.75 ms. High runs at full rate because the decimator's content
+//!   stops at 1.5 kHz and High goes to 1400 Hz. (Before `T-003b`'s common-overlap step 5, a
+//!   225-sample decimated window read −0.82 ¢ at 160 Hz; it now reads +0.038 ¢.)
 //! - Both paths keep their content below an eighth of their analysis rate, where `T-003a`
 //!   measured the parabolic-interpolation bias at 0.0035 lag.
 //! - Hops are as short as the CPU budget allows, because each one is paid three times in
@@ -51,9 +52,10 @@ pub const BAND_LIMIT_PASSBAND_HZ: f64 = 1_500.0;
 /// at 48 kHz, the largest input gap measured on the Redmi (journal `2026-10-21`).
 pub const IO_SECONDS: f64 = 0.020;
 
-/// The snapshot period, in seconds: the session thread posts to Dart about 30 times a second
-/// (`docs/ARCHITECTURE.md` §4), so a new estimate waits up to this long.
-pub const SNAPSHOT_SECONDS: f64 = 1.0 / 30.0;
+/// The tuner's snapshot period, in seconds: published at the display rate, 60 Hz, so a new estimate
+/// waits up to this long. The owner's decision of 2026-10-23 (`docs/adr/0028`): M3 must publish
+/// tuner snapshots at 60 Hz, and this line of the ledger binds it.
+pub const SNAPSHOT_SECONDS: f64 = 1.0 / 60.0;
 
 /// One display frame at 60 Hz, in seconds: the snapshot reaches the needle on the next vsync.
 pub const DISPLAY_SECONDS: f64 = 1.0 / 60.0;
@@ -66,11 +68,12 @@ pub const SMOOTHING_HOPS: usize = 2;
 /// An analysis range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Range {
-    /// From 30 Hz: five- and six-string bass, low B (30.87 Hz) to the D string. Decimated.
+    /// From 30 Hz: five- and six-string bass from low B (30.87 Hz) to the D string (73.42 Hz).
+    /// Decimated.
     Low,
-    /// From 75 Hz: guitar low E (82.41 Hz) to the G string. Decimated.
+    /// From 75 Hz: guitar low E (82.41 Hz), A and D (146.83 Hz); the bass's G (98 Hz). Decimated.
     Mid,
-    /// From [`CROSSOVER_HZ`]: guitar D3 and up, violin, ukulele, to 1400 Hz. Full rate.
+    /// From [`CROSSOVER_HZ`]: guitar G3 (196 Hz) and up, violin, ukulele, to 1400 Hz. Full rate.
     High,
 }
 
@@ -108,16 +111,17 @@ impl Range {
     }
 
     /// Allowance for the first estimate to settle once the window holds only the new note, in
-    /// seconds: measured by `tests/chain.rs`, `onset_latency_is_within_the_ledger`. The DC
-    /// block's transient (time constant `1/(2π·20 Hz)` = 8 ms) still sits at the start of the
-    /// window when it first fills; near the corner, at low B, it moves the estimate past 5 ¢ for
-    /// a further 12 ms.
+    /// seconds, from `tests/chain.rs`, `onset_latency_is_within_the_ledger`. The DC block's
+    /// transient (time constant `1/(2π·20 Hz)` = 8 ms) still sits at the start of the window when
+    /// it first fills. Measured past group delay, window and hop, worst of both rates: Low 11.9 ms
+    /// (low B, a sine, nearest the corner), Mid 3.6 ms (75 Hz). High needs none: its worst,
+    /// 21.72 ms at 44.1 kHz, is under its 21.93 ms of group delay, window and hop.
     #[must_use]
     pub fn settling_seconds(self) -> f64 {
         match self {
             Self::Low => 0.015,
             Self::Mid => 0.005,
-            Self::High => 0.001,
+            Self::High => 0.0,
         }
     }
 
@@ -690,6 +694,35 @@ mod tests {
     fn harmonics_are_whole_multiples_within_half_a_semitone() {
         assert!(harmonic(165.35, 82.41) && harmonic(330.0, 82.41) && harmonic(82.0, 41.2));
         assert!(!harmonic(82.41, 82.41) && !harmonic(165.35, 61.0) && !harmonic(120.0, 82.41));
+    }
+
+    /// The ledger table in `docs/AUDIO_ENGINE.md` §1, at 48 kHz, in ms: each range's chain line and
+    /// total. Changing a constant it is built from (`IO_SECONDS`, a settling, a hop, a filter)
+    /// fails this until the table is updated to match.
+    #[test]
+    fn the_ledger_matches_the_table_in_audio_engine_section_1() {
+        let table = RangeTable::new(48_000).unwrap();
+        let ms = |range| {
+            let ledger = table.ledger(range);
+            let round = |s: f64| (s * 1e4).round() / 10.0;
+            (round(ledger.chain_seconds()), round(ledger.total_seconds()))
+        };
+        assert_eq!(ms(Range::Low), (122.7, 186.0));
+        assert_eq!(ms(Range::Mid), (50.2, 108.5));
+        assert_eq!(ms(Range::High), (21.9, 80.2));
+        // §1's budgets, by range: High ≤ 85 ms (f₀ ≥ 160 Hz), Mid ≤ 110 ms (80–160 Hz), Low
+        // ≤ 190 ms (low B), at both rates.
+        for rate in SUPPORTED_RATES {
+            let table = RangeTable::new(rate).unwrap();
+            for (range, budget) in [
+                (Range::Low, 0.190),
+                (Range::Mid, 0.110),
+                (Range::High, 0.085),
+            ] {
+                let total = table.ledger(range).total_seconds();
+                assert!(total <= budget, "{range:?} at {rate} Hz: {total} s");
+            }
+        }
     }
 
     #[test]

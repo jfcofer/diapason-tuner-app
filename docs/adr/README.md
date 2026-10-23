@@ -45,4 +45,4 @@ agent from "improving" a deliberate choice.
 | [0025](0025-stream-tuning.md) | Grow the output buffer as session policy; discard input only at start-up | Accepted |
 | [0026](0026-patrol-device-tests.md) | Device tests run through patrol, pinned with its CLI, never shipped | Accepted |
 | [0027](0027-synthetic-fixtures-in-code.md) | Synthetic audio fixtures are generated in code; only recordings are checked in | Accepted |
-| [0028](0028-windows-hops-from-the-latency-ledger.md) | Analysis windows, hops and the decimation crossover come from the latency ledger | Proposed |
+| [0028](0028-windows-hops-from-the-latency-ledger.md) | Analysis windows, hops and the decimation crossover come from the latency ledger | Accepted |
