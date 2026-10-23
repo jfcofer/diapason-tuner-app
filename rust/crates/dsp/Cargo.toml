@@ -18,5 +18,9 @@ proptest.workspace = true
 name = "nsdf"
 harness = false
 
+[[bench]]
+name = "chain"
+harness = false
+
 [lints]
 workspace = true
