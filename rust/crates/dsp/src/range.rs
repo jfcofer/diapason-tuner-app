@@ -980,6 +980,7 @@ mod tests {
     /// to the precision printed. A row renamed, added or dropped fails too.
     #[test]
     fn the_ledger_table_in_audio_engine_section_1_matches_the_code() {
+        type Line = fn(&Ledger) -> f64;
         let table = RangeTable::new(48_000).unwrap();
         let start = AUDIO_ENGINE
             .find("| Stage | Low")
@@ -990,7 +991,6 @@ mod tests {
             .take_while(|line| line.starts_with('|'))
             .map(|line| line.trim_matches('|').split('|').collect())
             .collect();
-        type Line = fn(&Ledger) -> f64;
         let lines: [(&str, Line); 10] = [
             ("Input I/O", |l| l.io),
             ("Filter group delay", |l| l.group_delay),
