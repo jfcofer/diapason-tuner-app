@@ -125,22 +125,16 @@ impl Range {
         }
     }
 
-    /// The next range in a scan, wrapping from the highest to the lowest.
+    /// The next range in a scan: downward, wrapping from the lowest to the highest. A range that
+    /// hears no pitch is most often below its reach (High is blind under 107 Hz, Mid under 50 Hz),
+    /// while Low, which sees down to 20 Hz, misses only what is above its 1.5 kHz content. An
+    /// upward order took a downward octave from High to Low and back up to Mid: two switches.
     #[must_use]
     pub fn next(self) -> Self {
         match self {
-            Self::Low => Self::Mid,
-            Self::Mid => Self::High,
-            Self::High => Self::Low,
-        }
-    }
-
-    /// The floor of the range above, if there is one.
-    fn ceiling_hz(self) -> Option<f64> {
-        match self {
-            Self::Low => Some(Self::Mid.floor_hz()),
-            Self::Mid => Some(Self::High.floor_hz()),
-            Self::High => None,
+            Self::Low => Self::High,
+            Self::Mid => Self::Low,
+            Self::High => Self::Mid,
         }
     }
 }
@@ -358,13 +352,21 @@ impl RangeTable {
     }
 
     /// Whether `range` keeps a note at `hz` once it is selected: its band widened by
-    /// [`HYSTERESIS`] on each side that borders another range.
+    /// [`HYSTERESIS`] where that cannot cross a latency row of `docs/AUDIO_ENGINE.md` §1. Low holds
+    /// up to 79.46 Hz, Mid from 70.79 Hz up to 160 Hz exclusive, High from 151.0 Hz: every
+    /// f₀ ≥ 80 Hz is out of Low, and every f₀ ≥ 160 Hz is High.
     #[must_use]
     pub fn holds(&self, range: Range, hz: f64) -> bool {
         let above_floor = range == Range::Low || hz >= range.floor_hz() / HYSTERESIS;
-        let below_ceiling = range
-            .ceiling_hz()
-            .is_none_or(|ceiling| hz < ceiling * HYSTERESIS);
+        let below_ceiling = match range {
+            // Low's band reaches a semitone past Mid's floor, to 79.46 Hz: still under the 80 Hz
+            // where §1's 110 ms row starts.
+            Range::Low => hz < Range::Mid.floor_hz() * HYSTERESIS,
+            // Mid stops at the crossover: §1's 85 ms row starts at 160 Hz, so the overlap with
+            // High sits below it, where High holds down to 151 Hz.
+            Range::Mid => hz < Range::High.floor_hz(),
+            Range::High => true,
+        };
         hz.is_finite() && hz > 0.0 && above_floor && below_ceiling
     }
 
@@ -405,12 +407,27 @@ pub const MISS_GRACE_SECONDS: f64 = 0.050;
 /// semitone, wide enough for a stiff string's stretched partials.
 pub const HARMONIC_TOLERANCE_CENTS: f64 = 50.0;
 
-/// Chooses the range for the next frame from what the last one found. A pure state machine:
-/// no clock but the frames it is shown, no I/O, no allocation.
+/// The highest multiple [`RangeSelector::observe_reference`] takes for a harmonic. A weak
+/// fundamental leaves the second or third partial strongest, so a range blind to the fundamental
+/// reads 2·f₀ or 3·f₀; 4 leaves one partial of room. Unbounded, ±50 ¢ makes every frequency above
+/// 17·f₀ "a multiple" (587.33 Hz is 14 × 41.2 Hz + 31 ¢), and a melody over a bass note would
+/// fall to the bass's range.
+pub const MAX_HARMONIC: f64 = 4.0;
+
+/// A change of the current range's clear pitch larger than this, in cents, makes every Low frame
+/// whose window started before it stale for [`RangeSelector::observe_reference`]. Three quarters
+/// of a semitone: any change of note, but not the jitter of a weak, barely clear reading (Mid's
+/// reading of a weak bass E wanders by 53 ¢ between frames).
+pub const CHANGE_CENTS: f64 = 75.0;
+
+/// Chooses the range for the next frame from what the last one found. A pure state machine: its
+/// only clock is the stream position each frame reports, and it does no I/O and no allocation.
 ///
-/// - A clear pitch the current range [`holds`](RangeTable::holds) keeps it. One outside moves to
-///   [`RangeTable::range_for`] the pitch. The bands overlap by [`HYSTERESIS`], so a note tuned
-///   across a boundary stays where it is.
+/// - A clear pitch the current range [`holds`](RangeTable::holds) keeps it. One above its band
+///   moves at once to [`RangeTable::range_for`] the pitch. One below moves only after it has held
+///   (within [`CHANGE_CENTS`]) for a whole window of the current range: a window spanning a note
+///   change finds the two notes' common period, lower than either. The bands overlap, so a note
+///   tuned across a boundary stays where it is.
 /// - Silence (a closed gate) returns to the home range, the one a preset picks (M3).
 /// - Each frame without a clear pitch, gate open, adds a miss; each clear one takes a miss away
 ///   (a decay, not a reset, so sporadic clear frames cannot hold a range that mostly sees
@@ -420,23 +437,38 @@ pub const HARMONIC_TOLERANCE_CENTS: f64 = 50.0;
 ///   one hop, not a window.
 /// - **The octave guard of range selection.** `Mpm` searches lags up to half its window, so a
 ///   range cannot see below about 1.5 periods of its floor: High is blind below 107 Hz, Mid below
-///   50 Hz. A low E (82.41 Hz) heard by High reads as its second harmonic, 164.8 Hz, which High
+///   50 Hz. A low E (82.41 Hz) heard by High reads as its second partial, 164.8 Hz, which High
 ///   holds. So the Low range, which sees down to 20 Hz, is analysed as a reference while another
-///   range is selected ([`Self::observe_reference`]): a clear Low pitch below the current band,
-///   with the current pitch absent or a whole multiple of it, moves to the Low pitch's range.
+///   range is selected ([`Self::observe_reference`]). It moves the chain to the Low pitch's range
+///   only on evidence that cannot come from a note change:
+///   - the Low pitch is below the current band, and the current range's latest clear pitch since
+///     the last switch is absent, or 2, 3 or 4 times it ([`MAX_HARMONIC`]);
+///   - **the Low frame's whole window, filter taps included, started after the last switch, the
+///     last change of the current pitch ([`CHANGE_CENTS`]) and the last end of a reading held
+///     for a window ([`Self::held_frames`])**. A Low window that spans a note
+///     change holds both notes, and its NSDF finds their common period, f/2, f/3, …: acting on
+///     it showed wrong notes for up to 55 ms, and flipped Mid and High on every frame after an
+///     upward leap (`T-003b`);
+///   - two such Low frames in a row agree within [`HARMONIC_TOLERANCE_CENTS`].
 ///
 /// ```
 /// use diapason_dsp::range::{Observation, Range, RangeSelector, RangeTable};
 ///
 /// let table = RangeTable::new(48_000)?;
 /// let mut selector = RangeSelector::new(&table, Range::Low);
-/// assert_eq!(selector.observe(Observation::Pitch(82.41)), Range::Mid);
-/// assert_eq!(selector.observe(Observation::Pitch(72.0)), Range::Mid); // within the hysteresis
-/// assert_eq!(selector.observe(Observation::Pitch(164.82)), Range::Mid);
-/// assert_eq!(selector.observe(Observation::Pitch(330.0)), Range::High);
-/// assert_eq!(selector.observe(Observation::Pitch(164.82)), Range::High); // the octave above...
-/// assert_eq!(selector.observe_reference(Some(82.41)), Range::Mid); // ...caught by Low
-/// assert_eq!(selector.observe(Observation::Silent), Range::Low);
+/// // Positions are input samples, the audio clock: one frame every 2.5 ms here.
+/// let mut at = 0;
+/// let mut next = || { at += 120; at };
+/// assert_eq!(selector.observe(Observation::Pitch(82.41), next()), Range::Mid);
+/// assert_eq!(selector.observe(Observation::Pitch(72.0), next()), Range::Mid); // hysteresis
+/// assert_eq!(selector.observe(Observation::Pitch(330.0), next()), Range::High);
+/// assert_eq!(selector.observe(Observation::Pitch(164.82), next()), Range::High); // octave up
+/// // A Low frame whose window still holds the E4 is stale; 120 ms later, two agree.
+/// assert_eq!(selector.observe_reference(Some(82.41), next()), Range::High);
+/// let later = at + 5_760;
+/// assert_eq!(selector.observe_reference(Some(82.41), later), Range::High);
+/// assert_eq!(selector.observe_reference(Some(82.4), later + 240), Range::Mid);
+/// assert_eq!(selector.observe(Observation::Silent, later + 480), Range::Low);
 /// # Ok::<(), diapason_dsp::filter::FilterError>(())
 /// ```
 #[derive(Debug, Clone)]
@@ -445,21 +477,63 @@ pub struct RangeSelector {
     home: Range,
     current: Range,
     misses: usize,
-    /// The current range's latest clear pitch, if its latest frame had one.
+    /// The current range's latest clear pitch since the last switch.
     pitch: Option<f64>,
+    /// The stream position of the last switch, return home, or change of `pitch`.
+    settled_at: u64,
+    /// The last eligible Low reference pitch, for the agreement of two in a row.
+    reference: Option<f64>,
+    /// Consecutive clear frames in the current range.
+    clear_run: usize,
+    /// Input samples a frame of each range depends on, filter taps included.
+    spans: [u64; 3],
 }
 
 impl RangeSelector {
     /// A selector over `table`, starting at, and returning to, `home`.
     #[must_use]
     pub fn new(table: &RangeTable, home: Range) -> Self {
+        let spans = Range::ALL.map(|range| {
+            let spec = table.spec(range);
+            let factor = match spec.path {
+                Path::Decimated => DECIMATION,
+                Path::Full => 1,
+            };
+            let span = spec.window * factor + 2 * table.group_delay(spec.path) + 1;
+            u64::try_from(span).unwrap_or(u64::MAX)
+        });
         Self {
             table: *table,
             home,
             current: home,
             misses: 0,
             pitch: None,
+            settled_at: 0,
+            reference: None,
+            clear_run: 0,
+            spans,
         }
+    }
+
+    /// Clear frames covering one window of `range`. A run that long, ended by an unclear frame, is
+    /// a held note ending: a change, like a new pitch (see [`CHANGE_CENTS`]). Shorter runs are
+    /// not: a range's barely clear reading of a weak fundamental's partial (High's of a low E at
+    /// clarity 0.6) comes and goes in runs of a few frames.
+    #[must_use]
+    pub fn held_frames(&self, range: Range) -> usize {
+        let spec = self.table.spec(range);
+        spec.window.div_ceil(spec.hop.max(1))
+    }
+
+    /// Whether a frame of `range` that ended at `end` saw nothing from before `settled_at`.
+    fn fresh(&self, range: Range, end: u64) -> bool {
+        let [low, mid, high] = self.spans;
+        let span = match range {
+            Range::Low => low,
+            Range::Mid => mid,
+            Range::High => high,
+        };
+        end.saturating_sub(span) >= self.settled_at
     }
 
     /// The range for the next frame.
@@ -476,34 +550,58 @@ impl RangeSelector {
         (spec.window + grace).div_ceil(spec.hop.max(1))
     }
 
-    fn switch(&mut self, range: Range) {
+    fn switch(&mut self, range: Range, at: u64) {
         if range != self.current {
             self.current = range;
             self.misses = 0;
             self.pitch = None;
+            self.settled_at = at;
+            self.reference = None;
+            self.clear_run = 0;
         }
     }
 
-    /// Take one frame's outcome; return the range for the next frame.
-    pub fn observe(&mut self, observation: Observation) -> Range {
+    /// Take the outcome of the frame that ended at stream position `end`; return the range for the
+    /// next frame.
+    pub fn observe(&mut self, observation: Observation, end: u64) -> Range {
         match observation {
             Observation::Pitch(hz) if hz.is_finite() && hz > 0.0 => {
                 self.misses = self.misses.saturating_sub(1);
+                self.clear_run += 1;
+                if self
+                    .pitch
+                    .is_none_or(|old| cents(hz, old).abs() > CHANGE_CENTS)
+                {
+                    self.settled_at = end;
+                    self.reference = None;
+                }
                 self.pitch = Some(hz);
-                if !self.table.holds(self.current, hz) {
-                    self.switch(self.table.range_for(hz));
+                // Upward at once. Downward only once the reading has held for a whole window: a
+                // window that spans a note change finds the notes' common period, which is lower
+                // than either, and would otherwise drop the chain into a range showing it.
+                let upward = hz >= self.current.floor_hz();
+                if !self.table.holds(self.current, hz) && (upward || self.fresh(self.current, end))
+                {
+                    self.switch(self.table.range_for(hz), end);
                 }
             }
             Observation::Silent => {
                 self.misses = 0;
                 self.pitch = None;
                 self.current = self.home;
+                self.settled_at = end;
+                self.reference = None;
+                self.clear_run = 0;
             }
             Observation::Pitch(_) | Observation::Unclear => {
-                self.pitch = None;
+                if self.clear_run >= self.held_frames(self.current) {
+                    self.settled_at = end;
+                    self.reference = None;
+                }
+                self.clear_run = 0;
                 self.misses += 1;
                 if self.misses >= self.miss_limit(self.current) {
-                    self.switch(self.current.next());
+                    self.switch(self.current.next(), end);
                     self.misses = 0;
                 }
             }
@@ -511,29 +609,43 @@ impl RangeSelector {
         self.current
     }
 
-    /// Take a frame of the Low range, analysed as a reference while another range is selected;
-    /// return the range for the next frame. A clear Low pitch `p` below the current range's band
-    /// moves to `p`'s range when the current range has no clear pitch, or one within
-    /// [`HARMONIC_TOLERANCE_CENTS`] of `k·p` for a whole `k ≥ 2`. Anything else changes nothing:
-    /// a melody over a bass note keeps its range.
-    pub fn observe_reference(&mut self, low: Option<f64>) -> Range {
-        let Some(low) = low.filter(|hz| hz.is_finite() && *hz > 0.0) else {
+    /// Take a frame of the Low range that ended at stream position `end`, analysed as a reference
+    /// while another range is selected; return the range for the next frame. See the type's notes
+    /// for what it takes to act on it.
+    pub fn observe_reference(&mut self, low: Option<f64>, end: u64) -> Range {
+        let fresh = self.fresh(Range::Low, end);
+        let candidate = low.filter(|&hz| {
+            let below = hz < self.current.floor_hz() && !self.table.holds(self.current, hz);
+            let consistent = self.pitch.is_none_or(|current| harmonic(current, hz));
+            hz.is_finite() && hz > 0.0 && fresh && below && consistent
+        });
+        let Some(hz) = candidate.filter(|_| self.current != Range::Low) else {
+            self.reference = None;
             return self.current;
         };
-        let below = low < self.current.floor_hz() && !self.table.holds(self.current, low);
-        if self.current != Range::Low && below && self.pitch.is_none_or(|hz| harmonic(hz, low)) {
-            self.switch(self.table.range_for(low));
+        if self
+            .reference
+            .is_some_and(|previous| cents(hz, previous).abs() <= HARMONIC_TOLERANCE_CENTS)
+        {
+            self.switch(self.table.range_for(hz), end);
+        } else {
+            self.reference = Some(hz);
         }
         self.current
     }
 }
 
-/// Whether `hz` is within [`HARMONIC_TOLERANCE_CENTS`] of a whole multiple, two or more, of
+/// `1200 · log₂(a / b)`.
+fn cents(a: f64, b: f64) -> f64 {
+    1_200.0 * (a / b).log2()
+}
+
+/// Whether `hz` is within [`HARMONIC_TOLERANCE_CENTS`] of 2, 3 or 4 ([`MAX_HARMONIC`]) times
 /// `fundamental`.
 fn harmonic(hz: f64, fundamental: f64) -> bool {
     let ratio = hz / fundamental;
     let k = ratio.round();
-    k >= 2.0 && (1_200.0 * (ratio / k).log2()).abs() <= HARMONIC_TOLERANCE_CENTS
+    (2.0..=MAX_HARMONIC).contains(&k) && cents(ratio, k).abs() <= HARMONIC_TOLERANCE_CENTS
 }
 
 #[cfg(test)]
@@ -593,7 +705,7 @@ mod tests {
     }
 
     #[test]
-    fn the_bands_overlap_by_the_hysteresis() {
+    fn the_bands_overlap_below_each_budget_boundary() {
         let table = RangeTable::new(48_000).unwrap();
         assert_eq!(table.range_for(20.0), Range::Low);
         assert_eq!(table.range_for(74.99), Range::Low);
@@ -602,78 +714,210 @@ mod tests {
         assert_eq!(table.range_for(160.0), Range::High);
         assert_eq!(table.range_for(f64::NAN), Range::Low);
         let edge = |range, hz| table.holds(range, hz);
+        // Low reaches past 75 Hz but stops short of §1's 80 Hz row; Mid stops at 160 Hz, where the
+        // 85 ms row starts, and High reaches down to 151 Hz instead.
         assert!(edge(Range::Low, 79.4) && !edge(Range::Low, 79.5));
         assert!(edge(Range::Mid, 70.8) && !edge(Range::Mid, 70.7));
-        assert!(edge(Range::Mid, 169.5) && !edge(Range::Mid, 169.6));
+        assert!(edge(Range::Mid, 159.99) && !edge(Range::Mid, 160.0));
         assert!(edge(Range::High, 151.1) && !edge(Range::High, 150.9));
         assert!(edge(Range::High, 5_000.0) && !edge(Range::High, f64::INFINITY));
     }
 
+    /// Stream positions for frames 2.5 ms apart at 48 kHz, the hop of Mid and High.
+    struct Clock(u64);
+
+    impl Clock {
+        fn tick(&mut self) -> u64 {
+            self.0 += 120;
+            self.0
+        }
+    }
+
     #[test]
-    fn a_pitch_outside_the_current_range_moves_to_its_own() {
+    fn a_pitch_above_the_band_moves_at_once_and_one_below_once_it_has_held_a_window() {
         let table = RangeTable::new(48_000).unwrap();
         let mut selector = RangeSelector::new(&table, Range::Low);
-        assert_eq!(selector.observe(Observation::Pitch(77.0)), Range::Low); // hysteresis
-        assert_eq!(selector.observe(Observation::Pitch(80.0)), Range::Mid);
-        assert_eq!(selector.observe(Observation::Pitch(165.0)), Range::Mid);
-        assert_eq!(selector.observe(Observation::Pitch(170.0)), Range::High);
-        assert_eq!(selector.observe(Observation::Pitch(152.0)), Range::High);
-        assert_eq!(selector.observe(Observation::Pitch(150.0)), Range::Mid);
-        assert_eq!(selector.observe(Observation::Pitch(41.2)), Range::Low);
-        assert_eq!(selector.observe(Observation::Pitch(1_000.0)), Range::High);
+        let mut clock = Clock(0);
+        assert_eq!(
+            selector.observe(Observation::Pitch(77.0), clock.tick()),
+            Range::Low
+        );
+        assert_eq!(
+            selector.observe(Observation::Pitch(80.0), clock.tick()),
+            Range::Mid
+        );
+        assert_eq!(
+            selector.observe(Observation::Pitch(159.0), clock.tick()),
+            Range::Mid
+        );
+        assert_eq!(
+            selector.observe(Observation::Pitch(160.0), clock.tick()),
+            Range::High
+        );
+        assert_eq!(
+            selector.observe(Observation::Pitch(152.0), clock.tick()),
+            Range::High
+        );
+        // A single low reading, a window's common period across a note change, is not enough.
+        selector.observe(Observation::Pitch(196.0), clock.tick());
+        assert_eq!(
+            selector.observe(Observation::Pitch(65.4), clock.tick()),
+            Range::High
+        );
+        assert_eq!(
+            selector.observe(Observation::Pitch(196.0), clock.tick()),
+            Range::High
+        );
+        // A reading below the band that holds for High's window (959 samples, 8 frames) moves.
+        let start = clock.tick();
+        assert_eq!(
+            selector.observe(Observation::Pitch(110.0), start),
+            Range::High
+        );
+        for _ in 0..7 {
+            assert_eq!(
+                selector.observe(Observation::Pitch(110.1), clock.tick()),
+                Range::High
+            );
+        }
+        assert_eq!(
+            selector.observe(Observation::Pitch(110.0), clock.tick()),
+            Range::Mid
+        );
     }
 
     #[test]
     fn silence_returns_home_and_unclear_frames_scan_after_a_window_and_a_grace() {
         let table = RangeTable::new(48_000).unwrap();
         let mut selector = RangeSelector::new(&table, Range::Mid);
-        selector.observe(Observation::Pitch(330.0));
-        assert_eq!(selector.observe(Observation::Silent), Range::Mid);
+        let mut clock = Clock(0);
+        selector.observe(Observation::Pitch(330.0), clock.tick());
+        assert_eq!(
+            selector.observe(Observation::Silent, clock.tick()),
+            Range::Mid
+        );
 
         // Mid: (40 ms + 50 ms) / 2.5 ms = 36 frames.
         assert_eq!(selector.miss_limit(Range::Mid), 36);
         assert_eq!(selector.miss_limit(Range::Low), 30);
         assert_eq!(selector.miss_limit(Range::High), 28);
         for _ in 0..35 {
-            assert_eq!(selector.observe(Observation::Unclear), Range::Mid);
+            assert_eq!(
+                selector.observe(Observation::Unclear, clock.tick()),
+                Range::Mid
+            );
         }
-        assert_eq!(selector.observe(Observation::Unclear), Range::High);
+        // Downward: Mid gives way to Low, and Low, the lowest, to High.
+        assert_eq!(
+            selector.observe(Observation::Unclear, clock.tick()),
+            Range::Low
+        );
+        for _ in 0..29 {
+            assert_eq!(
+                selector.observe(Observation::Unclear, clock.tick()),
+                Range::Low
+            );
+        }
+        assert_eq!(
+            selector.observe(Observation::Unclear, clock.tick()),
+            Range::High
+        );
         // A nonsensical pitch counts as unclear; a clear one takes one miss away (27 − 1 = 26),
         // so two more unclear frames reach High's limit of 28.
         for _ in 0..27 {
-            selector.observe(Observation::Pitch(f64::NAN));
+            selector.observe(Observation::Pitch(f64::NAN), clock.tick());
         }
-        assert_eq!(selector.observe(Observation::Pitch(400.0)), Range::High);
-        assert_eq!(selector.observe(Observation::Unclear), Range::High);
-        assert_eq!(selector.observe(Observation::Unclear), Range::Low);
+        assert_eq!(
+            selector.observe(Observation::Pitch(400.0), clock.tick()),
+            Range::High
+        );
+        assert_eq!(
+            selector.observe(Observation::Unclear, clock.tick()),
+            Range::High
+        );
+        assert_eq!(
+            selector.observe(Observation::Unclear, clock.tick()),
+            Range::Mid
+        );
+    }
+
+    /// Low's span at 48 kHz: 1200 decimated samples × 4 plus the 259 taps.
+    const LOW_SPAN: u64 = 5_059;
+
+    #[test]
+    fn a_fresh_agreeing_low_reference_below_the_band_catches_the_octave_above() {
+        let table = RangeTable::new(48_000).unwrap();
+        let mut selector = RangeSelector::new(&table, Range::High);
+        let changed = 10_000;
+        selector.observe(Observation::Pitch(165.35), changed);
+        // A Low window that started before the current pitch began is stale, however clear.
+        for end in [changed + 120, changed + LOW_SPAN - 1] {
+            assert_eq!(selector.observe_reference(Some(82.41), end), Range::High);
+        }
+        // Fresh, but not a harmonic, or inside the band, or unclear: nothing to act on.
+        let fresh = changed + LOW_SPAN;
+        assert_eq!(selector.observe_reference(Some(61.0), fresh), Range::High);
+        assert_eq!(
+            selector.observe_reference(Some(160.0), fresh + 240),
+            Range::High
+        );
+        assert_eq!(selector.observe_reference(None, fresh + 480), Range::High);
+        // Fresh and twice the reference: acted on once a second Low frame agrees.
+        assert_eq!(
+            selector.observe_reference(Some(82.41), fresh + 720),
+            Range::High
+        );
+        assert_eq!(
+            selector.observe_reference(Some(82.45), fresh + 960),
+            Range::Mid
+        );
     }
 
     #[test]
-    fn a_clear_low_reference_below_the_band_catches_the_octave_above() {
+    fn one_unclear_frame_is_not_a_missing_pitch_but_a_held_reading_ending_is_a_change() {
         let table = RangeTable::new(48_000).unwrap();
-        let mut selector = RangeSelector::new(&table, Range::High);
-        selector.observe(Observation::Pitch(165.35));
-        // Not a harmonic of the reference: a melody over a bass note keeps its range.
-        assert_eq!(selector.observe_reference(Some(61.0)), Range::High);
-        // Inside the current band, or unclear: nothing to act on.
-        assert_eq!(selector.observe_reference(Some(160.0)), Range::High);
-        assert_eq!(selector.observe_reference(None), Range::High);
-        // Twice the reference: the octave above, caught.
-        assert_eq!(selector.observe_reference(Some(82.41)), Range::Mid);
-        // From Mid, a bass E read as its second harmonic; and with no clear pitch at all.
-        selector.observe(Observation::Pitch(82.4));
-        assert_eq!(selector.observe_reference(Some(41.2)), Range::Low);
-        let mut unclear = RangeSelector::new(&table, Range::Mid);
-        unclear.observe(Observation::Unclear);
-        assert_eq!(unclear.observe_reference(Some(41.2)), Range::Low);
-        // In Low itself the reference is the current range: nothing to do.
-        assert_eq!(unclear.observe_reference(Some(30.0)), Range::Low);
+        let mut selector = RangeSelector::new(&table, Range::Mid);
+        let mut clock = Clock(0);
+        // Mid holds 130.8 Hz for a second, then goes unclear for a frame: the pitch stays 130.8,
+        // so a Low common period of 61 Hz, not a multiple of it, changes nothing.
+        for _ in 0..400 {
+            selector.observe(Observation::Pitch(130.81), clock.tick());
+        }
+        let ended = clock.tick();
+        selector.observe(Observation::Unclear, ended);
+        assert_eq!(
+            selector.observe_reference(Some(61.0), ended + 120),
+            Range::Mid
+        );
+        // And 65.4 Hz, half of it, is now stale: the held reading ended at `ended`, so only Low
+        // frames whose window started after it count (the C3 → G3 leap's common period).
+        assert_eq!(
+            selector.observe_reference(Some(65.4), ended + 120),
+            Range::Mid
+        );
+        assert_eq!(
+            selector.observe_reference(Some(65.4), ended + 240),
+            Range::Mid
+        );
+        // A short clear run (a barely clear reading) ending is not a change.
+        let mut weak = RangeSelector::new(&table, Range::High);
+        let mut clock = Clock(0);
+        let first = clock.tick();
+        weak.observe(Observation::Pitch(164.8), first);
+        weak.observe(Observation::Unclear, clock.tick());
+        weak.observe(Observation::Pitch(164.9), clock.tick());
+        weak.observe(Observation::Unclear, clock.tick());
+        let fresh = first + LOW_SPAN;
+        assert_eq!(weak.observe_reference(Some(82.41), fresh), Range::High);
+        assert_eq!(weak.observe_reference(Some(82.41), fresh + 240), Range::Mid);
+        assert_eq!(selector.held_frames(Range::High), 8);
     }
 
     #[test]
     fn clear_frames_decay_the_misses_rather_than_reset_them() {
         let table = RangeTable::new(48_000).unwrap();
         let mut selector = RangeSelector::new(&table, Range::Mid);
+        let mut clock = Clock(0);
         // Two unclear frames for every clear one still reach Mid's limit of 36: after 34 cycles
         // of (unclear, unclear, clear) and two more unclear frames, 104 in all. A reset would
         // never get past 2.
@@ -684,16 +928,18 @@ mod tests {
             } else {
                 Observation::Unclear
             };
-            selector.observe(observation);
+            selector.observe(observation, clock.tick());
             frames += 1;
         }
-        assert_eq!((selector.current(), frames), (Range::High, 104));
+        assert_eq!((selector.current(), frames), (Range::Low, 104));
     }
 
     #[test]
-    fn harmonics_are_whole_multiples_within_half_a_semitone() {
-        assert!(harmonic(165.35, 82.41) && harmonic(330.0, 82.41) && harmonic(82.0, 41.2));
+    fn harmonics_are_two_to_four_times_within_half_a_semitone() {
+        assert!(harmonic(165.35, 82.41) && harmonic(247.2, 82.41) && harmonic(330.0, 82.41));
         assert!(!harmonic(82.41, 82.41) && !harmonic(165.35, 61.0) && !harmonic(120.0, 82.41));
+        // Beyond the fourth, every frequency would be "a multiple": D5 is 14 × 41.2 Hz + 31 ¢.
+        assert!(!harmonic(412.0, 82.41) && !harmonic(587.33, 41.2));
     }
 
     /// The ledger table in `docs/AUDIO_ENGINE.md` §1, at 48 kHz, in ms: each range's chain line and

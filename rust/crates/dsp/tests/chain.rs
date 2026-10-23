@@ -45,6 +45,8 @@ const POINTS_PER_OCTAVE: u32 = 24;
 const PHASES: usize = 8;
 /// The latency criterion: within ±5 ¢, and staying there.
 const SETTLED_CENTS: f64 = 5.0;
+/// A clear frame further than this from the note playing shows a wrong note (half a semitone).
+const WRONG_NOTE_CENTS: f64 = 50.0;
 /// Whole-period frequencies are swept this far either side, in steps of a tenth of a hertz: the
 /// error spikes there are a few tenths of a hertz wide.
 const SPIKE_HALF_WIDTH_HZ: f64 = 0.3;
@@ -480,7 +482,7 @@ fn the_sweep_covers_every_range_that_can_hold_each_frequency() {
     for rate in SUPPORTED_RATES {
         let cases = sweep_cases(rate);
         let count = |range| cases.iter().filter(|c| c.1 == range).count();
-        // The octave grid: Low to 79.46 Hz, Mid 70.79–169.5 Hz, High from 151.0 Hz, 34 + 30 + 79
+        // The octave grid: Low to 79.46 Hz, Mid 70.79–160 Hz, High from 151.0 Hz, 34 + 28 + 79
         // points. Then seven points round each whole-period frequency a range holds, within
         // 30–1400 Hz: Low's 30, 40, …, 70 Hz (rate/window = 10 Hz; at 44.1 kHz 9.995 Hz, so three
         // points round 29.99 Hz are under 30), Mid's 75, 100, 125, 150 Hz, High's 160, 213.3, …,
@@ -488,7 +490,7 @@ fn the_sweep_covers_every_range_that_can_hold_each_frequency() {
         let low = if rate == 48_000 { 4 } else { 3 } + 4 * 7;
         assert_eq!(
             [count(Range::Low), count(Range::Mid), count(Range::High)],
-            [34 + low, 30 + 4 * 7, 79 + 24 * 7]
+            [34 + low, 28 + 4 * 7, 79 + 24 * 7]
         );
     }
 }
@@ -524,13 +526,17 @@ fn a_sawtooth_through_the_chain_is_within_half_a_cent_at_44_1_khz() {
 /// which every estimate is within ±5 ¢. `None` if the last frame is not.
 fn onset_latency(
     rate: u32,
-    range: Range,
+    selection: Selection,
     generate: Generator,
     hz: f64,
     phase_index: usize,
     onset: usize,
 ) -> Option<u64> {
-    let mut chain = Tuner::new(rate, Selection::Fixed(range));
+    let mut chain = Tuner::new(rate, selection);
+    let range = match selection {
+        Selection::Fixed(range) => range,
+        Selection::Auto(_) => chain.table().range_for(hz),
+    };
     let ledger = chain.table().ledger(range);
     let length = onset + samples(ledger.chain_seconds() + 0.1, rate);
     let mut signal = vec![0.0_f32; length];
@@ -580,7 +586,8 @@ fn onset_latency_is_within_the_ledger() {
                             .flat_map(|p| (0..4).map(move |o| (p, silence + o * hop / 4)))
                             .map(|(p, onset)| {
                                 scope.spawn(move || {
-                                    onset_latency(rate, range, generate, hz, p, onset)
+                                    let fixed = Selection::Fixed(range);
+                                    onset_latency(rate, fixed, generate, hz, p, onset)
                                 })
                             })
                             .collect();
@@ -608,6 +615,64 @@ fn onset_latency_is_within_the_ledger() {
                          {:.2} ms",
                         worst * 1e3 / f64::from(rate),
                         limit * 1e3 / f64::from(rate)
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// `docs/AUDIO_ENGINE.md` §1's latency rows are fixed by frequency: ≤ 85 ms from 160 Hz up,
+/// ≤ 110 ms from 80 to 160 Hz. Under the selector, from silence and from either neighbouring home,
+/// a note at each boundary must settle within its row once the ledger's other lines (I/O,
+/// smoothing, snapshot, display) are added to what the chain takes. The bands are drawn so that
+/// every f₀ ≥ 160 Hz is High and every f₀ ≥ 80 Hz is out of Low (`RangeTable::holds`).
+#[test]
+fn notes_at_the_budget_boundaries_meet_their_rows_from_either_home() {
+    let cases: [(f64, [Range; 2], f64); 4] = [
+        (160.0, [Range::Mid, Range::High], 0.085),
+        (165.0, [Range::Mid, Range::High], 0.085),
+        (169.0, [Range::Mid, Range::High], 0.085),
+        (80.0, [Range::Low, Range::Mid], 0.110),
+    ];
+    for rate in SUPPORTED_RATES {
+        let table = RangeTable::new(rate).unwrap();
+        let silence = samples(0.05, rate);
+        for (hz, homes, budget) in cases {
+            let ledger = table.ledger(table.range_for(hz));
+            let others = ledger.total_seconds() - ledger.chain_seconds();
+            let allowance = (budget - others) * f64::from(rate);
+            for home in homes {
+                for (name, generate) in SIGNALS {
+                    let worst = std::thread::scope(|scope| {
+                        let handles: Vec<_> = [(0, 0), (3, 1), (5, 2), (7, 3)]
+                            .into_iter()
+                            .map(|(p, o)| {
+                                let onset = silence + o * 37;
+                                let auto = Selection::Auto(home);
+                                scope.spawn(move || {
+                                    onset_latency(rate, auto, generate, hz, p, onset)
+                                })
+                            })
+                            .collect();
+                        handles
+                            .into_iter()
+                            .map(|handle| handle.join().unwrap().unwrap_or(u64::MAX))
+                            .max()
+                            .unwrap()
+                    });
+                    let worst = index_to_f64(usize::try_from(worst).unwrap_or(usize::MAX));
+                    let total = (worst / f64::from(rate) + others) * 1e3;
+                    report(format_args!(
+                        "boundary at {rate} Hz, {name} {hz} Hz from home {home:?}: {:.2} ms in the \
+                         chain, {total:.1} ms in all (budget {:.0} ms)",
+                        worst * 1e3 / f64::from(rate),
+                        budget * 1e3
+                    ));
+                    assert!(
+                        worst <= allowance,
+                        "{name} {hz} Hz from {home:?} at {rate} Hz: {total:.1} ms against {:.0} ms",
+                        budget * 1e3
                     );
                 }
             }
@@ -763,6 +828,118 @@ fn a_bass_e_after_an_a2_is_not_read_an_octave_up() {
             panic!("{rate} Hz: bass E never settled in Low; last frame {last:?}")
         });
         assert!(settled <= 250.0, "{rate} Hz: {settled} ms");
+    }
+}
+
+/// A melody over a held bass note keeps its range: D5 (587.33 Hz) over a bass E (41.2 Hz).
+/// Low, analysed as the reference, reads the bass, and 587.33 Hz is 14 × 41.2 Hz + 31 ¢: with no
+/// cap on the multiple (`range::MAX_HARMONIC`), the chain fell to the bass's range.
+#[test]
+fn a_melody_over_a_held_bass_note_keeps_its_range() {
+    for rate in SUPPORTED_RATES {
+        let mut tuner = Tuner::new(rate, Selection::Auto(Range::High));
+        let length = samples(0.8, rate);
+        let mut bass = vec![0.0_f32; length];
+        synth::sawtooth(&mut bass, 41.2, rate, 0.3, 0.0);
+        let mut melody = vec![0.0_f32; length];
+        synth::sine(&mut melody, 587.33, rate, 0.3, 0.0);
+        for (b, m) in bass.iter_mut().zip(&melody) {
+            *b += m;
+        }
+        let settled = u64::try_from(samples(0.2, rate)).unwrap();
+        let (mut frames, mut moved) = (0, None);
+        tuner.push(&bass, |frame| {
+            if frame.end < settled {
+                return;
+            }
+            frames += 1;
+            let off = frame
+                .estimate
+                .is_some_and(|e| cents(e.frequency_hz, 587.33).abs() > WRONG_NOTE_CENTS);
+            if (frame.range != Range::High || off) && moved.is_none() {
+                moved = Some(*frame);
+            }
+        });
+        assert!(frames > 100, "{rate} Hz: {frames} frames");
+        assert_eq!(moved, None, "{rate} Hz: the melody lost its range");
+    }
+}
+
+// ── Leaps ───────────────────────────────────────────────────────────────────────────────────
+
+/// One note for 0.3 s, then another with no gap, under the selector from home Mid. Returns the
+/// clear frames that break the rule below, and the range switches from the onset on.
+fn leap(rate: u32, generate: Generator, from: f64, to: f64) -> (usize, usize) {
+    let mut tuner = Tuner::new(rate, Selection::Auto(Range::Mid));
+    let half = samples(0.3, rate);
+    let mut signal = vec![0.0_f32; 2 * half];
+    generate(&mut signal[..half], from, rate, 0.5, 0.0);
+    generate(&mut signal[half..], to, rate, 0.5, 0.0);
+    let onset = u64::try_from(half).unwrap();
+    let table = *tuner.table();
+    let target = table.range_for(to);
+    let (mut wrong, mut switches, mut previous, mut old) = (0, 0, None, None);
+    tuner.push(&signal, |frame| {
+        if frame.end > onset {
+            old = old.or(previous);
+            if previous.is_some_and(|range| range != frame.range) {
+                switches += 1;
+            }
+            // The range playing at the onset is judged once its own window has filled; any range
+            // switched into, from when the target note's range would have filled its window.
+            let judged = if Some(frame.range) == old {
+                frame.range
+            } else {
+                target
+            };
+            let filled = frame.end >= onset + span(&table, judged);
+            let off = frame
+                .estimate
+                .is_some_and(|e| cents(e.frequency_hz, to).abs() > WRONG_NOTE_CENTS);
+            if filled && off {
+                wrong += 1;
+            }
+        }
+        previous = Some(frame.range);
+    });
+    (wrong, switches)
+}
+
+/// No-gap leaps up and down by a fourth, a fifth and an octave, from notes in every range, at both
+/// rates, sine and sawtooth. **The rule:** the range changes at most once from the onset on, and
+/// every clear frame is within ±50 ¢ of the new note once it is judged:
+/// - a frame of the range that was playing at the onset, once that range's window (filter taps
+///   included) lies wholly after the onset. Before, the window holds both notes and finds their
+///   common period: that is inherent to the window, and only a range switch could hide it;
+/// - a frame of a range switched into, from the moment the new note's own range would have filled
+///   its window. Switching into a range that shows a wrong note is the selector's fault.
+///
+/// Before `T-003b` round 3's freshness rules, 161 of the reviewer's 364 no-gap leaps showed wrong
+/// clear notes, and upward leaps from Mid flipped Mid and High on every frame for 50 ms.
+#[test]
+fn a_leap_with_no_gap_shows_no_wrong_note_once_the_window_holds_only_the_new_one() {
+    let starts = [55.0, 82.41, 130.81, 196.0, 293.66];
+    let ratios = [1.5, 4.0 / 3.0, 2.0, 2.0 / 3.0, 0.75, 0.5];
+    let leaps: Vec<(f64, f64)> = starts
+        .iter()
+        .flat_map(|&from| ratios.map(|ratio| (from, from * ratio)))
+        .filter(|&(_, to)| (31.0..=HIGHEST_HZ).contains(&to))
+        .collect();
+    for rate in SUPPORTED_RATES {
+        for (name, generate) in SIGNALS {
+            std::thread::scope(|scope| {
+                for &(from, to) in &leaps {
+                    scope.spawn(move || {
+                        let (wrong, switches) = leap(rate, generate, from, to);
+                        assert!(
+                            wrong == 0 && switches <= 1,
+                            "{name} {from} → {to:.2} Hz at {rate} Hz: {wrong} wrong clear frames \
+                             once the window held only the new note, {switches} range switches"
+                        );
+                    });
+                }
+            });
+        }
     }
 }
 

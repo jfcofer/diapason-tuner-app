@@ -337,13 +337,13 @@ impl Analysis {
             );
         } else if range == Range::Low && auto && self.gate_open {
             let reference = self.analyse(Range::Low).map(|e| e.frequency_hz);
-            self.selector.observe_reference(reference);
+            self.selector.observe_reference(reference, self.position);
         }
     }
 
     fn observe(&mut self, observation: Observation) {
         if let Selection::Auto(_) = self.selection {
-            self.selector.observe(observation);
+            self.selector.observe(observation, self.position);
         }
     }
 }
