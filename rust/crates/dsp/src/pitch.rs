@@ -20,7 +20,7 @@ use std::sync::Arc;
 use realfft::num_complex::Complex;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
 
-use crate::convert::{index_to_f64, to_f32};
+use crate::convert::{index_from_f64, index_to_f64, to_f32};
 
 /// The shortest window [`Mpm`] accepts. Below this there are too few lags to find a key maximum and
 /// its two neighbours.
@@ -229,6 +229,46 @@ impl Mpm {
             frequency_hz: f64::from(sample_rate) / period_samples,
             period_samples,
             clarity,
+        })
+    }
+
+    /// The largest lag searched, `N/2`: a period longer than `max_lag() − 1` samples has no peak
+    /// with a neighbour on each side, so this detector cannot see it.
+    #[must_use]
+    pub fn max_lag(&self) -> usize {
+        self.max_lag
+    }
+
+    /// The NSDF's peak nearest `lag`, as an estimate, from the frame [`Self::analyze`] last judged:
+    /// the octave guard's test of `τ/2` and `2τ` (`docs/AUDIO_ENGINE.md` §3, `crate::octave`).
+    ///
+    /// The peak is the highest local maximum of `n` at `round(lag)` or one lag either side (the
+    /// sub-sample period doubled or halved lands within one lag of its sample). It is then refined
+    /// exactly as the chosen period is, steps 5 and 6, over its common overlap, so its clarity
+    /// compares like for like with [`PitchEstimate::clarity`]. O(1): it reuses the NSDF, `r` and
+    /// `m` that `analyze` kept, and no second FFT runs. The clarity floor is *not* applied.
+    ///
+    /// `frame` must be the frame `analyze` last returned `Some` for; with any other the answer is
+    /// meaningless (but still allocation-free and panic-free). `None` where there is no local
+    /// maximum near `lag`, or `lag` has no neighbour on each side within the searched lags.
+    #[must_use]
+    pub fn peak_near(&self, frame: &[f32], sample_rate: u32, lag: f64) -> Option<PitchEstimate> {
+        if frame.len() != self.config.window || sample_rate == 0 || lag.is_nan() || lag < 1.0 {
+            return None;
+        }
+        let centre = index_from_f64(lag.round());
+        let maxima = KeyMaxima::new(&self.nsdf);
+        let peak = [centre.saturating_sub(1), centre, centre.saturating_add(1)]
+            .into_iter()
+            .filter(|&tau| tau < self.max_lag && maxima.is_local_maximum(tau))
+            .max_by(|&a, &b| maxima.value(a).total_cmp(&maxima.value(b)))?;
+        let [a, b, c] = self.common_overlap(frame, peak)?;
+        let (offset, value) = vertex(a, b, c)?;
+        let period_samples = index_to_f64(peak) + offset;
+        Some(PitchEstimate {
+            frequency_hz: f64::from(sample_rate) / period_samples,
+            period_samples,
+            clarity: to_f32(value.min(1.0)),
         })
     }
 
@@ -637,6 +677,56 @@ mod tests {
         assert_eq!(mpm.common_overlap(&frame, 0), None);
         assert_eq!(mpm.common_overlap(&frame, 15), None);
         assert!(mpm.common_overlap(&frame, 7).is_some());
+    }
+
+    /// `peak_near`, the octave guard's τ/2 and 2τ test, on real frames; the ratios are those
+    /// `crate::octave::COMPARABLE` is set between.
+    #[test]
+    fn peak_near_reads_the_octaves_of_the_frame_just_analysed() {
+        let rate = 12_000;
+        // Low's shape, 1200 samples at 12 kHz, so 2T of 110 Hz (218 lags) is searched.
+        let mut mpm = Mpm::new(MpmConfig::with_window(1_200)).unwrap();
+        let mut frame = vec![0.0_f32; 1_200];
+        crate::synth::partials(&mut frame, 110.0, rate, 0.5, 0.3, &[1.0, 0.5, 0.33, 0.25]);
+        let pick = mpm.analyze(&frame, rate).unwrap();
+        assert!((pick.frequency_hz - 110.0).abs() < 0.01);
+        // The octave below a steady note is a period too: as clear as the note.
+        let below = mpm
+            .peak_near(&frame, rate, 2.0 * pick.period_samples)
+            .unwrap();
+        assert!((below.frequency_hz - 55.0).abs() < 0.01, "{below:?}");
+        assert!(below.clarity >= 0.999 * pick.clarity, "{below:?} {pick:?}");
+        // A weak fundamental's second partial: about 0.6 of the note, not comparable.
+        crate::synth::partials(
+            &mut frame,
+            82.41,
+            rate,
+            0.5,
+            0.3,
+            &crate::synth::WEAK_FUNDAMENTAL,
+        );
+        let pick = mpm.analyze(&frame, rate).unwrap();
+        let up = mpm
+            .peak_near(&frame, rate, pick.period_samples / 2.0)
+            .unwrap();
+        assert!((up.frequency_hz / 164.82 - 1.0).abs() < 0.003, "{up:?}");
+        let ratio = up.clarity / pick.clarity;
+        assert!((0.55..0.65).contains(&ratio), "{ratio}");
+        // A sawtooth's NSDF is at a minimum at T/2: no peak there.
+        crate::synth::sawtooth(&mut frame, 110.0, rate, 0.5, 0.0);
+        let pick = mpm.analyze(&frame, rate).unwrap();
+        assert_eq!(mpm.peak_near(&frame, rate, pick.period_samples / 2.0), None);
+        // Beyond the searched lags, at no lag, or for a frame it cannot judge: none.
+        assert_eq!(mpm.peak_near(&frame, rate, 6.0 * pick.period_samples), None);
+        for lag in [f64::NAN, 0.0, -5.0, f64::INFINITY] {
+            assert_eq!(mpm.peak_near(&frame, rate, lag), None, "{lag}");
+        }
+        assert_eq!(
+            mpm.peak_near(&frame[..1_199], rate, pick.period_samples),
+            None
+        );
+        assert_eq!(mpm.peak_near(&frame, 0, pick.period_samples), None);
+        assert_eq!(mpm.max_lag(), 600);
     }
 
     #[test]
