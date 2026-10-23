@@ -26,8 +26,9 @@ ones are measured on the reference devices in `TESTING.md` §7.
 **Latency ledger.** Plucked string to moving needle, worst case, stage by stage, in ms at 48 kHz
 (44.1 kHz is within 0.4 ms). The constants live in `diapason_dsp::range` (`adr/0028`). Two tests
 bind this table:
-- `range::tests`, `the_ledger_matches_the_table_in_audio_engine_section_1`, asserts each chain line
-  and total below, so changing a constant fails until this table is updated;
+- `range::tests`, `the_ledger_table_in_audio_engine_section_1_matches_the_code`, reads this file,
+  parses every row of the table and the budget rows above, and compares them with the code, so
+  a change on either side fails until the other matches;
 - `tests/chain.rs`, `onset_latency_is_within_the_ledger`, measures each range's chain line at both
   rates: silence, then a tone, to the first estimate within ±5 ¢ that stays, on the audio clock.
 
@@ -88,9 +89,18 @@ which cuts their NSDF cost about 4×. High analyses at the full rate. The crosso
 boundary, 160 Hz, and it is a latency choice. In Mid's window the decimated path keeps a 2×
 margin to at least 320 Hz (`T-003b`). Notes above 160 Hz still go to High, because its window is
 18.75 ms, not Mid's 40 ms. High runs at full rate because the decimator's content stops at
-1.5 kHz, and High goes to 1400 Hz. Range changes are hysteretic (a semitone) to avoid
-oscillating at a boundary (`dsp::range::RangeSelector`). `dsp::chain::Analysis` runs both paths
-on every sample.
+1.5 kHz, and High goes to 1400 Hz. `dsp::chain::Analysis` runs both paths on every sample.
+
+Range changes are hysteretic, to avoid oscillating at a boundary (`dsp::range::RangeSelector`).
+The overlaps sit where they cannot cross a latency row of §1:
+- Low holds up to 79.46 Hz, a semitone past Mid's floor and short of the 80 Hz row;
+- Mid holds from 70.79 Hz up to 160 Hz exclusive;
+- High holds down to 151 Hz.
+
+So every f₀ ≥ 160 Hz is High, and every f₀ ≥ 80 Hz is out of Low. A pitch above the band moves
+at once. A pitch below it moves only after it has held for a whole window of the current range.
+A window spanning a note change finds the two notes' common period, which is lower than either,
+and would otherwise drop the chain into a range showing it.
 
 **Window sizing is adaptive**, because a fixed window either misses low strings or is needlessly
 slow for high ones. A window holds three periods of its range's floor, and the hop is short,
@@ -106,15 +116,23 @@ because each hop is paid three times in latency (§1, `adr/0028`):
 the NSDF, so the first good estimate waits for the window to fill (§1's ledger). The selector
 returns to the home range on silence. The instrument preset picks that range (M3), so the common
 case (guitar E-standard, Mid) never pays the bass window. A note the home range cannot see (1.4 kHz
-from Low is in the decimator's stopband) is found by scanning to the next range after a window and
-50 ms of unclear frames. Every range's history is kept full, so a switch costs one hop.
+from Low is in the decimator's stopband) is found by scanning after a window and 50 ms of unclear
+frames. The scan runs downward (High → Mid → Low → High), since a range that hears nothing is most
+often above the note. Every range's history is kept full, so a switch costs one hop.
 
 A range cannot see below 1.5 periods of its floor, since `Mpm` searches lags up to half the
 window: High is blind below 107 Hz, Mid below 50 Hz. A low E with a weak fundamental, heard by
 High, would read as its second partial, which High holds. So while another range is selected,
-each Low frame is analysed too. A clear Low pitch below the current band, with the current pitch
-a whole multiple of it or absent, moves the chain to the Low pitch's range (75 ms after a low E's
-onset, measured). This costs one Low frame per 5 ms.
+each Low frame is analysed too. A Low pitch below the current band moves the chain to the Low
+pitch's range under three conditions:
+- the current range's last clear pitch is 2, 3 or 4 times it, or there is none;
+- the Low window started after the last switch, pitch change or end of a held reading, since a Low
+  window spanning a note change reads the notes' common period;
+- two such Low frames agree.
+
+A low E after an E4 with no gap settles in Mid after 135–140 ms. This costs one Low frame per 5 ms.
+A no-gap leap sweep asserts that no range switched into shows a wrong note, and that each leap
+switches at most once (`tests/chain.rs`).
 
 ## 3. Pitch detection: NSDF / McLeod (MPM)
 
@@ -135,13 +153,17 @@ Implementation contract:
    more octave errors).
 5. Parabolic interpolation over the three points around the chosen maximum → sub-sample period →
    frequency. This is what buys sub-cent resolution from a coarse lag grid. The three points are
-   recomputed over one common overlap, counted from both ends of the frame
-   (`pitch::common_overlap`, `T-003b`). The FFT NSDF sums a different number of pairs at each
-   lag, so its three samples come from three different sums, and a sawtooth's reset at the
-   window's edge tilts them: 0.5 ¢ of error at whole-period windows, down to 0.11 ¢ with the
-   common overlap.
-6. **Clarity** = interpolated NSDF value at the peak. Below 0.6 the estimate is discarded and the
-   UI shows "listening" rather than a wrong note.
+   `n̄`, recomputed over one common overlap counted from both ends of the frame
+   (`pitch::Mpm::common_overlap`; the decision is `adr/0028`). The FFT NSDF `n` sums a different
+   number of pairs at each lag, so its three samples come from three different sums. A
+   sawtooth's reset at the window's edge tilts them, most when the window holds whole periods.
+   On `tests/chain.rs`'s headline grid (24 points per octave plus every whole-period frequency
+   ±0.3 Hz, 8 phases) the worst is −0.507 ¢ without the common overlap (75 Hz, 44.1 kHz, Mid)
+   and 0.087 ¢ with it.
+6. **Clarity** = the value of the parabola through `n̄` at its vertex (step 5); step 4 picks
+   peaks on the FFT `n`. A vertex more than one lag from the chosen maximum is no peak, and the
+   frame gives no estimate. Below 0.6 the estimate is discarded and the UI shows "listening"
+   rather than a wrong note.
 
 **Octave guard.** The most visible failure mode of any tuner. Two defences: (a) before accepting a
 peak, test whether a peak of comparable clarity exists at τ/2 or 2τ and prefer the one consistent

@@ -325,9 +325,10 @@ impl Mpm {
     /// function of `τ` whose maximum is exactly the period: there `x[j+T] = x[j]`, so it equals 1, and
     /// Cauchy–Schwarz bounds it by 1 everywhere. Counting from the start only, that function is still
     /// lopsided, because its later samples slide while its earlier ones stay put; counting from the
-    /// end, the opposite holds. Summing both cancels the lopsidedness to first order. Measured over
-    /// 32 alignments per frequency, the sawtooth's worst error in the tuner's windows fell from
-    /// 0.50 ¢ to 0.11 ¢ (`T-003b`).
+    /// end, the opposite holds. Summing both cancels the lopsidedness to first order. On the chain's
+    /// headline grid (`tests/chain.rs`: 24 points per octave plus every whole-period frequency
+    /// ±0.3 Hz, 8 phases) the sawtooth's worst is −0.507 ¢ without it (75 Hz, 44.1 kHz, Mid) and
+    /// 0.087 ¢ with it (`T-003b`, `docs/adr/0028`).
     ///
     /// It costs O(1), not O(N): each common-overlap sum is the full `r(τ)` or `m(τ)` of steps 1–2
     /// minus the pairs beyond the overlap, and at `τ = lag − 1, lag, lag + 1` there are `2, 1, 0` of

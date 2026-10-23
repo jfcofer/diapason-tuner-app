@@ -19,7 +19,8 @@ when its content stays well below the *analysis* Nyquist.
 3. **Step 5's three NSDF samples come from three different sums** (`N − τ` pairs each). A sawtooth's
    reset at the window's edge tilts them, worst when the window holds whole periods: −0.514 ¢ at
    75.02 Hz (44.1 kHz, Mid), between the points of any octave grid. Recomputed over one common
-   overlap, counted from both ends, the worst error in the tuner's windows is 0.087 ¢.
+   overlap, counted from both ends, the worst on the chain's headline grid (24 points per octave
+   plus every whole-period frequency ±0.3 Hz, 8 phases) is 0.087 ¢.
 4. **With that, the ×4 path is accurate in short windows too.** In Mid's window it keeps a 2×
    margin (≤ 0.25 ¢) to at least 320 Hz. A decimated 160 Hz three-period window (225 samples) reads
    +0.038 ¢ at 160 Hz, where it had read −0.82 ¢ before.
@@ -37,9 +38,12 @@ when its content stays well below the *analysis* Nyquist.
   | Mid | 75 Hz | ×4 | 480 / 441 (40 ms) | 2.5 ms |
   | High | 160 Hz | full | 900 / 827 (18.75 ms) | 2.5 ms |
 
-- **The crossover is the Mid/High boundary, 160 Hz,** with a semitone of hysteresis, as a latency
-  choice. Higher notes get High's 18.75 ms window. High runs at full rate because the decimator's
-  content stops at 1.5 kHz and High reaches 1400 Hz.
+- **The crossover is the Mid/High boundary, 160 Hz,** as a latency choice. Higher notes get High's
+  18.75 ms window. High runs at full rate because the decimator's content stops at 1.5 kHz and
+  High reaches 1400 Hz.
+- **The bands overlap by a semitone, below each budget boundary:** Low holds to 79.46 Hz, Mid from
+  70.79 Hz to 160 Hz exclusive, High from 151 Hz. Every f₀ ≥ 160 Hz is High; every f₀ ≥ 80 Hz is
+  out of Low.
 - **Both paths keep their content below an eighth of their analysis rate**, through 85 dB Kaiser
   FIRs with odd lengths (whole-sample group delay):
   - the ×4 low-pass passes to fs/96 and stops from fs/32;
@@ -47,11 +51,14 @@ when its content stays well below the *analysis* Nyquist.
 - **Step 5 interpolates over a common overlap** (`pitch::Mpm::common_overlap`). It costs O(1): each
   sum is the FFT's full sum minus at most two edge pairs.
 - **The selector:**
-  - hysteresis between bands, home on silence;
-  - misses that decay rather than reset;
-  - a scan to the next range after a window plus 50 ms of unclear frames;
+  - a pitch above the band moves at once, one below only after holding for a window (a window
+    spanning a note change reads the notes' common period, lower than either); home on silence;
+  - misses that decay rather than reset, and a downward scan (High → Mid → Low → High) after a
+    window plus 50 ms of unclear frames;
   - a **Low reference frame** while another range is selected, so that a range blind below 1.5
-    periods of its floor cannot hold a low note's second partial.
+    periods of its floor cannot hold a low note's second partial. It acts only when the current
+    pitch is absent or 2–4 times it, its window started after the last switch, pitch change or
+    end of a held reading, and two such frames agree.
 - **The chain splits at the ring buffer.** `chain::Front` (DC block, gate) runs in the callback;
   its gate state crosses the ring with each block. `chain::Analysis` does the rest, and it reports
   an open gate *unpitched* after 2 s without a clear pitch. The gate's floor then learns while open.
@@ -76,7 +83,8 @@ when its content stays well below the *analysis* Nyquist.
 - **M3 must publish tuner snapshots at 60 Hz;** the ledger's snapshot line binds it.
 - **Low power:** under `PLATFORM_AUDIO.md`'s low-power rule (tuner snapshots 60 → 20 Hz), the tuner
   trades latency for battery, and that row of the ledger does not apply.
-- Mid's headroom is 1.5 ms at 48 kHz and 1.1 ms at 44.1 kHz: any added delay there (filter, hop, settling) needs a new decision.
+- Mid's headroom is 1.5 ms at 48 kHz and 1.1 ms at 44.1 kHz: any added delay there (filter, hop,
+  settling) needs a new decision.
 - Host CPU, worst case, is about 0.6 % of one core: both filters, High's frames and the Low
   reference. The phone figure is owed (`T-003a` owes the NSDF's too).
 - From Low, a 1400 Hz note costs a scan (108–137 ms). The preset's starting range (M3) keeps the
@@ -97,3 +105,6 @@ when its content stays well below the *analysis* Nyquist.
 - **Cutting the decimator at fs/4 (1.3 ms less delay):** the sawtooth reached 0.51 ¢ in Mid
   (before the common overlap).
 - **Filtering only the selected path:** each switch would wait for a window to refill.
+- **Acting on any clear Low reference** (round 2): a Low window spanning a note change reads the
+  notes' common period. 161 of 364 no-gap leaps showed wrong notes, and upward leaps flipped Mid
+  and High on every frame. With the rules above: none, under the leap test's rule.
