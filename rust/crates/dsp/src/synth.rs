@@ -95,9 +95,12 @@ pub fn sawtooth(out: &mut [f32], frequency_hz: f64, sample_rate: u32, amplitude:
         let (mut previous, mut current) = (0.0, theta.sin());
         let mut sum = 0.0;
         let mut sign = 1.0;
-        for h in 1..=harmonics {
-            sum += sign * current / index_to_f64(h);
+        // `order` counts the harmonics in f64, exactly (they are far below 2⁵³).
+        let mut order = 1.0;
+        for _ in 0..harmonics {
+            sum += sign * current / order;
             sign = -sign;
+            order += 1.0;
             (previous, current) = (current, twice_cos * current - previous);
         }
         *sample = to_f32(scale * sum);
