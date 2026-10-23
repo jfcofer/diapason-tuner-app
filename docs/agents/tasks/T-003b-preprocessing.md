@@ -91,7 +91,7 @@ under the deny list `pitch` uses. Every buffer and coefficient is set in a const
 - [x] **ADR 0028**: windows, hops and the crossover come from the ledger. §1 and §2 are
   rewritten to match and link it. The numbers live in code constants, and the doc names the test
   that asserts them.
-- [ ] `just verify` passes, and all six CI jobs are green.
+- [x] `just verify` passes, and all six CI jobs are green (#31).
 
 ## Out of scope
 
