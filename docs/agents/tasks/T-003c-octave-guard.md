@@ -94,4 +94,24 @@ estimate, and multi-frame confirmation.
 
 ## Implementation notes
 
+**Baseline**, before any change (`tests/chain.rs` at the baseline commit; 48 / 44.1 kHz, home
+Mid, new note weak, partials 0.3/1/0.4). Wrong: judged clear frames off the new note, under the
+leap rule. Needle: right pitch class within ±5 ¢ and stays; total adds the target's other ledger
+lines (Mid 58.3, Low 63.3 ms). Before `T-003c` every frame's octave counts as known.
+
+| Case | Wrong | Needle (ms) | Total (ms) | Octave known (ms) |
+|---|---|---|---|---|
+| E4 → low E, stopped | 19 / 21 | 140 / 134.9 | 198.3 / 193.3 | 140 / 134.9 |
+| E4 → low E, 0.1 s gap | 0 / 0 | 27.5 / 27.3 | 85.8 / 85.7 | same |
+| E4 → low E, rings (τ 0.6–3 s) | 41 / 40 | 7.5 / 1.4 | 65.8 / 59.8 | 120 / 119.7 |
+| E4 → low E, 12 dB under (τ 0.6, 1.5, 3) | 44 / 46 | 125, 107.5, 107.5 / 113.6 | 183.3, 165.8 / 172.0 | 130 / 134.9 |
+| A2 → bass E, stopped | 24 / 26 | 160 / 158.5 | 223.3 / 221.8 | same |
+| A2 → bass E, 0.1 s gap | 0 / 0 | 50 / 53.5 | 113.3 / 116.8 | same |
+| A2 → bass E, 12 dB under (τ 0.6, 1.5, 3) | 18, 19, 18 / 25, 22, 22 | 165, 185, 330 / 203.4, 163.5, 402.9 | 228.3, 248.3, 393.3 / 266.7, 226.8, 466.3 | same |
+| A2 → bass E, rings (chord, τ 0.6, 1.5, 3) | 72, 199, 282 / 70, 197, 283 | 1015 / 1051; never | — | same |
+| A2 → low B, stopped | 10 / 12 | 100 / 94.3 | 163.3 / 157.6 | 100 / 98.6 |
+
+Chords show a third note in 65–270 frames (Low's 27.5 Hz, A0). No-gap leaps, weak, an octave down:
+82.41 → 41.2 Hz 24 / 26 wrong, 196 → 98 Hz 22 / 18; every other leap 0.
+
 ## Verification performed
