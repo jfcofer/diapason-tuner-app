@@ -6,7 +6,7 @@
 //! sawtooth's vertex lands up to 0.05 lag off at full band, 0.013 below `fs/4`, 0.0035 below
 //! `fs/8`). An LTI filter keeps a periodic signal periodic with the same period, so removing
 //! harmonics costs the detector nothing but that bias. Where each path cuts is decided in
-//! `crate::range`, from the probe recorded in `T-003b`.
+//! [`crate::range`], from the probe recorded in `T-003b`.
 
 use std::f64::consts::{PI, TAU};
 use std::fmt;
@@ -17,7 +17,7 @@ use crate::convert::{index_from_f64, index_to_f64, to_f32};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FilterError {
     /// The sample rate is zero, or not one the tuner's chain is designed for
-    /// (`crate::range::SUPPORTED_RATES`).
+    /// ([`crate::range::SUPPORTED_RATES`]).
     SampleRate(u32),
     /// The band edges are not `0 < passband < stopband < rate/2`.
     BandEdges {
