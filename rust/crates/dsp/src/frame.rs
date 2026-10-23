@@ -182,9 +182,12 @@ mod tests {
             window in 1_usize..300,
             hop_fraction in 0.0_f64..1.0,
         ) {
-            let hop = 1 + crate::convert::index_from_f64(hop_fraction * crate::convert::index_to_f64(window - 1));
+            let span = crate::convert::index_to_f64(window - 1);
+            let hop = 1 + crate::convert::index_from_f64(hop_fraction * span);
             let total: usize = blocks.iter().sum();
-            let stream: Vec<f32> = (0..total).map(|i| f32::from(u16::try_from(i % 60_000).unwrap())).collect();
+            let stream: Vec<f32> = (0..total)
+                .map(|i| f32::from(u16::try_from(i % 60_000).unwrap()))
+                .collect();
             let mut frames = FrameAssembler::new(window, hop).unwrap();
             let mut count = 0;
             let mut start = 0;
