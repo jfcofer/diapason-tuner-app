@@ -197,6 +197,62 @@ pub fn pluck(out: &mut [f32], f0_hz: f64, sample_rate: u32, amplitude: f64, para
     }
 }
 
+/// Relative levels of partials 1, 2, 3 of a low string with a weak fundamental: the second
+/// partial strongest, as a guitar's low E often is (`T-003b`'s reviewer's probe). A range that
+/// cannot see the fundamental reads the second partial, at clarity 0.6: `(E_even − E_odd) / E`.
+pub const WEAK_FUNDAMENTAL: [f64; 3] = [0.3, 1.0, 0.4];
+
+/// Relative levels of partials 1–5 of a pinch harmonic: the fundamental weak, the second and third
+/// partials strong (`T-003c`). Its NSDF at half the period and at a third are both 0.12, so only a
+/// range that sees the fundamental reads it clearly, and as the fundamental.
+pub const PINCH_HARMONIC: [f64; 5] = [0.2, 1.0, 0.9, 0.3, 0.1];
+
+/// Relative levels of partials 1–4 of a five-string bass's low B (30.87 Hz): the fundamental
+/// 16 dB under the second partial, the third and fourth strong (`T-003c`). A range that cannot see
+/// 30.87 Hz reads the second partial at clarity 0.48, below what it may show.
+pub const WEAK_LOW_B: [f64; 4] = [0.15, 1.0, 0.6, 0.3];
+
+/// An additive tone, written over `out`: partial `n` (1-based) at `n · f`, with relative level
+/// `levels[n − 1]` and phase `n · phase`, all scaled so that the levels sum to `amplitude`, which
+/// bounds every sample by it. Harmonic, steady, with no partial at or above Nyquist (those are left
+/// out). Summed in `f64` and narrowed once.
+///
+/// ```
+/// use diapason_dsp::synth::{WEAK_FUNDAMENTAL, partials, sine};
+/// let mut tone = [0.0_f32; 256];
+/// partials(&mut tone, 110.0, 48_000, 0.5, 0.0, &[1.0]);
+/// let mut reference = [0.0_f32; 256];
+/// sine(&mut reference, 110.0, 48_000, 0.5, 0.0);
+/// assert!(tone.iter().zip(&reference).all(|(a, b)| (a - b).abs() < 1e-7));
+/// partials(&mut tone, 82.41, 48_000, 0.5, 0.3, &WEAK_FUNDAMENTAL);
+/// assert!(tone.iter().all(|s| s.abs() <= 0.5));
+/// ```
+pub fn partials(
+    out: &mut [f32],
+    f0_hz: f64,
+    sample_rate: u32,
+    amplitude: f64,
+    phase: f64,
+    levels: &[f64],
+) {
+    let rate = f64::from(sample_rate.max(1));
+    let total: f64 = levels.iter().map(|level| level.abs()).sum();
+    let scale = if total > 0.0 { amplitude / total } else { 0.0 };
+    let step = TAU * f0_hz / rate;
+    for (j, sample) in out.iter_mut().enumerate() {
+        let theta = step * index_to_f64(j);
+        let mut sum = 0.0;
+        let mut order = 1.0;
+        for level in levels {
+            if order * f0_hz < rate / 2.0 {
+                sum += level * (order * (theta + phase)).sin();
+            }
+            order += 1.0;
+        }
+        *sample = to_f32(scale * sum);
+    }
+}
+
 /// A seeded white-noise source: `SplitMix64` (Steele, Lea & Flood, OOPSLA 2014), mapped to a uniform
 /// distribution on `[−1, 1)`.
 ///
@@ -459,6 +515,44 @@ mod tests {
                     * (TAU * partial_frequency(10_000.0, 2, 1e-4) * t + p2).sin()
                     / (2.0 * norm);
             assert!((f64::from(s) - expected).abs() < 1e-6, "sample {j}");
+        }
+    }
+
+    /// The autocorrelation of a steady harmonic tone at lag `τ`, normalised, is
+    /// `Σ aₕ² cos(2πhτ/T) / Σ aₕ²`: what the fixtures' notes state about their NSDF.
+    #[test]
+    fn the_spectra_have_the_nsdf_their_notes_state() {
+        // 100 Hz at 48 kHz: T = 480 samples, T/2 = 240, T/3 = 160, over 100 periods.
+        let mut tone = vec![0.0_f32; 48_480];
+        let at = |tone: &[f32], lag: usize| {
+            let (head, tail) = (&tone[..48_000], &tone[lag..lag + 48_000]);
+            let r: f64 = head
+                .iter()
+                .zip(tail)
+                .map(|(&a, &b)| f64::from(a) * f64::from(b))
+                .sum();
+            r / head
+                .iter()
+                .map(|&a| f64::from(a) * f64::from(a))
+                .sum::<f64>()
+        };
+        for (levels, half, third) in [
+            (&WEAK_FUNDAMENTAL[..], 0.6, -0.31),
+            (&PINCH_HARMONIC[..], 0.118, 0.123),
+            (&WEAK_LOW_B[..], 0.480, -0.133),
+        ] {
+            partials(&mut tone, 100.0, 48_000, 0.5, 0.7, levels);
+            assert!((at(&tone, 480) - 1.0).abs() < 1e-6, "{levels:?}");
+            assert!(
+                (at(&tone, 240) - half).abs() < 0.005,
+                "{levels:?}: {}",
+                at(&tone, 240)
+            );
+            assert!(
+                (at(&tone, 160) - third).abs() < 0.005,
+                "{levels:?}: {}",
+                at(&tone, 160)
+            );
         }
     }
 
