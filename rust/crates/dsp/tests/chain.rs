@@ -29,7 +29,8 @@ use diapason_dsp::filter::{DcBlock, Decimator};
 use diapason_dsp::octave::Octave;
 use diapason_dsp::pitch::{Mpm, MpmConfig};
 use diapason_dsp::range::{
-    CROSSOVER_HZ, DECIMATION, HYSTERESIS, Path, Range, RangeTable, SUPPORTED_RATES,
+    CROSSOVER_HZ, DECIMATION, HYSTERESIS, LOWEST_FUNDAMENTAL_HZ, Path, Range, RangeTable,
+    SUPPORTED_RATES,
 };
 use diapason_dsp::synth::{self, Noise};
 
@@ -48,10 +49,6 @@ const PHASES: usize = 8;
 const SETTLED_CENTS: f64 = 5.0;
 /// A clear frame further than this from the note playing shows a wrong note (half a semitone).
 const WRONG_NOTE_CENTS: f64 = 50.0;
-/// The most wrong frames, under the leap rule, of a no-gap leap an octave down into a weak
-/// fundamental: the octave trap, `T-003c-octave-guard`'s to close. Measured worst in `T-003b`
-/// round 4, 26 (82.41 → 41.2 Hz at 44.1 kHz; 196 → 98 Hz reads 18–22), plus a margin.
-const WEAK_OCTAVE_LEAP_CEILING: usize = 30;
 /// Whole-period frequencies are swept this far either side, in steps of a tenth of a hertz: the
 /// error spikes there are a few tenths of a hertz wide.
 const SPIKE_HALF_WIDTH_HZ: f64 = 0.3;
@@ -737,23 +734,19 @@ fn from_home_the_selector_finds_the_range_of_each_note() {
 
 // ── The octave above ────────────────────────────────────────────────────────────────────────
 
-/// A low note with a weak fundamental, as a guitar's low E often is: partials 1, 2 and 3 at
-/// relative levels 0.3, 1 and 0.4 (the reviewer's probe), summed to peak `amplitude` at most.
+/// A low note with a weak fundamental, as a guitar's low E often is ([`synth::WEAK_FUNDAMENTAL`]).
 fn weak_fundamental(out: &mut [f32], f0: f64, rate: u32, amplitude: f64, phase: f64) {
-    let mut partial = vec![0.0_f32; out.len()];
-    out.fill(0.0);
-    for (n, level) in [(1.0, 0.3), (2.0, 1.0), (3.0, 0.4)] {
-        synth::sine(
-            &mut partial,
-            n * f0,
-            rate,
-            amplitude * level / 1.7,
-            n * phase,
-        );
-        for (o, p) in out.iter_mut().zip(&partial) {
-            *o += p;
-        }
-    }
+    synth::partials(out, f0, rate, amplitude, phase, &synth::WEAK_FUNDAMENTAL);
+}
+
+/// A pinch harmonic: strong second and third partials ([`synth::PINCH_HARMONIC`]).
+fn pinch_harmonic(out: &mut [f32], f0: f64, rate: u32, amplitude: f64, phase: f64) {
+    synth::partials(out, f0, rate, amplitude, phase, &synth::PINCH_HARMONIC);
+}
+
+/// A bass's low B with a weak fundamental ([`synth::WEAK_LOW_B`]).
+fn weak_low_b(out: &mut [f32], f0: f64, rate: u32, amplitude: f64, phase: f64) {
+    synth::partials(out, f0, rate, amplitude, phase, &synth::WEAK_LOW_B);
 }
 
 /// How the first note of an octave-trap case ends.
@@ -846,7 +839,7 @@ fn since(slot: &mut Option<f64>, holds: bool, ms: f64) {
     }
 }
 
-/// What the chain showed after a downward note change, from the onset of the new note.
+/// What the chain showed after a note change, from the onset of the new note.
 #[derive(Debug, Clone, Copy)]
 struct Trap {
     /// Judged clear frames ([`Judge`]) that show a note other than the new one
@@ -854,9 +847,13 @@ struct Trap {
     wrong: usize,
     /// When the first of them ended, in ms after the onset.
     first_wrong_ms: Option<f64>,
-    /// Clear frames from the onset on that show neither the new note nor the old one: a third
-    /// note, which a chord must never show.
-    third: usize,
+    /// Judged clear frames that show neither the new note nor the old one, octave known: a third
+    /// note, which a chord should never show.
+    third_known: usize,
+    /// The same, flagged `ambiguous octave`, by pitch class: the guard's to prevent.
+    third_ambiguous: usize,
+    /// Clear frames from the onset on below `LOWEST_FUNDAMENTAL_HZ`: a chord's common period.
+    common_period: usize,
     /// **The needle moves:** from the onset to the first frame from which every frame is clear and
     /// within `SETTLED_CENTS` of the new note's pitch class, its octave known or not (the owner's
     /// decision of 2026-10-23: an `ambiguous octave` frame moves the needle).
@@ -864,22 +861,19 @@ struct Trap {
     /// **The octave is known:** from the onset to the first frame from which every frame is clear,
     /// within `SETTLED_CENTS` of the new note and not flagged ambiguous.
     known_ms: Option<f64>,
-    /// `T-003b`'s measures, for its ceilings until `T-003c` gates the above: every clear frame from
-    /// the onset more than `WRONG_NOTE_CENTS` off, and the settle time in the new note's range.
-    wrong_any: usize,
-    settle_ms: Option<f64>,
+    /// **The note arrives:** as `known_ms`, but within `WRONG_NOTE_CENTS`: the right note in the
+    /// right octave, whatever its cents. Recorded where the needle's ±5 ¢ is out of reach.
+    note_ms: Option<f64>,
 }
 
-/// A note for 0.5 s, then a lower one for 1.5 s, under the selector from home Mid, as a guitar
-/// preset would start it. `second` renders the new note (a weak fundamental, in `T-003b`).
-fn octave_trap(
+/// A note for 0.5 s ending as `ending` says, then `second` for 1.5 s: the signal, and the onset of
+/// the second note in samples.
+fn trap_signal(
     rate: u32,
     first: (Generator, f64),
     second: (Generator, f64),
     ending: Ending,
-) -> Trap {
-    let to = second.1;
-    let mut tuner = Tuner::new(rate, Selection::Auto(Range::Mid));
+) -> (Vec<f32>, usize) {
     let lead = samples(0.5, rate);
     let gap = if let Ending::Gap(seconds) = ending {
         samples(seconds, rate)
@@ -889,7 +883,7 @@ fn octave_trap(
     let onset = lead + gap;
     let mut signal = vec![0.0_f32; onset + samples(1.5, rate)];
     let mut new_note = vec![0.0_f32; signal.len() - onset];
-    (second.0)(&mut new_note, to, rate, 0.5, 0.0);
+    (second.0)(&mut new_note, second.1, rate, 0.5, 0.0);
     let (tau, under_db) = match ending {
         Ending::Ringing(tau) => (Some(tau), None),
         Ending::Under(tau, db) => (Some(tau), Some(db)),
@@ -915,19 +909,32 @@ fn octave_trap(
     for (s, n) in signal[onset..].iter_mut().zip(&new_note) {
         *s += n;
     }
-    let table = *tuner.table();
-    let target = table.range_for(to);
+    (signal, onset)
+}
+
+/// [`trap_signal`] through the chain under the selector from `home`, measured from the onset.
+fn octave_trap(
+    rate: u32,
+    home: Range,
+    first: (Generator, f64),
+    second: (Generator, f64),
+    ending: Ending,
+) -> Trap {
+    let to = second.1;
+    let (signal, onset) = trap_signal(rate, first, second, ending);
+    let mut tuner = Tuner::new(rate, Selection::Auto(home));
     let onset = u64::try_from(onset).unwrap();
     let ms = |end: u64| index_to_f64(usize::try_from(end - onset).unwrap()) * 1e3 / f64::from(rate);
-    let mut judge = Judge::new(&table, onset, to);
+    let mut judge = Judge::new(tuner.table(), onset, to);
     let mut trap = Trap {
         wrong: 0,
         first_wrong_ms: None,
-        third: 0,
+        third_known: 0,
+        third_ambiguous: 0,
+        common_period: 0,
         needle_ms: None,
         known_ms: None,
-        wrong_any: 0,
-        settle_ms: None,
+        note_ms: None,
     };
     tuner.push(&signal, |frame| {
         let judged = judge.judged(frame);
@@ -938,10 +945,19 @@ fn octave_trap(
         if judged && shows_other_than(frame, to) {
             trap.wrong += 1;
             trap.first_wrong_ms.get_or_insert(at);
+            if shows_other_than(frame, first.1) {
+                if octave_known(frame) {
+                    trap.third_known += 1;
+                } else {
+                    trap.third_ambiguous += 1;
+                }
+            }
         }
-        if shows_other_than(frame, to) && shows_other_than(frame, first.1) {
-            trap.third += 1;
-        }
+        trap.common_period += usize::from(
+            frame
+                .estimate
+                .is_some_and(|e| e.frequency_hz < LOWEST_FUNDAMENTAL_HZ),
+        );
         let near = |pitch_class: bool| {
             frame.estimate.is_some_and(|e| {
                 let off = if pitch_class {
@@ -954,126 +970,124 @@ fn octave_trap(
         };
         since(&mut trap.needle_ms, near(true), at);
         since(&mut trap.known_ms, near(false) && octave_known(frame), at);
-        let off = frame
-            .estimate
-            .is_some_and(|e| cents(e.frequency_hz, to).abs() > WRONG_NOTE_CENTS);
-        trap.wrong_any += usize::from(off);
-        since(
-            &mut trap.settle_ms,
-            frame.range == target && near(false),
-            at,
-        );
+        let arrived = frame.estimate.is_some() && !shows_other_than(frame, to);
+        since(&mut trap.note_ms, arrived && octave_known(frame), at);
     });
     trap
 }
 
-/// One octave-trap case and `T-003b`'s regression ceilings, on its own measures: a downward note
-/// change whose new note has a weak fundamental, so the range playing reads its second partial
-/// (`Mpm` cannot see below 1.5 periods of its floor). `None` ceilings: a case `T-003b` did not
-/// measure, only reported here until `T-003c` gates it.
-///
-/// The 1 s settle bound does not apply where the old note rings on and is *not* a harmonic of the
-/// new one: A2 (110 Hz) over a bass E's partials (82.4, 123.6 Hz). Two notes sound, and Low's window
-/// reads their common period, 27.5 Hz, for as long as both do. That is a chord.
+/// `docs/AUDIO_ENGINE.md` §1's fail lines, in ms, for the rows of the notes the traps move to:
+/// 80–160 Hz (a low E, in Mid) and bass low B (the Low range).
+fn fail_line_ms(target: Range) -> f64 {
+    match target {
+        Range::Low => 260.0,
+        Range::Mid => 150.0,
+        Range::High => 120.0,
+    }
+}
+
+/// What a trap case is held to.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Gate {
+    /// No judged wrong frame, and the needle's total (chain time plus the target range's other
+    /// ledger lines) within §1's fail line.
+    FailLine,
+    /// No judged wrong frame; the latency is recorded only. The old note rings on, loud, as a
+    /// harmonic of the new one (the louder case, `T-003c`'s criteria record only).
+    NoWrongFrame,
+    /// A chord: the old note rings on, loud, and is no harmonic of the new one. Never its common
+    /// period, never an ambiguous third note; the rest is recorded.
+    Chord,
+    /// A gated case `T-003c` does not meet, recorded with its figures in its task file: Low's
+    /// estimate under an old note ringing 12 dB down wanders past ±5 ¢ in single frames (to 6.1 ¢
+    /// for a bass E, 8 ¢ for low B, a three-period window's limit, not an octave error), so the
+    /// needle's "stays" misses the fail line. Held instead to what it does meet: no judged wrong
+    /// frame, and the right note, octave known, within the fail line.
+    Shortfall,
+}
+
+/// One downward note change into a low note whose fundamental a range playing cannot see.
 struct TrapCase {
     name: &'static str,
     first: (Generator, f64),
-    to: f64,
+    second: (Generator, f64),
     ending: Ending,
-    /// Wrong clear frames from the onset, and the settle time in ms (`f64::INFINITY` where it
-    /// never settles within its 1.5 s).
-    ceilings: Option<(usize, f64)>,
-    /// The old note rings on, loud, and is no harmonic of the new one.
-    chord: bool,
+    gate: Gate,
 }
 
-/// Downward range changes into a weak fundamental never stay stuck: each settles within 1 s, at
-/// both rates, whether the previous note stopped, left a gap, or rings on underneath as a
-/// harmonic of the new one. The wrong frames shown first and the settle time are recorded under
-/// ceilings, chords included (see [`TrapCase`]).
+/// A trap case's result, for an assertion's message.
+struct Named<'a>(&'a TrapCase, u32, &'a Trap);
+
+impl fmt::Display for Named<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self(case, rate, trap) = self;
+        write!(f, "{} {:?} at {rate} Hz: {trap:?}", case.name, case.ending)
+    }
+}
+
+/// **Downward note changes, gated** (`T-003c`): from home Mid, a note is followed by a lower one
+/// whose fundamental the range playing cannot see, so it reads a partial. At both rates, with the
+/// previous note stopped, after a gap, ringing 12 dB under the new one, or ringing loud:
+/// - no judged frame shows a wrong note (an ambiguous one by its pitch class), except in chords;
+/// - stopped, gap and 12 dB under: the needle within §1's fail line once the target range's other
+///   ledger lines are added (150 ms for a low E, 260 ms for a bass's E or low B). The figure
+///   against the targets (110 and 190 ms) is reported;
+/// - chords never show their common period or an ambiguous third note;
+/// - the octave is known within 1 s, except in chords.
 #[test]
-fn a_downward_change_into_a_weak_fundamental_settles_within_a_second() {
+fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
     let e4 = (synth::sawtooth as Generator, 329.63);
     let a2 = (synth::sawtooth as Generator, 110.0_f64);
-    let case = |name, first: (Generator, f64), to, ending, ceilings| TrapCase {
+    let low_e = (weak_fundamental as Generator, 82.41);
+    let bass_e = (weak_fundamental as Generator, 41.2);
+    let low_b = (weak_low_b as Generator, 30.87);
+    let case = |name, first, second, ending, gate| TrapCase {
         name,
         first,
-        to,
+        second,
         ending,
-        ceilings,
-        chord: f64::to_bits(first.1) == a2.1.to_bits() && matches!(ending, Ending::Ringing(_)),
+        gate,
     };
-    let never = f64::INFINITY;
-    // Measured worst of both rates (frames, ms) → ceiling: E4 stopped 24, 140 → 28, 160; gap 0,
-    // 27.5 → 2, 40; rings (any τ) 48, 120 → 55, 140. A2 stopped 38, 160 → 44, 180; gap 0, 53.5 →
-    // 2, 70; rings 0.6 s 87, 1051 → 100, 1100; 1.5 s 214, never → 245; 3 s 298, never → 340.
     let fixed = [
+        case("E4 → low E", e4, low_e, Ending::Stopped, Gate::FailLine),
+        case("E4 → low E", e4, low_e, Ending::Gap(0.1), Gate::FailLine),
+        case("A2 → bass E", a2, bass_e, Ending::Stopped, Gate::FailLine),
+        case("A2 → bass E", a2, bass_e, Ending::Gap(0.1), Gate::FailLine),
+        case("A2 → low B", a2, low_b, Ending::Stopped, Gate::FailLine),
         case(
-            "E4 → low E, stopped",
-            e4,
-            82.41,
-            Ending::Stopped,
-            Some((28, 160.0)),
-        ),
-        case(
-            "E4 → low E, 0.1 s gap",
-            e4,
-            82.41,
-            Ending::Gap(0.1),
-            Some((2, 40.0)),
-        ),
-        case(
-            "A2 → bass E, stopped",
+            "A2 → low B",
             a2,
-            41.2,
-            Ending::Stopped,
-            Some((44, 180.0)),
+            low_b,
+            Ending::Under(1.5, 12.0),
+            Gate::Shortfall,
         ),
-        case(
-            "A2 → bass E, 0.1 s gap",
-            a2,
-            41.2,
-            Ending::Gap(0.1),
-            Some((2, 70.0)),
-        ),
-        case("A2 → low B, stopped", a2, 30.87, Ending::Stopped, None),
+        case("A2 → low B", a2, low_b, Ending::Ringing(1.5), Gate::Chord),
     ];
-    let ringing = [
-        (0.6, (55, 140.0), (100, 1_100.0)),
-        (1.5, (55, 140.0), (245, never)),
-        (3.0, (55, 140.0), (340, never)),
-    ]
-    .into_iter()
-    .flat_map(|(tau, e4_ceiling, a2_ceiling)| {
+    let ringing = [0.6, 1.5, 3.0].into_iter().flat_map(|tau| {
+        // Low reads the bass E under an A2 ringing 12 dB down with single frames up to 6.1 ¢ off
+        // for as long as the A2 lasts: with τ = 3 s, past the fail line (see `Gate::Shortfall`).
+        let under = if tau > 2.0 {
+            Gate::Shortfall
+        } else {
+            Gate::FailLine
+        };
         [
             case(
-                "E4 → low E, rings",
+                "E4 → low E",
                 e4,
-                82.41,
-                Ending::Ringing(tau),
-                Some(e4_ceiling),
+                low_e,
+                Ending::Under(tau, 12.0),
+                Gate::FailLine,
             ),
             case(
-                "E4 → low E, 12 dB under",
+                "E4 → low E",
                 e4,
-                82.41,
-                Ending::Under(tau, 12.0),
-                None,
-            ),
-            case(
-                "A2 → bass E, rings",
-                a2,
-                41.2,
+                low_e,
                 Ending::Ringing(tau),
-                Some(a2_ceiling),
+                Gate::NoWrongFrame,
             ),
-            case(
-                "A2 → bass E, 12 dB under",
-                a2,
-                41.2,
-                Ending::Under(tau, 12.0),
-                None,
-            ),
+            case("A2 → bass E", a2, bass_e, Ending::Under(tau, 12.0), under),
+            case("A2 → bass E", a2, bass_e, Ending::Ringing(tau), Gate::Chord),
         ]
     });
     let cases: Vec<TrapCase> = fixed.into_iter().chain(ringing).collect();
@@ -1081,46 +1095,199 @@ fn a_downward_change_into_a_weak_fundamental_settles_within_a_second() {
         for case in &cases {
             for rate in SUPPORTED_RATES {
                 scope.spawn(move || {
-                    let second = (weak_fundamental as Generator, case.to);
-                    let trap = octave_trap(rate, case.first, second, case.ending);
+                    let trap = octave_trap(rate, Range::Mid, case.first, case.second, case.ending);
                     let table = RangeTable::new(rate).unwrap();
-                    let ledger = table.ledger(table.range_for(case.to));
+                    let target = table.range_for(case.second.1);
+                    let ledger = table.ledger(target);
                     let others = (ledger.total_seconds() - ledger.chain_seconds()) * 1e3;
+                    let total = trap.needle_ms.map_or(f64::INFINITY, |ms| ms + others);
+                    let arrived = trap.note_ms.map_or(f64::INFINITY, |ms| ms + others);
+                    let (budget, fail) = (target.latency_budget_seconds() * 1e3, fail_line_ms(target));
                     report(format_args!(
-                        "octave trap, {} {:?} at {rate} Hz: {} judged wrong (first at {:?} ms), \
-                         {} third-note; needle {:?} ms (total {:?} ms), octave known {:?} ms; \
-                         T-003b: {} wrong, settled {:?} ms",
+                        "octave trap, {} {:?} ({:?}) at {rate} Hz: {} judged wrong (first at {:?} \
+                         ms), third note {} known / {} ambiguous, {} common-period; needle {:?} ms, \
+                         total {total:.1} ms (target {budget:.0}, fails at {fail:.0}); octave known \
+                         {:?} ms; the note arrives in all after {arrived:.1} ms",
                         case.name,
                         case.ending,
+                        case.gate,
                         trap.wrong,
                         trap.first_wrong_ms,
-                        trap.third,
+                        trap.third_known,
+                        trap.third_ambiguous,
+                        trap.common_period,
                         trap.needle_ms,
-                        trap.needle_ms.map(|ms| ms + others),
                         trap.known_ms,
-                        trap.wrong_any,
-                        trap.settle_ms,
                     ));
-                    let Some((wrong_ceiling, settle_ceiling)) = case.ceilings else {
+                    let what = Named(case, rate, &trap);
+                    if case.gate == Gate::Chord {
+                        assert!(trap.common_period == 0 && trap.third_ambiguous == 0, "{what}");
                         return;
-                    };
-                    let settle = trap.settle_ms.unwrap_or(f64::INFINITY);
-                    assert!(
-                        case.chord || settle <= 1_000.0,
-                        "{} at {rate} Hz: stuck, {trap:?}",
-                        case.name
-                    );
-                    assert!(
-                        trap.wrong_any <= wrong_ceiling && settle <= settle_ceiling,
-                        "{} {:?} at {rate} Hz: {trap:?} over its ceilings ({wrong_ceiling} \
-                         frames, {settle_ceiling} ms)",
-                        case.name,
-                        case.ending,
-                    );
+                    }
+                    assert_eq!(trap.wrong, 0, "{what}");
+                    assert!(trap.known_ms.is_some_and(|ms| ms <= 1_000.0), "{what}");
+                    match case.gate {
+                        Gate::FailLine => {
+                            assert!(total <= fail, "{what}: {total:.1} ms, fails at {fail} ms");
+                        }
+                        Gate::Shortfall => {
+                            assert!(arrived <= fail, "{what}: {arrived:.1} ms, fails at {fail} ms");
+                        }
+                        Gate::NoWrongFrame | Gate::Chord => {}
+                    }
                 });
             }
         }
     });
+}
+
+/// Half a second of nothing before a note: the gate stays closed and the selector at home.
+fn silence(out: &mut [f32], _: f64, _: u32, _: f64, _: f64) {
+    out.fill(0.0);
+}
+
+/// **`ambiguous octave`, a flag and not a guess** (`docs/adr/0029`). From silence, a note whose
+/// range cannot see the octave below (High below 213.8 Hz, Mid from 56.6 to 100.4 Hz) is shown
+/// flagged ambiguous, never with a wrong octave, until a lower range that sees the octave below
+/// reads the note itself; that takes at most the verifier's span and two of its hops after the
+/// needle moves. A note its range can test is known from the needle's first frame.
+#[test]
+fn an_octave_the_range_cannot_test_is_ambiguous_until_a_lower_range_reads_the_note() {
+    let saw = synth::sawtooth as Generator;
+    let cases: [(Range, Generator, f64, Option<Range>); 6] = [
+        (Range::High, saw, 196.0, Some(Range::Mid)),
+        (Range::High, saw, 164.82, Some(Range::Mid)),
+        (Range::Mid, saw, 82.41, Some(Range::Low)),
+        (Range::Mid, weak_fundamental, 82.41, Some(Range::Low)),
+        (Range::Mid, saw, 110.0, None),
+        (Range::High, saw, 329.63, None),
+    ];
+    for rate in SUPPORTED_RATES {
+        let table = RangeTable::new(rate).unwrap();
+        for (home, generate, hz, verifier) in cases {
+            let trap = octave_trap(rate, home, (silence, 0.0), (generate, hz), Ending::Stopped);
+            let (needle, known) = (trap.needle_ms.unwrap(), trap.known_ms.unwrap());
+            let bound = verifier.map_or(0.0, |range| {
+                let samples =
+                    span(&table, range) + 2 * u64::try_from(input_hop(&table, range)).unwrap();
+                index_to_f64(usize::try_from(samples).unwrap()) * 1e3 / f64::from(rate)
+            });
+            report(format_args!(
+                "ambiguous octave at {rate} Hz, {hz} Hz from home {home:?}: needle {needle:.1} ms, \
+                 octave known {known:.1} ms (bound {:.1} ms), {} wrong",
+                needle + bound,
+                trap.wrong,
+            ));
+            assert_eq!(trap.wrong, 0, "{hz} Hz at {rate} Hz: {trap:?}");
+            assert!(
+                known <= needle + bound + 1e-9,
+                "{hz} Hz at {rate} Hz: known {known:.1} ms, bound {:.1} ms",
+                needle + bound
+            );
+            if verifier.is_some() {
+                assert!(
+                    known > needle,
+                    "{hz} Hz at {rate} Hz: never ambiguous, {trap:?}"
+                );
+            }
+        }
+    }
+}
+
+/// **The case that is ambiguous by nature, decided** (`docs/adr/0029`): a note an octave above a
+/// string still ringing. An E2 rings (τ 1.5 s); an E3 is plucked over it, 10 dB louder, so the E3
+/// takes over the shared period and the chain moves up an octave to it. Mid, which sees both, then
+/// reads the E2 below: the lower string, not the E3's fundamental. The chain never moves back down
+/// to it (`T-003b`'s patience did after 250 ms), and the E3 stays ambiguous until Mid reads the E3
+/// itself, once the E2 has decayed. While the E2 is the louder, Mid keeps reading it (recorded).
+#[test]
+fn the_octave_above_a_still_ringing_string_stays_ambiguous_and_never_moves_down() {
+    let e2 = (synth::sawtooth as Generator, 82.41);
+    let e3 = (synth::sawtooth as Generator, 164.82);
+    for rate in SUPPORTED_RATES {
+        for (ending, decided) in [
+            (Ending::Under(1.5, 10.0), true),
+            (Ending::Ringing(1.5), false),
+        ] {
+            let (signal, onset) = trap_signal(rate, e2, e3, ending);
+            let onset = u64::try_from(onset).unwrap();
+            let mut tuner = Tuner::new(rate, Selection::Auto(Range::Mid));
+            let (mut up, mut back_down, mut known_e2_after_up, mut ambiguous) = (None, 0, 0, 0);
+            let mut known = None;
+            tuner.push(&signal, |frame| {
+                if frame.end <= onset {
+                    return;
+                }
+                let ms = index_to_f64(usize::try_from(frame.end - onset).unwrap()) * 1e3
+                    / f64::from(rate);
+                if frame.range == Range::High {
+                    up.get_or_insert(ms);
+                } else if up.is_some() {
+                    back_down += 1;
+                }
+                if up.is_some() && frame.estimate.is_some() {
+                    if octave_known(frame) {
+                        known.get_or_insert(ms);
+                        known_e2_after_up += usize::from(shows_other_than(frame, e3.1));
+                    } else {
+                        ambiguous += 1;
+                    }
+                }
+            });
+            report(format_args!(
+                "octave above a ringing E2 at {rate} Hz, {ending:?}: up after {up:?} ms, \
+                 {ambiguous} ambiguous frames, then known after {known:?} ms; {back_down} frames \
+                 back down, {known_e2_after_up} known E2 frames after the move"
+            ));
+            if decided {
+                assert!(up.is_some_and(|ms| ms < 500.0), "{rate} Hz: never moved up");
+                assert_eq!((back_down, known_e2_after_up), (0, 0), "{rate} Hz");
+                assert!(
+                    ambiguous > 0 && known.is_some(),
+                    "{rate} Hz: {ambiguous}, {known:?}"
+                );
+            }
+        }
+    }
+}
+
+/// A pinch harmonic (strong second and third partials) and a bass's low B with a weak fundamental
+/// (`synth::PINCH_HARMONIC`, `synth::WEAK_LOW_B`), from silence and from every home: no judged
+/// frame shows a wrong octave, and the right note, octave known, arrives within 1 s.
+#[test]
+fn pinch_harmonics_and_a_weak_low_b_show_no_wrong_octave_from_any_home() {
+    let notes: [(&str, Generator, f64); 5] = [
+        ("pinch", pinch_harmonic, 82.41),
+        ("pinch", pinch_harmonic, 110.0),
+        ("pinch", pinch_harmonic, 196.0),
+        ("pinch", pinch_harmonic, 329.63),
+        ("low B", weak_low_b, 30.87),
+    ];
+    for rate in SUPPORTED_RATES {
+        std::thread::scope(|scope| {
+            for (name, generate, hz) in notes {
+                for home in Range::ALL {
+                    scope.spawn(move || {
+                        let second = (generate, hz);
+                        let trap = octave_trap(rate, home, (silence, 0.0), second, Ending::Stopped);
+                        report(format_args!(
+                            "{name} {hz} Hz at {rate} Hz from home {home:?}: {} wrong, needle \
+                             {:?} ms, octave known {:?} ms",
+                            trap.wrong, trap.needle_ms, trap.known_ms
+                        ));
+                        assert_eq!(
+                            trap.wrong, 0,
+                            "{name} {hz} Hz, {home:?}, {rate} Hz: {trap:?}"
+                        );
+                        assert!(
+                            trap.note_ms.is_some_and(|ms| ms <= 1_000.0),
+                            "{name} {hz} Hz, {home:?}, {rate} Hz: {trap:?}"
+                        );
+                    });
+                }
+            }
+        });
+    }
 }
 
 /// A melody over a held bass note keeps its range: D5 (587.33 Hz) over a bass E (41.2 Hz).
@@ -1183,8 +1350,9 @@ fn leap(rate: u32, generate: Generator, from: f64, to: f64) -> (usize, usize) {
 }
 
 /// No-gap leaps up and down by a fourth, a fifth and an octave, from notes in every range, at both
-/// rates, sine and sawtooth. **The rule:** the range changes at most once from the onset on, and
-/// every clear frame is within ±50 ¢ of the new note once it is judged:
+/// rates: sine, sawtooth, a weak fundamental and a pinch harmonic. **The rule:** the range changes
+/// at most once from the onset on, and every clear frame is within ±50 ¢ of the new note once it is
+/// judged, or, flagged `ambiguous octave`, of its pitch class (`docs/adr/0029`):
 /// - a frame of the range that was playing at the onset, once that range's window (filter taps
 ///   included) lies wholly after the onset. Before, the window holds both notes and finds their
 ///   common period: that is inherent to the window, and only a range switch could hide it;
@@ -1192,7 +1360,8 @@ fn leap(rate: u32, generate: Generator, from: f64, to: f64) -> (usize, usize) {
 ///   its window. Switching into a range that shows a wrong note is the selector's fault.
 ///
 /// Before `T-003b` round 3's freshness rules, 161 of the reviewer's 364 no-gap leaps showed wrong
-/// clear notes, and upward leaps from Mid flipped Mid and High on every frame for 50 ms.
+/// clear notes, and upward leaps from Mid flipped Mid and High on every frame for 50 ms. Before
+/// `T-003c`, a weak fundamental an octave down still showed 18–26 (the octave trap).
 #[test]
 fn a_leap_with_no_gap_shows_no_wrong_note_once_the_window_holds_only_the_new_one() {
     let starts = [55.0, 82.41, 130.81, 196.0, 293.66];
@@ -1202,25 +1371,22 @@ fn a_leap_with_no_gap_shows_no_wrong_note_once_the_window_holds_only_the_new_one
         .flat_map(|&from| ratios.map(|ratio| (from, from * ratio)))
         .filter(|&(_, to)| (31.0..=HIGHEST_HZ).contains(&to))
         .collect();
-    let signals = SIGNALS
-        .into_iter()
-        .chain([("weak", weak_fundamental as Generator)]);
+    let signals = SIGNALS.into_iter().chain([
+        ("weak", weak_fundamental as Generator),
+        ("pinch", pinch_harmonic as Generator),
+    ]);
     for rate in SUPPORTED_RATES {
         for (name, generate) in signals.clone() {
             std::thread::scope(|scope| {
                 for &(from, to) in &leaps {
                     scope.spawn(move || {
                         let (wrong, switches) = leap(rate, generate, from, to);
-                        // A weak fundamental an octave down is the octave trap, `T-003c`'s budget:
-                        // recorded under a ceiling, not held to the rule.
-                        let trap = name == "weak" && (to / from - 0.5).abs() < 1e-9;
-                        let allowed = if trap { WEAK_OCTAVE_LEAP_CEILING } else { 0 };
                         report(format_args!(
                             "leap, {name} {from} → {to:.2} Hz at {rate} Hz: {wrong} wrong, \
                              {switches} switches"
                         ));
                         assert!(
-                            wrong <= allowed && switches <= 1,
+                            wrong == 0 && switches <= 1,
                             "{name} {from} → {to:.2} Hz at {rate} Hz: {wrong} wrong clear frames \
                              once the window held only the new note, {switches} range switches"
                         );
