@@ -23,7 +23,7 @@ use std::f64::consts::TAU;
 use std::fmt;
 use std::io::Write;
 
-use diapason_dsp::chain::{Selection, UNPITCHED_SECONDS};
+use diapason_dsp::chain::{Frame, Selection, UNPITCHED_SECONDS};
 use diapason_dsp::convert::{index_from_f64, index_to_f64, to_f32};
 use diapason_dsp::filter::{DcBlock, Decimator};
 use diapason_dsp::pitch::{Mpm, MpmConfig};
@@ -763,25 +763,121 @@ enum Ending {
     /// Cut, then this many seconds of silence (under the gate's 250 ms hold, so the selector
     /// never goes home in between).
     Gap(f64),
-    /// Still ringing under the second note, decaying with this time constant in seconds.
+    /// Still ringing under the second note, decaying with this time constant in seconds from the
+    /// level it was played at, the second note's peak.
     Ringing(f64),
+    /// Ringing as in `Ringing(τ)`, but played this many dB (RMS) below the second note, so that it
+    /// is at least that far under it at the onset: the string being tuned is the one just plucked
+    /// (`T-003c`'s gated case; `Ringing` is the louder chord, only recorded).
+    Under(f64, f64),
 }
 
-/// What the chain showed after a downward note change.
+/// Cents from `hz` to the nearest octave of `true_hz`, in [−600, 600]: all that an `ambiguous
+/// octave` frame shows, the letter and the cents without the octave number.
+fn pitch_class_cents(hz: f64, true_hz: f64) -> f64 {
+    let off = cents(hz, true_hz);
+    off - 1_200.0 * (off / 1_200.0).round()
+}
+
+/// Whether a frame's octave is known. Until frames carry the flag (`T-003c`), every frame's is.
+fn octave_known(_frame: &Frame) -> bool {
+    true
+}
+
+/// Whether a clear frame shows a note other than `hz`: more than `WRONG_NOTE_CENTS` off it, or,
+/// for a frame flagged `ambiguous octave`, off its pitch class by that much.
+fn shows_other_than(frame: &Frame, hz: f64) -> bool {
+    frame.estimate.is_some_and(|e| {
+        let off = if octave_known(frame) {
+            cents(e.frequency_hz, hz)
+        } else {
+            pitch_class_cents(e.frequency_hz, hz)
+        };
+        off.abs() > WRONG_NOTE_CENTS
+    })
+}
+
+/// The leap rule's judging point (see `a_leap_with_no_gap_shows_no_wrong_note_once_the_window_holds_only_the_new_one`):
+/// a frame of the range playing at the onset is judged once that range's window, filter taps
+/// included, lies wholly after the onset; a frame of any range switched into, from the moment the
+/// new note's own range would have filled its window.
+struct Judge {
+    table: RangeTable,
+    onset: u64,
+    target: Range,
+    previous: Option<Range>,
+    old: Option<Range>,
+}
+
+impl Judge {
+    fn new(table: &RangeTable, onset: u64, to: f64) -> Self {
+        Self {
+            table: *table,
+            onset,
+            target: table.range_for(to),
+            previous: None,
+            old: None,
+        }
+    }
+
+    /// Call on every frame, in order: whether this one is judged.
+    fn judged(&mut self, frame: &Frame) -> bool {
+        let previous = self.previous.replace(frame.range);
+        if frame.end <= self.onset {
+            return false;
+        }
+        self.old = self.old.or(previous);
+        let judged = if Some(frame.range) == self.old {
+            frame.range
+        } else {
+            self.target
+        };
+        frame.end >= self.onset + span(&self.table, judged)
+    }
+}
+
+/// When a condition began holding for good: reset on every frame where it fails.
+fn since(slot: &mut Option<f64>, holds: bool, ms: f64) {
+    if !holds {
+        *slot = None;
+    } else if slot.is_none() {
+        *slot = Some(ms);
+    }
+}
+
+/// What the chain showed after a downward note change, from the onset of the new note.
 #[derive(Debug, Clone, Copy)]
 struct Trap {
-    /// Clear frames from the onset on more than `WRONG_NOTE_CENTS` from the new note.
+    /// Judged clear frames ([`Judge`]) that show a note other than the new one
+    /// ([`shows_other_than`]).
     wrong: usize,
     /// When the first of them ended, in ms after the onset.
     first_wrong_ms: Option<f64>,
-    /// From the onset to the first frame from which every frame is in the new note's range and
-    /// within `SETTLED_CENTS` of it, in ms. `None` if that never happens.
+    /// Clear frames from the onset on that show neither the new note nor the old one: a third
+    /// note, which a chord must never show.
+    third: usize,
+    /// **The needle moves:** from the onset to the first frame from which every frame is clear and
+    /// within `SETTLED_CENTS` of the new note's pitch class, its octave known or not (the owner's
+    /// decision of 2026-10-23: an `ambiguous octave` frame moves the needle).
+    needle_ms: Option<f64>,
+    /// **The octave is known:** from the onset to the first frame from which every frame is clear,
+    /// within `SETTLED_CENTS` of the new note and not flagged ambiguous.
+    known_ms: Option<f64>,
+    /// `T-003b`'s measures, for its ceilings until `T-003c` gates the above: every clear frame from
+    /// the onset more than `WRONG_NOTE_CENTS` off, and the settle time in the new note's range.
+    wrong_any: usize,
     settle_ms: Option<f64>,
 }
 
-/// A note for 0.5 s, then a lower one with a weak fundamental for 1.5 s, under the selector from
-/// home Mid, as a guitar preset would start it.
-fn octave_trap(rate: u32, first: (Generator, f64), to: f64, ending: Ending) -> Trap {
+/// A note for 0.5 s, then a lower one for 1.5 s, under the selector from home Mid, as a guitar
+/// preset would start it. `second` renders the new note (a weak fundamental, in `T-003b`).
+fn octave_trap(
+    rate: u32,
+    first: (Generator, f64),
+    second: (Generator, f64),
+    ending: Ending,
+) -> Trap {
+    let to = second.1;
     let mut tuner = Tuner::new(rate, Selection::Auto(Range::Mid));
     let lead = samples(0.5, rate);
     let gap = if let Ending::Gap(seconds) = ending {
@@ -791,78 +887,102 @@ fn octave_trap(rate: u32, first: (Generator, f64), to: f64, ending: Ending) -> T
     };
     let onset = lead + gap;
     let mut signal = vec![0.0_f32; onset + samples(1.5, rate)];
-    let ringing = if let Ending::Ringing(tau) = ending {
-        Some(tau)
-    } else {
-        None
+    let mut new_note = vec![0.0_f32; signal.len() - onset];
+    (second.0)(&mut new_note, to, rate, 0.5, 0.0);
+    let (tau, under_db) = match ending {
+        Ending::Ringing(tau) => (Some(tau), None),
+        Ending::Under(tau, db) => (Some(tau), Some(db)),
+        Ending::Stopped | Ending::Gap(_) => (None, None),
     };
-    let length = if ringing.is_some() {
-        signal.len()
-    } else {
-        lead
-    };
+    let length = if tau.is_some() { signal.len() } else { lead };
     (first.0)(&mut signal[..length], first.1, rate, 0.5, 0.0);
-    if let Some(tau) = ringing {
+    if let Some(db) = under_db {
+        // RMS `db` below the new note: g² · P(first) = P(second) · 10^(−db/10).
+        let gain = (synth::power(&new_note) / synth::power(&signal[..lead])
+            * 10_f64.powf(-db / 10.0))
+        .sqrt();
+        for sample in &mut signal[..length] {
+            *sample = to_f32(f64::from(*sample) * gain);
+        }
+    }
+    if let Some(tau) = tau {
         for (j, sample) in signal[onset..].iter_mut().enumerate() {
             let decay = (-index_to_f64(j) / f64::from(rate) / tau).exp();
             *sample = to_f32(f64::from(*sample) * decay);
         }
     }
-    let mut second = vec![0.0_f32; signal.len() - onset];
-    weak_fundamental(&mut second, to, rate, 0.5, 0.0);
-    for (s, n) in signal[onset..].iter_mut().zip(&second) {
+    for (s, n) in signal[onset..].iter_mut().zip(&new_note) {
         *s += n;
     }
-    let target = tuner.table().range_for(to);
+    let table = *tuner.table();
+    let target = table.range_for(to);
     let onset = u64::try_from(onset).unwrap();
     let ms = |end: u64| index_to_f64(usize::try_from(end - onset).unwrap()) * 1e3 / f64::from(rate);
+    let mut judge = Judge::new(&table, onset, to);
     let mut trap = Trap {
         wrong: 0,
         first_wrong_ms: None,
+        third: 0,
+        needle_ms: None,
+        known_ms: None,
+        wrong_any: 0,
         settle_ms: None,
     };
     tuner.push(&signal, |frame| {
+        let judged = judge.judged(frame);
         if frame.end <= onset {
             return;
         }
-        let off = |limit| {
-            frame
-                .estimate
-                .is_none_or(|e| cents(e.frequency_hz, to).abs() > limit)
-        };
-        if frame.estimate.is_some() && off(WRONG_NOTE_CENTS) {
+        let at = ms(frame.end);
+        if judged && shows_other_than(frame, to) {
             trap.wrong += 1;
-            trap.first_wrong_ms.get_or_insert(ms(frame.end));
+            trap.first_wrong_ms.get_or_insert(at);
         }
-        if frame.range != target || off(SETTLED_CENTS) {
-            trap.settle_ms = None;
-        } else if trap.settle_ms.is_none() {
-            trap.settle_ms = Some(ms(frame.end));
+        if shows_other_than(frame, to) && shows_other_than(frame, first.1) {
+            trap.third += 1;
         }
+        let near = |pitch_class: bool| {
+            frame.estimate.is_some_and(|e| {
+                let off = if pitch_class {
+                    pitch_class_cents(e.frequency_hz, to)
+                } else {
+                    cents(e.frequency_hz, to)
+                };
+                off.abs() <= SETTLED_CENTS
+            })
+        };
+        since(&mut trap.needle_ms, near(true), at);
+        since(&mut trap.known_ms, near(false) && octave_known(frame), at);
+        let off = frame
+            .estimate
+            .is_some_and(|e| cents(e.frequency_hz, to).abs() > WRONG_NOTE_CENTS);
+        trap.wrong_any += usize::from(off);
+        since(
+            &mut trap.settle_ms,
+            frame.range == target && near(false),
+            at,
+        );
     });
     trap
 }
 
-/// One octave-trap case and its regression ceilings: a downward note change whose new note has a
-/// weak fundamental, so the range playing reads its second partial (`Mpm` cannot see below 1.5
-/// periods of its floor). The Low reference moves the chain; how many wrong frames it shows first,
-/// and how fast it settles, are `T-003c-octave-guard`'s budget, not this task's. These ceilings
-/// are the worst of both rates measured in `T-003b` round 4, plus a margin (`T-003b`'s task file
-/// records the figures as `T-003c`'s baseline); only the 1 s settle bound is a requirement.
+/// One octave-trap case and `T-003b`'s regression ceilings, on its own measures: a downward note
+/// change whose new note has a weak fundamental, so the range playing reads its second partial
+/// (`Mpm` cannot see below 1.5 periods of its floor). `None` ceilings: a case `T-003b` did not
+/// measure, only reported here until `T-003c` gates it.
 ///
-/// The bound does not apply where the old note rings on and is *not* a harmonic of the new one:
-/// A2 (110 Hz) over a bass E's partials (82.4, 123.6 Hz). Two notes sound, and Low's window reads
-/// their common period, 27.5 Hz, for as long as both do. The selector has left Mid by then; this
-/// is a chord, not a stuck selector, and it is recorded under ceilings for `T-003c`.
+/// The 1 s settle bound does not apply where the old note rings on and is *not* a harmonic of the
+/// new one: A2 (110 Hz) over a bass E's partials (82.4, 123.6 Hz). Two notes sound, and Low's window
+/// reads their common period, 27.5 Hz, for as long as both do. That is a chord.
 struct TrapCase {
     name: &'static str,
     first: (Generator, f64),
     to: f64,
     ending: Ending,
-    wrong_ceiling: usize,
-    /// `f64::INFINITY` where the case never settles within its 1.5 s.
-    settle_ceiling_ms: f64,
-    /// The old note rings on and is no harmonic of the new one: no 1 s bound.
+    /// Wrong clear frames from the onset, and the settle time in ms (`f64::INFINITY` where it
+    /// never settles within its 1.5 s).
+    ceilings: Option<(usize, f64)>,
+    /// The old note rings on, loud, and is no harmonic of the new one.
     chord: bool,
 }
 
@@ -874,97 +994,115 @@ struct TrapCase {
 fn a_downward_change_into_a_weak_fundamental_settles_within_a_second() {
     let e4 = (synth::sawtooth as Generator, 329.63);
     let a2 = (synth::sawtooth as Generator, 110.0_f64);
-    let case = |name, first, to, ending, wrong_ceiling, settle_ceiling_ms| TrapCase {
+    let case = |name, first: (Generator, f64), to, ending, ceilings| TrapCase {
         name,
         first,
         to,
         ending,
-        wrong_ceiling,
-        settle_ceiling_ms,
+        ceilings,
         chord: f64::to_bits(first.1) == a2.1.to_bits() && matches!(ending, Ending::Ringing(_)),
     };
     let never = f64::INFINITY;
     // Measured worst of both rates (frames, ms) → ceiling: E4 stopped 24, 140 → 28, 160; gap 0,
     // 27.5 → 2, 40; rings (any τ) 48, 120 → 55, 140. A2 stopped 38, 160 → 44, 180; gap 0, 53.5 →
     // 2, 70; rings 0.6 s 87, 1051 → 100, 1100; 1.5 s 214, never → 245; 3 s 298, never → 340.
-    let cases = [
-        case("E4 → low E, stopped", e4, 82.41, Ending::Stopped, 28, 160.0),
+    let fixed = [
+        case(
+            "E4 → low E, stopped",
+            e4,
+            82.41,
+            Ending::Stopped,
+            Some((28, 160.0)),
+        ),
         case(
             "E4 → low E, 0.1 s gap",
             e4,
             82.41,
             Ending::Gap(0.1),
-            2,
-            40.0,
+            Some((2, 40.0)),
         ),
         case(
-            "E4 → low E, rings 0.6 s",
-            e4,
-            82.41,
-            Ending::Ringing(0.6),
-            55,
-            140.0,
+            "A2 → bass E, stopped",
+            a2,
+            41.2,
+            Ending::Stopped,
+            Some((44, 180.0)),
         ),
-        case(
-            "E4 → low E, rings 1.5 s",
-            e4,
-            82.41,
-            Ending::Ringing(1.5),
-            55,
-            140.0,
-        ),
-        case(
-            "E4 → low E, rings 3 s",
-            e4,
-            82.41,
-            Ending::Ringing(3.0),
-            55,
-            140.0,
-        ),
-        case("A2 → bass E, stopped", a2, 41.2, Ending::Stopped, 44, 180.0),
         case(
             "A2 → bass E, 0.1 s gap",
             a2,
             41.2,
             Ending::Gap(0.1),
-            2,
-            70.0,
+            Some((2, 70.0)),
         ),
-        case(
-            "A2 → bass E, rings 0.6 s",
-            a2,
-            41.2,
-            Ending::Ringing(0.6),
-            100,
-            1_100.0,
-        ),
-        case(
-            "A2 → bass E, rings 1.5 s",
-            a2,
-            41.2,
-            Ending::Ringing(1.5),
-            245,
-            never,
-        ),
-        case(
-            "A2 → bass E, rings 3 s",
-            a2,
-            41.2,
-            Ending::Ringing(3.0),
-            340,
-            never,
-        ),
+        case("A2 → low B, stopped", a2, 30.87, Ending::Stopped, None),
     ];
+    let ringing = [
+        (0.6, (55, 140.0), (100, 1_100.0)),
+        (1.5, (55, 140.0), (245, never)),
+        (3.0, (55, 140.0), (340, never)),
+    ]
+    .into_iter()
+    .flat_map(|(tau, e4_ceiling, a2_ceiling)| {
+        [
+            case(
+                "E4 → low E, rings",
+                e4,
+                82.41,
+                Ending::Ringing(tau),
+                Some(e4_ceiling),
+            ),
+            case(
+                "E4 → low E, 12 dB under",
+                e4,
+                82.41,
+                Ending::Under(tau, 12.0),
+                None,
+            ),
+            case(
+                "A2 → bass E, rings",
+                a2,
+                41.2,
+                Ending::Ringing(tau),
+                Some(a2_ceiling),
+            ),
+            case(
+                "A2 → bass E, 12 dB under",
+                a2,
+                41.2,
+                Ending::Under(tau, 12.0),
+                None,
+            ),
+        ]
+    });
+    let cases: Vec<TrapCase> = fixed.into_iter().chain(ringing).collect();
     std::thread::scope(|scope| {
         for case in &cases {
             for rate in SUPPORTED_RATES {
                 scope.spawn(move || {
-                    let trap = octave_trap(rate, case.first, case.to, case.ending);
+                    let second = (weak_fundamental as Generator, case.to);
+                    let trap = octave_trap(rate, case.first, second, case.ending);
+                    let table = RangeTable::new(rate).unwrap();
+                    let ledger = table.ledger(table.range_for(case.to));
+                    let others = (ledger.total_seconds() - ledger.chain_seconds()) * 1e3;
                     report(format_args!(
-                        "octave trap, {} at {rate} Hz: {} wrong clear frames (first at {:?} ms), \
-                         settled after {:?} ms",
-                        case.name, trap.wrong, trap.first_wrong_ms, trap.settle_ms
+                        "octave trap, {} {:?} at {rate} Hz: {} judged wrong (first at {:?} ms), \
+                         {} third-note; needle {:?} ms (total {:?} ms), octave known {:?} ms; \
+                         T-003b: {} wrong, settled {:?} ms",
+                        case.name,
+                        case.ending,
+                        trap.wrong,
+                        trap.first_wrong_ms,
+                        trap.third,
+                        trap.needle_ms,
+                        trap.needle_ms.map(|ms| ms + others),
+                        trap.known_ms,
+                        trap.wrong_any,
+                        trap.settle_ms,
                     ));
+                    let Some((wrong_ceiling, settle_ceiling)) = case.ceilings else {
+                        return;
+                    };
                     let settle = trap.settle_ms.unwrap_or(f64::INFINITY);
                     assert!(
                         case.chord || settle <= 1_000.0,
@@ -972,11 +1110,11 @@ fn a_downward_change_into_a_weak_fundamental_settles_within_a_second() {
                         case.name
                     );
                     assert!(
-                        trap.wrong <= case.wrong_ceiling && settle <= case.settle_ceiling_ms,
-                        "{} at {rate} Hz: {trap:?} over its ceilings ({} frames, {} ms)",
+                        trap.wrong_any <= wrong_ceiling && settle <= settle_ceiling,
+                        "{} {:?} at {rate} Hz: {trap:?} over its ceilings ({wrong_ceiling} \
+                         frames, {settle_ceiling} ms)",
                         case.name,
-                        case.wrong_ceiling,
-                        case.settle_ceiling_ms
+                        case.ending,
                     );
                 });
             }
@@ -1029,29 +1167,14 @@ fn leap(rate: u32, generate: Generator, from: f64, to: f64) -> (usize, usize) {
     generate(&mut signal[..half], from, rate, 0.5, 0.0);
     generate(&mut signal[half..], to, rate, 0.5, 0.0);
     let onset = u64::try_from(half).unwrap();
-    let table = *tuner.table();
-    let target = table.range_for(to);
-    let (mut wrong, mut switches, mut previous, mut old) = (0, 0, None, None);
+    let mut judge = Judge::new(tuner.table(), onset, to);
+    let (mut wrong, mut switches, mut previous) = (0, 0, None);
     tuner.push(&signal, |frame| {
-        if frame.end > onset {
-            old = old.or(previous);
-            if previous.is_some_and(|range| range != frame.range) {
-                switches += 1;
-            }
-            // The range playing at the onset is judged once its own window has filled; any range
-            // switched into, from when the target note's range would have filled its window.
-            let judged = if Some(frame.range) == old {
-                frame.range
-            } else {
-                target
-            };
-            let filled = frame.end >= onset + span(&table, judged);
-            let off = frame
-                .estimate
-                .is_some_and(|e| cents(e.frequency_hz, to).abs() > WRONG_NOTE_CENTS);
-            if filled && off {
-                wrong += 1;
-            }
+        if judge.judged(frame) && shows_other_than(frame, to) {
+            wrong += 1;
+        }
+        if frame.end > onset && previous.is_some_and(|range| range != frame.range) {
+            switches += 1;
         }
         previous = Some(frame.range);
     });
