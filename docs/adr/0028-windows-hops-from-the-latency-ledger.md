@@ -6,7 +6,7 @@
 
 `AUDIO_ENGINE.md` §2 tabulated windows of 2048/4096/8192 at 12 kHz with hops of 512–2048: 8–27
 periods (171–683 ms), against its own rule of three periods of the range's lowest note. A 512 hop
-plus `T-003c`'s median of five is 85 ms after a step, and no document broke latency down by stage.
+plus the planned median of five (`T-003f`) is 85 ms after a step, and no document broke latency down by stage.
 The 1 kHz crossover was never measured. `T-003a` showed a harmonic-rich tone meets ±0.5 ¢ only
 when its content stays well below the *analysis* Nyquist.
 
@@ -81,6 +81,11 @@ when its content stays well below the *analysis* Nyquist.
 ## Consequences
 
 - **M3 must publish tuner snapshots at 60 Hz;** the ledger's snapshot line binds it.
+- **The ledger and its tests measure from silence.** Moving down a range after another note costs
+  more (`AUDIO_ENGINE.md` §1 has the table). Into Mid it costs 178–198 ms against 110/150. Into Low
+  after a stopped note it costs 222 ms against 190/260, and over 1 s when the old note rings on as
+  a chord. `T-003c-octave-guard` owes it, and gates downward changes inside the fail lines (150 and
+  260 ms). The budget rows do not change.
 - **Low power:** under `PLATFORM_AUDIO.md`'s low-power rule (tuner snapshots 60 → 20 Hz), the tuner
   trades latency for battery, and that row of the ledger does not apply.
 - Mid's headroom is 1.5 ms at 48 kHz and 1.1 ms at 44.1 kHz: any added delay there (filter, hop,

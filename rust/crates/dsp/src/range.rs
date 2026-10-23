@@ -17,7 +17,7 @@
 //! - Both paths keep their content below an eighth of their analysis rate, where `T-003a`
 //!   measured the parabolic-interpolation bias at 0.0035 lag.
 //! - Hops are as short as the CPU budget allows, because each one is paid three times in
-//!   latency: one hop to wait for a frame, two more for `T-003c`'s median of five.
+//!   latency: one hop to wait for a frame, two more for `T-003f`'s median of five.
 
 use crate::convert::{index_from_f64, index_to_f64};
 use crate::filter::{Decimator, FilterError, LowPassSpec};
@@ -60,7 +60,7 @@ pub const SNAPSHOT_SECONDS: f64 = 1.0 / 60.0;
 /// One display frame at 60 Hz, in seconds: the snapshot reaches the needle on the next vsync.
 pub const DISPLAY_SECONDS: f64 = 1.0 / 60.0;
 
-/// Hops reserved for `T-003c`'s smoothing. A median of five follows a step once three of its
+/// Hops reserved for `T-003f`'s smoothing. A median of five follows a step once three of its
 /// five inputs are new: the first new estimate, then two more hops. The one-euro filter adds
 /// nothing to the *first* movement, because its output moves on its first new input.
 pub const SMOOTHING_HOPS: usize = 2;
@@ -204,7 +204,7 @@ pub struct Ledger {
     pub settling: f64,
     /// Waiting for the next frame: one hop.
     pub hop: f64,
-    /// `T-003c`'s smoothing ([`SMOOTHING_HOPS`]).
+    /// `T-003f`'s smoothing ([`SMOOTHING_HOPS`]).
     pub smoothing: f64,
     /// Waiting for the next snapshot ([`SNAPSHOT_SECONDS`]).
     pub snapshot: f64,
