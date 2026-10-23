@@ -3,8 +3,8 @@
 //!
 //! - [`pitch`]: the `McLeod` Pitch Method (MPM) detector (`docs/AUDIO_ENGINE.md` §3,
 //!   `docs/adr/0005`).
-//! - [`filter`]: the pre-processing in front of it (`docs/AUDIO_ENGINE.md` §2): a DC block, and
-//!   the FIR low-pass that band-limits or decimates.
+//! - [`filter`] and [`gate`]: the pre-processing in front of it (`docs/AUDIO_ENGINE.md` §2): a DC
+//!   block, the FIR low-pass that band-limits or decimates, and the adaptive noise gate.
 //! - [`synth`]: deterministic, seeded fixture signals that test and bench it.
 //! - [`osc`] and [`level`]: what the audio spine needed first (`T-002a`), a phase-continuous test
 //!   tone and an input level meter.
@@ -31,6 +31,7 @@
 
 pub mod convert;
 pub mod filter;
+pub mod gate;
 pub mod level;
 pub mod osc;
 pub mod pitch;
