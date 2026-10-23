@@ -110,7 +110,12 @@ Implementation contract:
    first key maximum exceeding `k · max(n)` with `k = 0.9` (configurable; lower = more sensitive,
    more octave errors).
 5. Parabolic interpolation over the three points around the chosen maximum → sub-sample period →
-   frequency. This is what buys sub-cent resolution from a coarse lag grid.
+   frequency. This is what buys sub-cent resolution from a coarse lag grid. The three points are
+   recomputed over one common overlap, counted from both ends of the frame
+   (`pitch::common_overlap`, `T-003b`). The FFT NSDF sums a different number of pairs at each
+   lag, so its three samples come from three different sums, and a sawtooth's reset at the
+   window's edge tilts them: 0.5 ¢ of error at whole-period windows, down to 0.11 ¢ with the
+   common overlap.
 6. **Clarity** = interpolated NSDF value at the peak. Below 0.6 the estimate is discarded and the
    UI shows "listening" rather than a wrong note.
 

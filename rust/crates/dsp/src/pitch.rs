@@ -215,7 +215,8 @@ impl Mpm {
         let energy = self.autocorrelate(frame)?;
         self.normalise(frame, energy);
         let lag = self.pick()?;
-        let (offset, peak) = self.interpolate(lag)?;
+        let [a, b, c] = common_overlap(frame, lag)?;
+        let (offset, peak) = vertex(a, b, c);
         let clarity = to_f32(peak.min(1.0));
         if clarity < self.config.clarity_floor {
             return None;
@@ -299,33 +300,79 @@ impl Mpm {
             .find(|&(_, value)| value >= bar)
             .map(|(lag, _)| lag)
     }
+}
 
-    /// Steps 5 and 6: fit a parabola through `n` at `lag − 1`, `lag`, `lag + 1`, and return the
-    /// offset of its vertex from `lag` and the value there.
-    ///
-    /// With `a`, `b`, `c` the three values, the vertex of the parabola through `(−1, a)`, `(0, b)`,
-    /// `(1, c)` is at `δ = (a − c) / (2(a − 2b + c))`, where it takes the value
-    /// `b − (a − c)·δ / 4`. A key maximum has `b ≥ a, c`, so `|δ| ≤ ½`.
-    ///
-    /// The vertex is exact for a parabola, and within 7.1·10⁻⁴ lag (0.041 cents) of a sine's
-    /// `cos(ωτ)` peak at any lag of 30 or more. It is biased on a sharper peak: a sawtooth's NSDF
-    /// peak is `Σ wₕ cos(hω(τ − T))` with `wₕ ∝ 1/h²`, so every harmonic up to Nyquist adds equally
-    /// to its curvature, and the vertex lands up to 0.053 lag from `T` whatever the window. The bias
-    /// depends on how close the signal's content reaches Nyquist (0.013 lag below `fs/4`, 0.0035
-    /// below `fs/8`), which constrains the analysis filter of `T-003b`. `tests/accuracy.rs` records
-    /// it.
-    fn interpolate(&self, lag: usize) -> Option<(f64, f64)> {
-        let a = *self.nsdf.get(lag.checked_sub(1)?)?;
-        let b = *self.nsdf.get(lag)?;
-        let c = *self.nsdf.get(lag + 1)?;
-        let curvature = a - 2.0 * b + c;
-        if curvature.is_nan() || curvature >= 0.0 {
-            // Flat: the vertex is the sample itself.
-            return Some((0.0, b));
-        }
-        let offset = 0.5 * (a - c) / curvature;
-        Some((offset, b - 0.25 * (a - c) * offset))
+/// Step 5's three values, `n̄(τ)` at `τ = lag − 1, lag, lag + 1`, recomputed over **one common
+/// overlap** of `M = N − lag − 1` pairs, counted from both ends of the frame (`T-003b`):
+///
+/// ```text
+///   n̄(τ) = 2·(Σ_{j<M} x[j]·x[j+τ] + Σ_{i≥N−M} x[i−τ]·x[i])
+///          / (Σ_{j<M} (x[j]² + x[j+τ]²) + Σ_{i≥N−M} (x[i−τ]² + x[i]²))
+/// ```
+///
+/// Why. The FFT NSDF sums `N − τ` pairs at lag `τ`, so its three samples around the peak come from
+/// three *different* sums: each lag drops a pair at the window's edge. When that pair sits on a
+/// steep part of the waveform (a sawtooth's reset), the peak turns lopsided and the parabola's
+/// vertex moves. It is worst when the window holds a whole number of periods, because then the
+/// pairs dropped at both edges sit at the same point of the cycle: the sawtooth missed by 0.5 ¢
+/// at exactly 75, 100 and 150 Hz in the Mid range.
+///
+/// With one set of pairs for all three lags, the three values are samples of a single smooth
+/// function of `τ` whose maximum is exactly the period: there `x[j+T] = x[j]`, so it equals 1, and
+/// Cauchy–Schwarz bounds it by 1 everywhere. Counting from the start only, that function is still
+/// lopsided, because its later samples slide while its earlier ones stay put; counting from the
+/// end, the opposite holds. Summing both cancels the lopsidedness to first order. Measured over
+/// 32 alignments per frequency, the sawtooth's worst error in the tuner's windows fell from
+/// 0.50 ¢ to 0.11 ¢ (`T-003b`). The cost is six dot products of `M` pairs, about `12·N` flops.
+///
+/// `None` if a lag has no neighbour on either side, or the overlap has no energy.
+fn common_overlap(frame: &[f32], lag: usize) -> Option<[f64; 3]> {
+    let len = frame.len();
+    let span = len.checked_sub(lag.checked_add(1)?)?;
+    if lag == 0 || span == 0 {
+        return None;
     }
+    let early = frame.get(..span)?;
+    let late = frame.get(len - span..)?;
+    let mut values = [0.0; 3];
+    for (value, tau) in values.iter_mut().zip([lag - 1, lag, lag + 1]) {
+        let ahead = frame.get(tau..tau + span)?;
+        let behind = frame.get(len - span - tau..len - tau)?;
+        let (mut product, mut energy) = (0.0, 0.0);
+        for (&a, &b) in early.iter().zip(ahead).chain(behind.iter().zip(late)) {
+            let (a, b) = (f64::from(a), f64::from(b));
+            product += a * b;
+            energy += a * a + b * b;
+        }
+        if energy.is_nan() || energy <= 0.0 {
+            return None;
+        }
+        *value = 2.0 * product / energy;
+    }
+    Some(values)
+}
+
+/// Steps 5 and 6: the vertex of the parabola through `(−1, a)`, `(0, b)`, `(1, c)`, as its offset
+/// from the middle point and the value there.
+///
+/// The vertex is at `δ = (a − c) / (2(a − 2b + c))`, where the parabola takes the value
+/// `b − (a − c)·δ / 4`. At a key maximum `|δ| ≤ ½`; values from [`common_overlap`] can lean a
+/// little further, so `δ` is clamped to the bracket, `[−1, 1]`.
+///
+/// The vertex is exact for a parabola, and within 7.1·10⁻⁴ lag (0.041 cents) of a sine's
+/// `cos(ωτ)` peak at any lag of 30 or more. It is biased on a sharper peak: a sawtooth's NSDF
+/// peak is `Σ wₕ cos(hω(τ − T))` with `wₕ ∝ 1/h²`, so every harmonic up to Nyquist adds equally
+/// to its curvature, and the vertex lands up to 0.053 lag from `T` whatever the window. The bias
+/// depends on how close the signal's content reaches Nyquist (0.013 lag below `fs/4`, 0.0035
+/// below `fs/8`), which is why the tuner's chain band-limits (`crate::range`).
+fn vertex(a: f64, b: f64, c: f64) -> (f64, f64) {
+    let curvature = a - 2.0 * b + c;
+    if curvature.is_nan() || curvature >= 0.0 {
+        // Flat: the vertex is the sample itself.
+        return (0.0, b);
+    }
+    let offset = (0.5 * (a - c) / curvature).clamp(-1.0, 1.0);
+    (offset, b - 0.25 * (a - c) * offset)
 }
 
 /// The key maxima of an NSDF (step 4): for each region where `n > 0`, after the one around lag 0,
@@ -517,15 +564,19 @@ mod tests {
     #[test]
     fn the_parabola_through_a_parabola_is_exact() {
         let mut mpm = Mpm::new(MpmConfig::with_window(16)).unwrap();
-        let vertex = 4.3;
+        let top = 4.3;
         for (tau, n) in mpm.nsdf.iter_mut().enumerate() {
-            let d = index_to_f64(tau) - vertex;
+            let d = index_to_f64(tau) - top;
             *n = 0.9 - 0.05 * d * d;
         }
-        let (offset, peak) = mpm.interpolate(4).unwrap();
+        let n = |lag: usize| mpm.nsdf[lag];
+        let (offset, peak) = vertex(n(3), n(4), n(5));
         assert!((offset - 0.3).abs() < 1e-12 && (peak - 0.9).abs() < 1e-12);
-        assert_eq!(mpm.interpolate(0), None);
-        assert_eq!(mpm.interpolate(8), None);
+        // A lag with no neighbour below, or no pairs left above, has no common overlap.
+        let frame = [0.5_f32; 16];
+        assert_eq!(common_overlap(&frame, 0), None);
+        assert_eq!(common_overlap(&frame, 15), None);
+        assert!(common_overlap(&frame, 7).is_some());
     }
 
     #[test]
