@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-23 (T-003b is #31, six checks green; owner merges)
+# STATE — updated 2026-10-23 (T-003b merged as #31; T-003c in progress)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -10,14 +10,14 @@
 **Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
-- **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a` (PRs #6–#9, #11–#16,
-  #24, #27–#30), Dependabot #2, #10, #21, #22, #25, #26. #20 closed. **Open:** #31 (`T-003b`, six green).
+- **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`, `T-003b` (PRs #6–#9,
+  #11–#16, #24, #27–#31), Dependabot #2, #10, #21, #22, #25, #26. #20 closed. **Open:** none.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-003b-preprocessing.md`** (in progress, branch `feat/T-003b-preprocessing`,
-#31, six green): left only the owner's rebase-merge. NoiseGate stays open on purpose (Dev. 4).
+**`docs/agents/tasks/T-003c-octave-guard.md`** (in progress, branch `feat/T-003c-octave-guard`, no
+PR yet). Ambiguous-octave frames move the needle (owner, 2026-10-23; task Context).
 **Waiting on the Redmi:** `T-002d` (in progress; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## Hardware this project actually has
@@ -113,7 +113,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **#31 (`T-003b`)**: owner rebase-merges; mark it done. Then `T-003c-octave-guard`, `T-003f`, `T-003d`.
+1. **`T-003c-octave-guard`**, then `T-003f`, `T-003d`.
 2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then L10 (the silenced microphone).
    Also owed: `T-003a`'s 4096 frame cost on the phone (≤ 1.5 ms).
 3. **`T-002e`** (overlay in Settings → Diagnostics; first golden), then **`T-002f`** (latency, FAST).
