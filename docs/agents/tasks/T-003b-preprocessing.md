@@ -48,32 +48,32 @@ Prior art: `level::RmsMeter`, the `convert` casts, `synth` fixtures, `tests/accu
 Everything is in `rust/crates/dsp`. Per-call processing allocates nothing and cannot panic,
 under the deny list `pitch` uses. Every buffer and coefficient is set in a constructor.
 
-- [ ] **`DcBlock`** is a one-pole 20 Hz high-pass, with its coefficient from the rate and its state
+- [x] **`DcBlock`** is a one-pole 20 Hz high-pass, with its coefficient from the rate and its state
   in `f64`. Tests:
   - a DC step decays below −90 dB within the documented time;
   - |H(30.87 Hz)| matches its closed form;
   - silence after a signal returns the state to exactly 0 (denormals flushed).
-- [ ] **`Decimator`** is a ×4 linear-phase polyphase FIR (Kaiser-windowed sinc, local Bessel I₀),
+- [x] **`Decimator`** is a ×4 linear-phase polyphase FIR (Kaiser-windowed sinc, local Bessel I₀),
   designed per rate, with its group delay exposed. Tests:
   - stopband ≥ 80 dB and passband ripple ≤ 0.1 dB, measured with synthetic sines;
   - symmetric taps;
   - identical output for any block split (property test).
-- [ ] **A band-limit low-pass on the full-rate path**, at the cutoff the probe chooses.
-- [ ] **`NoiseGate`** is built on `RmsMeter` blocks, with a 2 s floor in a preallocated ring.
+- [x] **A band-limit low-pass on the full-rate path**, at the cutoff the probe chooses.
+- [x] **`NoiseGate`** is built on `RmsMeter` blocks, with a 2 s floor in a preallocated ring.
   - The open threshold is `max(−50 dBFS, floor + margin)`, clamped, with open/close hysteresis
     and a hold time.
   - The floor learns **only while the gate is closed**.
   - Tests: silence stays closed; a −40 dBFS tone opens it; **a note held for 10 s stays open**;
     room noise raises the threshold; a tone reopens it within the hold time.
-- [ ] **`FrameAssembler`** keeps a preallocated history and yields a contiguous window every hop,
+- [x] **`FrameAssembler`** keeps a preallocated history and yields a contiguous window every hop,
   for any input block size.
-- [ ] **A range table derived per rate.** Each range has an analysis rate, a window of three
+- [x] **A range table derived per rate.** Each range has an analysis rate, a window of three
   periods of the range floor (any length; `Mpm` does not need a power of two), and a hop sized
   from the ledger.
   - A pure `RangeSelector` with hysteresis switches ranges and decimation.
   - The crossover is the highest f₀ at which the decimated path still meets ±0.5 ¢ with margin,
-    measured by a recorded probe.
-- [ ] **The headline gate.** The full chain (DC block → band-limit or decimate → frames → `Mpm`)
+    measured by a recorded probe. *Deviation 2: a range boundary, under the measured limit.*
+- [x] **The headline gate.** The full chain (DC block → band-limit or decimate → frames → `Mpm`)
   is swept over 30–1400 Hz, at ≥ 24 points per octave and 8 phases, **at 48 and 44.1 kHz**.
   - **Sine and sawtooth must both stay within ±0.5 ¢.**
   - A failure names the frequency, range, rate, cents and clarity.
@@ -82,11 +82,11 @@ under the deny list `pitch` uses. Every buffer and coefficient is set in a const
   - Assert each range's count against its line in a ledger in `AUDIO_ENGINE.md` §1. The ledger
     lists I/O (provisional until `T-002f`), group delay, window fill, hop, a reserve for
     `T-003c`'s smoothing, the snapshot period and one display frame.
-  - The total is ≤ 60 ms for f₀ ≥ 80 Hz and ≤ 140 ms for low B.
-- [ ] `tests/no_alloc.rs` covers every new type; its canary still aborts.
-- [ ] Benches `chain/decimate` and `chain/frame` are added. The baseline is re-saved on a quiet
+  - The total is ≤ 60 ms for f₀ ≥ 80 Hz and ≤ 140 ms for low B. **Not met: Deviation 1.**
+- [x] `tests/no_alloc.rs` covers every new type; its canary still aborts.
+- [x] Benches `chain/decimate` and `chain/frame` are added. The baseline is re-saved on a quiet
   host. Frame cost × update rate is recorded against the 8 % CPU budget.
-- [ ] **ADR 0028**: windows, hops and the crossover come from the ledger. §1 and §2 are
+- [x] **ADR 0028**: windows, hops and the crossover come from the ledger. §1 and §2 are
   rewritten to match and link it. The numbers live in code constants, and the doc names the test
   that asserts them.
 - [ ] `just verify` passes, and all six CI jobs are green.
@@ -101,4 +101,49 @@ under the deny list `pitch` uses. Every buffer and coefficient is set in a const
 
 ## Implementation notes
 
+Built by the `dsp-engineer` agent, 2026-10-22/23. New modules: `filter` (`DcBlock`, Kaiser
+`Decimator`, local I₀), `gate`, `frame` and `range` (table, `RangeSelector`, ledger constants).
+The chain wiring the tests stream through is `tests/common`; the thread split is the engine's (M3).
+- **Filters:** 85 dB Kaiser designs, odd taps, folded on symmetry. ×4: pass fs/96, stop fs/32,
+  259 taps (GD 129). Band-limit: pass 1500 Hz, stop fs/8, 59/61 taps (GD 29/30).
+- **Ranges** (`adr/0028`): Low 30 Hz ×4 (1200/1103), Mid 75 Hz ×4 (480/441), High 160 Hz full rate
+  (900/827), at 48/44.1 kHz; hops 5, 2.5, 2.5 ms; semitone hysteresis. Silence returns home. A
+  window plus 50 ms of unclear frames scans on, so 1400 Hz from Low takes 108–137 ms.
+- **Gate:** 10 ms blocks; open at `clamp(max(−50, floor + 10), −50, −20)` dBFS; 6 dB hysteresis,
+  250 ms hold. It reports and never mutes. A room louder than −50 dBFS keeps it open; clarity
+  still rejects the noise.
+
+**Deviation 1: §1's latency budgets cannot be met, and the ledger says by how much.** Worst-case
+totals are High 97.9, Mid 125.2 and Low 202.7 ms, against 60 (f₀ ≥ 80 Hz) and 140 ms (low B).
+I/O 20 (provisional) + snapshot 33.3 + display 16.7 = 70 ms before any analysis. The chain lines
+are met (below), the totals are not; that criterion stays unticked, and the budgets are the owner's
+call (snapshot cadence, mean vs worst case, or targets). ADR 0028 is **Proposed** until then.
+
+**Deviation 2: the crossover is a range boundary, under the decimated limit.** The recorded probe
+(≤ 0.25 ¢, eight phases) holds ×4 in Mid's 480/441-sample window: sine to 604 Hz, sawtooth to 508
+(48 kHz) and 214 Hz (44.1 kHz). In a 160 Hz three-period window at fs/4 (225/207) the sawtooth
+misses the *budget* at 160 Hz (−0.82 ¢, dense probe); at full rate (900/827) ≤ 0.19 ¢ to 1400 Hz.
+So 160 Hz (top 169.5) it is: at 214 Hz, 160–214 Hz notes would wait 40 ms instead of 18.75.
+
+**Deviation 3: the ledger adds a measured settling line** (Low 15, Mid 5, High 1 ms): the DC
+block's onset transient keeps low B past 5 ¢ for ~12 ms after the window fills.
+
 ## Verification performed
+
+2026-10-23, Fedora 44 host (Ryzen 7 8840HS, **on battery, powersave**), rustc 1.98.0. Host only.
+- `just verify` passed: 126 nextest tests (76 in `dsp`; slowest 20 s in debug), 27 doctests (22).
+- Headline worst |error|, 24 points per octave × 8 phases, every range holding each f₀:
+  sine 0.057 ¢ (48 kHz), 0.060 ¢ (44.1); sawtooth 0.250 ¢ (48, Mid, 71.4 Hz), 0.278 ¢ (44.1, Mid,
+  75.6 Hz); Low ≤ 0.147, High ≤ 0.187.
+- Filters, with sines: stopband ≥ 85.7 dB (×4), ≥ 83.7 dB (band-limit); ripple ≤ 0.0063 dB.
+- Onset latency, worst of both rates, against the chain line: Low 117.1/123.0 ms (sine, 30.87 Hz),
+  Mid 49.1/50.5 (sine, 75 Hz), High 21.3/22.9.
+- Bench medians: decimate 9.49 µs and band_limit 7.31 µs per 10 ms block; frame low 12.8, mid
+  2.92, high 6.36 µs per hop; nsdf 14.1/30.0/63.9 µs. That is 0.42 % of one host core at worst
+  (both filters plus Low or High), against 8 %. **The phone figure is owed.** nsdf reads about 8 %
+  above `T-003a`'s AC baseline with no code change; re-save on AC.
+- Each gate was proven by breaking it. Band-limit bypassed: sawtooth −2.52 ¢ (44.1 kHz, 1141.6 Hz)
+  and +2.73 ¢ (48 kHz, 1400 Hz). A 0.6 ¢ detune fails the sweep (−0.65 ¢). A floor that learns
+  while open closes the held note at 2.26 s. Zero settling fails the latency test (117.1 against
+  108.0 ms). A `vec!` in `Decimator::process_sample` aborts both new no_alloc tests. A doubled
+  convolution fails `just bench` (+124 %).
