@@ -144,6 +144,8 @@ pub struct Mpm {
     autocorrelation: Vec<f64>,
     /// `n(τ)` for `τ ∈ [0, max_lag]`.
     nsdf: Vec<f64>,
+    /// `m(τ)` for `τ ∈ [0, max_lag]`, kept for step 5's common overlap.
+    overlap_energy: Vec<f64>,
     forward_scratch: Vec<Complex<f64>>,
     inverse_scratch: Vec<Complex<f64>>,
 }
@@ -190,6 +192,7 @@ impl Mpm {
             spectrum: vec![Complex::new(0.0, 0.0); forward.complex_len()],
             autocorrelation: vec![0.0; fft_len],
             nsdf: vec![0.0; max_lag + 1],
+            overlap_energy: vec![0.0; max_lag + 1],
             forward_scratch: vec![Complex::new(0.0, 0.0); forward.get_scratch_len()],
             inverse_scratch: vec![Complex::new(0.0, 0.0); inverse.get_scratch_len()],
             forward,
@@ -215,7 +218,7 @@ impl Mpm {
         let energy = self.autocorrelate(frame)?;
         self.normalise(frame, energy);
         let lag = self.pick()?;
-        let [a, b, c] = common_overlap(frame, lag)?;
+        let [a, b, c] = self.common_overlap(frame, lag)?;
         let (offset, peak) = vertex(a, b, c);
         let clarity = to_f32(peak.min(1.0));
         if clarity < self.config.clarity_floor {
@@ -279,9 +282,11 @@ impl Mpm {
     fn normalise(&mut self, frame: &[f32], energy: f64) {
         let scale = 1.0 / index_to_f64(self.padded.len());
         let mut m = 2.0 * energy;
-        let lags = self.nsdf.iter_mut().zip(&self.autocorrelation);
-        for ((n, &acf), (&head, &tail)) in lags.zip(frame.iter().zip(frame.iter().rev())) {
+        let lags = self.nsdf.iter_mut().zip(&mut self.overlap_energy);
+        let lags = lags.zip(&self.autocorrelation);
+        for (((n, kept), &acf), (&head, &tail)) in lags.zip(frame.iter().zip(frame.iter().rev())) {
             *n = 2.0 * acf * scale / m;
+            *kept = m;
             m -= f64::from(head) * f64::from(head) + f64::from(tail) * f64::from(tail);
         }
     }
@@ -300,63 +305,69 @@ impl Mpm {
             .find(|&(_, value)| value >= bar)
             .map(|(lag, _)| lag)
     }
-}
 
-/// Step 5's three values, `n̄(τ)` at `τ = lag − 1, lag, lag + 1`, recomputed over **one common
-/// overlap** of `M = N − lag − 1` pairs, counted from both ends of the frame (`T-003b`):
-///
-/// ```text
-///   n̄(τ) = 2·(Σ_{j<M} x[j]·x[j+τ] + Σ_{i≥N−M} x[i−τ]·x[i])
-///          / (Σ_{j<M} (x[j]² + x[j+τ]²) + Σ_{i≥N−M} (x[i−τ]² + x[i]²))
-/// ```
-///
-/// Why. The FFT NSDF sums `N − τ` pairs at lag `τ`, so its three samples around the peak come from
-/// three *different* sums: each lag drops a pair at the window's edge. When that pair sits on a
-/// steep part of the waveform (a sawtooth's reset), the peak turns lopsided and the parabola's
-/// vertex moves. It is worst when the window holds a whole number of periods, because then the
-/// pairs dropped at both edges sit at the same point of the cycle: the sawtooth missed by 0.5 ¢
-/// at exactly 75, 100 and 150 Hz in the Mid range.
-///
-/// With one set of pairs for all three lags, the three values are samples of a single smooth
-/// function of `τ` whose maximum is exactly the period: there `x[j+T] = x[j]`, so it equals 1, and
-/// Cauchy–Schwarz bounds it by 1 everywhere. Counting from the start only, that function is still
-/// lopsided, because its later samples slide while its earlier ones stay put; counting from the
-/// end, the opposite holds. Summing both cancels the lopsidedness to first order. Measured over
-/// 32 alignments per frequency, the sawtooth's worst error in the tuner's windows fell from
-/// 0.50 ¢ to 0.11 ¢ (`T-003b`). The cost is six dot products of `M` pairs, about `12·N` flops.
-///
-/// `None` if a lag has no neighbour on either side, or the overlap has no energy.
-fn common_overlap(frame: &[f32], lag: usize) -> Option<[f64; 3]> {
-    let len = frame.len();
-    let span = len.checked_sub(lag.checked_add(1)?)?;
-    if lag == 0 || span == 0 {
-        return None;
-    }
-    let early = frame.get(..span)?;
-    let late = frame.get(len - span..)?;
-    let mut values = [0.0; 3];
-    for (value, tau) in values.iter_mut().zip([lag - 1, lag, lag + 1]) {
-        let ahead = frame.get(tau..tau + span)?;
-        let behind = frame.get(len - span - tau..len - tau)?;
-        let (mut product, mut energy) = (0.0, 0.0);
-        for (&a, &b) in early.iter().zip(ahead).chain(behind.iter().zip(late)) {
-            let (a, b) = (f64::from(a), f64::from(b));
-            product += a * b;
-            energy += a * a + b * b;
-        }
-        if energy.is_nan() || energy <= 0.0 {
+    /// Step 5's three values, `n̄(τ)` at `τ = lag − 1, lag, lag + 1`, recomputed over **one common
+    /// overlap** of `M = N − lag − 1` pairs, counted from both ends of the frame (`T-003b`):
+    ///
+    /// ```text
+    ///   n̄(τ) = 2·(Σ_{j<M} x[j]·x[j+τ] + Σ_{i≥N−M} x[i−τ]·x[i])
+    ///          / (Σ_{j<M} (x[j]² + x[j+τ]²) + Σ_{i≥N−M} (x[i−τ]² + x[i]²))
+    /// ```
+    ///
+    /// Why. The FFT NSDF sums `N − τ` pairs at lag `τ`, so its three samples around the peak come from
+    /// three *different* sums: each lag drops a pair at the window's edge. When that pair sits on a
+    /// steep part of the waveform (a sawtooth's reset), the peak turns lopsided and the parabola's
+    /// vertex moves. It is worst when the window holds a whole number of periods, because then the
+    /// pairs dropped at both edges sit at the same point of the cycle: the sawtooth missed by 0.5 ¢
+    /// at exactly 75, 100 and 150 Hz in the Mid range.
+    ///
+    /// With one set of pairs for all three lags, the three values are samples of a single smooth
+    /// function of `τ` whose maximum is exactly the period: there `x[j+T] = x[j]`, so it equals 1, and
+    /// Cauchy–Schwarz bounds it by 1 everywhere. Counting from the start only, that function is still
+    /// lopsided, because its later samples slide while its earlier ones stay put; counting from the
+    /// end, the opposite holds. Summing both cancels the lopsidedness to first order. Measured over
+    /// 32 alignments per frequency, the sawtooth's worst error in the tuner's windows fell from
+    /// 0.50 ¢ to 0.11 ¢ (`T-003b`).
+    ///
+    /// It costs O(1), not O(N): each common-overlap sum is the full `r(τ)` or `m(τ)` of steps 1–2
+    /// minus the pairs beyond the overlap, and at `τ = lag − 1, lag, lag + 1` there are `2, 1, 0` of
+    /// those at each end (`j ∈ [M, N − 1 − τ]` from the start, `j ∈ [0, lag − τ]` from the end).
+    /// A test checks it against the definition above.
+    ///
+    /// `None` if a lag has no neighbour on either side, or the overlap has no energy.
+    fn common_overlap(&self, frame: &[f32], lag: usize) -> Option<[f64; 3]> {
+        let span = frame.len().checked_sub(lag.checked_add(1)?)?;
+        if lag == 0 || span == 0 {
             return None;
         }
-        *value = 2.0 * product / energy;
+        let scale = 1.0 / index_to_f64(self.padded.len());
+        let mut values = [0.0; 3];
+        for (value, tau) in values.iter_mut().zip([lag - 1, lag, lag + 1]) {
+            let full_product = *self.autocorrelation.get(tau)? * scale;
+            let full_energy = *self.overlap_energy.get(tau)?;
+            let (mut product, mut energy) = (2.0 * full_product, 2.0 * full_energy);
+            for extra in 0..lag + 1 - tau {
+                for j in [span + extra, extra] {
+                    let a = f64::from(*frame.get(j)?);
+                    let b = f64::from(*frame.get(j + tau)?);
+                    product -= a * b;
+                    energy -= a * a + b * b;
+                }
+            }
+            if energy.is_nan() || energy <= 0.0 {
+                return None;
+            }
+            *value = 2.0 * product / energy;
+        }
+        Some(values)
     }
-    Some(values)
 }
 
 /// Steps 5 and 6: the vertex of the parabola through `(−1, a)`, `(0, b)`, `(1, c)`, as its offset
 /// from the middle point and the value there.
 ///
 /// The vertex is at `δ = (a − c) / (2(a − 2b + c))`, where the parabola takes the value
-/// `b − (a − c)·δ / 4`. At a key maximum `|δ| ≤ ½`; values from [`common_overlap`] can lean a
+/// `b − (a − c)·δ / 4`. At a key maximum `|δ| ≤ ½`; values from [`Mpm::common_overlap`] can lean a
 /// little further, so `δ` is clamped to the bracket, `[−1, 1]`.
 ///
 /// The vertex is exact for a parabola, and within 7.1·10⁻⁴ lag (0.041 cents) of a sine's
@@ -489,6 +500,44 @@ mod tests {
         }
     }
 
+    /// Step 5's common overlap straight from its definition, in O(N).
+    fn common_overlap_direct(frame: &[f32], lag: usize) -> [f64; 3] {
+        let (len, span) = (frame.len(), frame.len() - lag - 1);
+        let x: Vec<f64> = frame.iter().map(|&s| f64::from(s)).collect();
+        [lag - 1, lag, lag + 1].map(|tau| {
+            let pairs = (0..span).map(|j| (x[j], x[j + tau]));
+            let pairs = pairs.chain((len - span..len).map(|i| (x[i - tau], x[i])));
+            let (r, m) = pairs.fold((0.0, 0.0), |(r, m), (a, b)| (r + a * b, m + a * a + b * b));
+            2.0 * r / m
+        })
+    }
+
+    #[test]
+    fn the_o1_common_overlap_equals_its_definition() {
+        for (window, seed) in [(16, 1), (100, 2), (513, 3), (1_200, 4)] {
+            let mut frame = vec![0.0_f32; window];
+            Noise::new(seed).fill(&mut frame, 0.3);
+            let mut tone = vec![0.0_f32; window];
+            sine(&mut tone, 700.0, 12_000, 0.5, 0.4);
+            for (f, t) in frame.iter_mut().zip(&tone) {
+                *f += t;
+            }
+            let mut mpm = Mpm::new(MpmConfig::with_window(window)).unwrap();
+            let energy = mpm.autocorrelate(&frame).unwrap();
+            mpm.normalise(&frame, energy);
+            for lag in [1, 2, window / 4, window / 2 - 1] {
+                let fast = mpm.common_overlap(&frame, lag).unwrap();
+                let slow = common_overlap_direct(&frame, lag);
+                for (a, b) in fast.iter().zip(slow) {
+                    assert!(
+                        (a - b).abs() < 1e-12,
+                        "window {window}, lag {lag}: {a} vs {b}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn key_maxima_skip_the_zero_lobe_and_take_one_peak_per_positive_region() {
         let nsdf = [
@@ -573,10 +622,13 @@ mod tests {
         let (offset, peak) = vertex(n(3), n(4), n(5));
         assert!((offset - 0.3).abs() < 1e-12 && (peak - 0.9).abs() < 1e-12);
         // A lag with no neighbour below, or no pairs left above, has no common overlap.
-        let frame = [0.5_f32; 16];
-        assert_eq!(common_overlap(&frame, 0), None);
-        assert_eq!(common_overlap(&frame, 15), None);
-        assert!(common_overlap(&frame, 7).is_some());
+        let mut frame = [0.0_f32; 16];
+        crate::synth::Noise::new(2).fill(&mut frame, 0.5);
+        let energy = mpm.autocorrelate(&frame).unwrap();
+        mpm.normalise(&frame, energy);
+        assert_eq!(mpm.common_overlap(&frame, 0), None);
+        assert_eq!(mpm.common_overlap(&frame, 15), None);
+        assert!(mpm.common_overlap(&frame, 7).is_some());
     }
 
     #[test]
