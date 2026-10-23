@@ -40,6 +40,7 @@ pub mod filter;
 pub mod frame;
 pub mod gate;
 pub mod level;
+pub mod octave;
 pub mod osc;
 pub mod pitch;
 pub mod range;
