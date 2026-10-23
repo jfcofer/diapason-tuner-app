@@ -11,8 +11,9 @@ ones are measured on the reference devices in `TESTING.md` §7.
 
 | Budget | Target | Fails at |
 |---|---|---|
-| Perceived tuner latency (string plucked → needle moves) | ≤ 60 ms for f₀ ≥ 80 Hz | > 100 ms |
-| Same, for bass low B (≈ 31 Hz) | ≤ 140 ms | > 220 ms |
+| Perceived tuner latency (string plucked → needle moves), f₀ ≥ 160 Hz | ≤ 85 ms | > 120 ms |
+| Same, 80–160 Hz | ≤ 110 ms | > 150 ms |
+| Same, bass low B (≈ 31 Hz) | ≤ 190 ms | > 260 ms |
 | Pitch accuracy, synthetic steady tone 30–1400 Hz | ±0.5 cent | ±1 cent |
 | Pitch accuracy, recorded acoustic guitar fixtures | ±2 cents | ±4 cents |
 | Display stability, held note | ≤ 1 cent peak-to-peak wobble | visible flutter |
@@ -23,57 +24,73 @@ ones are measured on the reference devices in `TESTING.md` §7.
 | Added binary size per ABI | ≤ 2.5 MB | > 4 MB |
 
 **Latency ledger.** Plucked string to moving needle, worst case, stage by stage, in ms at 48 kHz
-(44.1 kHz is within 0.3 ms). The constants live in `diapason_dsp::range` (`adr/0028`);
-`tests/chain.rs`, `onset_latency_is_within_the_ledger`, asserts each range's chain line at both
-rates, from silence to the first estimate within ±5 ¢ that stays, on the audio clock.
+(44.1 kHz is within 0.4 ms). The constants live in `diapason_dsp::range` (`adr/0028`). Two tests
+bind this table:
+- `range::tests`, `the_ledger_matches_the_table_in_audio_engine_section_1`, asserts each chain line
+  and total below, so changing a constant fails until this table is updated;
+- `tests/chain.rs`, `onset_latency_is_within_the_ledger`, measures each range's chain line at both
+  rates: silence, then a tone, to the first estimate within ±5 ¢ that stays, on the audio clock.
 
 | Stage | Low (from 30 Hz) | Mid (from 75 Hz) | High (from 160 Hz) |
 |---|---|---|---|
 | Input I/O, provisional until `T-002f` (one 960-frame burst) | 20 | 20 | 20 |
 | Filter group delay (129 or 29 samples) | 2.7 | 2.7 | 0.6 |
 | Window fill (three periods of the floor) | 100 | 40 | 18.75 |
-| Settling (the DC block's transient, measured) | 15 | 5 | 1 |
+| Settling (the DC block's transient; High needs none, measured) | 15 | 5 | 0 |
 | One hop, waiting for the next frame | 5 | 2.5 | 2.5 |
-| **Chain line, asserted** (measured worst, both rates) | **122.7** (117.1) | **50.2** (49.1) | **22.9** (21.3) |
+| **Chain line, asserted** (measured worst, both rates) | **122.7** (117.1) | **50.2** (49.1) | **21.9** (21.7) |
 | Smoothing reserve: two hops for `T-003c`'s median of five | 10 | 5 | 5 |
-| Snapshot period (30 Hz) | 33.3 | 33.3 | 33.3 |
+| Snapshot period: tuner snapshots at 60 Hz | 16.7 | 16.7 | 16.7 |
 | One display frame (60 Hz) | 16.7 | 16.7 | 16.7 |
-| **Total** | **202.7** | **125.2** | **97.9** |
+| **Total** (budget) | **186.0** (190) | **108.5** (110) | **80.2** (85) |
 
-**These totals miss the latency budgets above** (`T-003b`, Deviation 1): 60 ms for f₀ ≥ 80 Hz and
-140 ms for low B. I/O, the snapshot and the display alone sum to 70 ms before any analysis, so no
-detector meets 60 ms under this ledger. Moving the budgets, the snapshot cadence or the ledger's
-worst-case convention is the owner's decision; until then the budget rows stand, unmet.
+The latency budgets were moved on 2026-10-23, by the owner's decision (`adr/0028`). The first
+ledger, with 30 Hz snapshots, showed I/O, snapshot and display alone summing to 70 ms, more than
+the old 60 ms target before any analysis. Tuner snapshots now publish at the display rate, and
+each target sits just above its range's worst case. Under low-power mode the tuner trades latency
+for battery, and the snapshot line of this ledger does not apply.
 
 ## 2. Signal chain (tuner)
 
 ```
-input ──▶ DC block ──▶ level/gate ──▶ ring buffer ──▶ [analysis thread]
-                                                          │
-            ┌── f₀ < 160 Hz: decimate ×4 (anti-aliased) ◀─┤
-            └── f₀ ≥ 160 Hz: band-limit at full rate ◀────┘
-        │
-        ▼
-   frames per range ──▶ NSDF via FFT autocorrelation ──▶ peak pick ──▶ parabolic interp
-        │                                                                     │
-        └──▶ clarity ──▶ octave guard ──▶ median(5) ──▶ one-euro filter ──▶ snapshot
+          ┌──────── chain::Front, audio callback ────────┐
+input ──▶ │ DC block ──▶ gate                              │ ──▶ ring buffer: samples + gate state
+          └───────────────▲──────────────────────────────┘                    │
+                          └── "unpitched" (one flag back) ◀──┐                 ▼
+          ┌──────── chain::Analysis, analysis thread ─────────┴───────────────────────────┐
+          │ Low, Mid: decimate ×4 (anti-aliased)   High: band-limit at full rate          │
+          │      ▼                                                                         │
+          │ frames per range ──▶ NSDF via FFT ──▶ peak pick ──▶ parabolic interpolation    │
+          │                                                     (common overlap, §3)       │
+          │ Low reference frame ──▶ range selector (hysteresis, scan, octave guard)        │
+          └──────▼─────────────────────────────────────────────────────────────────────────┘
+   clarity ──▶ octave guard ──▶ median(5) ──▶ one-euro filter ──▶ snapshot (60 Hz)
 ```
 
-**Pre-processing.** One-pole high-pass at 20 Hz removes DC and handling rumble (`dsp::filter::
-DcBlock`). An RMS gate (default −50 dBFS, adaptive to the noise floor measured over the last 2 s)
-decides when nothing is being played — a tuner that hunts in silence feels broken. Its floor
-learns only while it is closed, or a held note would become the floor and close it, and it never
-mutes the audio the detector sees, only whether an estimate is shown (`dsp::gate::NoiseGate`).
+**Pre-processing.** A one-pole high-pass at 20 Hz removes DC and handling rumble
+(`dsp::filter::DcBlock`). An RMS gate (default −50 dBFS, adaptive to the noise floor measured over
+the last 2 s) decides when nothing is being played — a tuner that hunts in silence feels broken.
+Both run in the callback, as `dsp::chain::Front`. The gate's state crosses the ring buffer with
+each block. The gate never mutes the audio the detector sees; it decides only whether an estimate
+is shown (`dsp::gate::NoiseGate`).
+
+Its floor learns while the gate is closed. It must not learn while a note is held, or the note
+would become the floor and close the gate. So it learns while open only when the analysis side
+reports the open gate *unpitched*: no clear estimate for 2 s (`dsp::chain::UNPITCHED_SECONDS`).
+That is how a room louder than −50 dBFS raises the gate (`PRODUCT_SPEC.md` §2). The engine
+carries that one flag back from the analysis thread.
 
 **Band-limiting and decimation.** Parabolic interpolation is biased by harmonics near the
 *analysis* Nyquist (`T-003a`), so both paths keep their content below an eighth of their analysis
 rate, through linear-phase Kaiser FIRs designed per rate (`dsp::range::RangeTable`). The Low and
 Mid ranges analyse at a quarter of the input rate (12 kHz from 48 kHz, 11.025 kHz from 44.1 kHz),
-which cuts their NSDF cost about 4×. High analyses at the full rate. The crossover sits at the
-Mid/High boundary, 160 Hz, under the decimated path's measured limit. In Mid's window the
-sawtooth keeps a 2× margin to 214 Hz at 44.1 kHz, and to 508 Hz at 48 kHz. A window as short as
-High's has too few samples at the decimated rate: there the sawtooth misses at 160 Hz already. Range changes are hysteretic (a semitone) to avoid oscillating at a
-boundary (`dsp::range::RangeSelector`).
+which cuts their NSDF cost about 4×. High analyses at the full rate. The crossover is the Mid/High
+boundary, 160 Hz, and it is a latency choice. In Mid's window the decimated path keeps a 2×
+margin to at least 320 Hz (`T-003b`). Notes above 160 Hz still go to High, because its window is
+18.75 ms, not Mid's 40 ms. High runs at full rate because the decimator's content stops at
+1.5 kHz, and High goes to 1400 Hz. Range changes are hysteretic (a semitone) to avoid
+oscillating at a boundary (`dsp::range::RangeSelector`). `dsp::chain::Analysis` runs both paths
+on every sample.
 
 **Window sizing is adaptive**, because a fixed window either misses low strings or is needlessly
 slow for high ones. A window holds three periods of its range's floor, and the hop is short,
@@ -81,9 +98,9 @@ because each hop is paid three times in latency (§1, `adr/0028`):
 
 | Range | Floor | Analysis rate | Window @ 48 / 44.1 kHz | Hop | Update rate |
 |---|---|---|---|---|---|
-| Low (5-string bass B to the D string) | 30 Hz | ÷ 4 | 1200 / 1103 (100 ms) | 5 ms | 200 Hz |
-| Mid (guitar low E, bass upper) | 75 Hz | ÷ 4 | 480 / 441 (40 ms) | 2.5 ms | 400 Hz |
-| High (guitar D3 and up, violin, uke) | 160 Hz | full | 900 / 827 (18.75 ms) | 2.5 ms | 400 Hz |
+| Low (5-string bass B to its D string, 73.4 Hz) | 30 Hz | ÷ 4 | 1200 / 1103 (100 ms) | 5 ms | 200 Hz |
+| Mid (guitar low E to D3, the bass's G) | 75 Hz | ÷ 4 | 480 / 441 (40 ms) | 2.5 ms | 400 Hz |
+| High (guitar G3 and up, violin, uke) | 160 Hz | full | 900 / 827 (18.75 ms) | 2.5 ms | 400 Hz |
 
 *Note.* The windows are short because a window that is only partly filled with a new note biases
 the NSDF, so the first good estimate waits for the window to fill (§1's ledger). The selector
@@ -91,6 +108,13 @@ returns to the home range on silence. The instrument preset picks that range (M3
 case (guitar E-standard, Mid) never pays the bass window. A note the home range cannot see (1.4 kHz
 from Low is in the decimator's stopband) is found by scanning to the next range after a window and
 50 ms of unclear frames. Every range's history is kept full, so a switch costs one hop.
+
+A range cannot see below 1.5 periods of its floor, since `Mpm` searches lags up to half the
+window: High is blind below 107 Hz, Mid below 50 Hz. A low E with a weak fundamental, heard by
+High, would read as its second partial, which High holds. So while another range is selected,
+each Low frame is analysed too. A clear Low pitch below the current band, with the current pitch
+a whole multiple of it or absent, moves the chain to the Low pitch's range (75 ms after a low E's
+onset, measured). This costs one Low frame per 5 ms.
 
 ## 3. Pitch detection: NSDF / McLeod (MPM)
 
