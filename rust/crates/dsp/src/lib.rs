@@ -5,6 +5,9 @@
 //!   `docs/adr/0005`).
 //! - [`filter`] and [`gate`]: the pre-processing in front of it (`docs/AUDIO_ENGINE.md` §2): a DC
 //!   block, the FIR low-pass that band-limits or decimates, and the adaptive noise gate.
+//! - [`frame`] and [`range`]: frames of the window and hop each range needs, the range table
+//!   derived from the sample rate, the selector that moves between ranges, and the latency
+//!   ledger they are sized from (`docs/adr/0028`).
 //! - [`synth`]: deterministic, seeded fixture signals that test and bench it.
 //! - [`osc`] and [`level`]: what the audio spine needed first (`T-002a`), a phase-continuous test
 //!   tone and an input level meter.
@@ -31,10 +34,12 @@
 
 pub mod convert;
 pub mod filter;
+pub mod frame;
 pub mod gate;
 pub mod level;
 pub mod osc;
 pub mod pitch;
+pub mod range;
 pub mod synth;
 
 /// Identifies the DSP build, so the value crossing the FFI boundary in `T-001` originates from the
