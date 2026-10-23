@@ -1,9 +1,9 @@
 ---
 id: T-003c
 title: Octave guard across estimates and ranges, inside the latency budgets
-status: todo
+status: in-progress
 milestone: M2
-owner: unassigned
+owner: claude
 created: 2026-10-23
 ---
 
@@ -35,6 +35,12 @@ Prior art:
 - `synth::weak_fundamental` and the ringing-first-note fixtures;
 - the no-gap leap sweep and the octave tests in `tests/chain.rs`;
 - the reviewer's probes in `T-003b`'s notes.
+
+**Owner decision, 2026-10-23: an `ambiguous octave` frame moves the needle.** An octave error
+keeps the pitch class and the cents, so a frame flagged ambiguous shows the letter and the cents,
+without the octave number, and it counts for §1's latency budgets. The time until the octave is
+known is recorded and bounded separately. The plan: an estimate whose range cannot test 2τ stays
+ambiguous until the range below, which can, confirms or moves it (`adr/0029`, this task).
 
 Known trade-off: a Low window spans about 100 ms, so any evidence it gives about a note change
 arrives late. The design must not depend on one window alone. Candidates to evaluate are the

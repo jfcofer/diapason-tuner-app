@@ -1,7 +1,7 @@
 ---
 id: T-003b
 title: Pre-processing chain, measured windows and hops, and the latency ledger
-status: in-progress
+status: done
 milestone: M2
 owner: claude
 created: 2026-10-22
@@ -61,7 +61,7 @@ under the deny list `pitch` uses. Every buffer and coefficient is set in a const
 - [x] **A band-limit low-pass on the full-rate path**, at the cutoff the probe chooses. *The
   cutoff, fs/8, came from `T-003a`'s bias figure and the sweep confirmed it; no probe chose it.*
 - [ ] **`NoiseGate`** is built on `RmsMeter` blocks, with a 2 s floor in a preallocated ring.
-  *All of it holds except "only while closed": Deviation 4.*
+  *All of it holds except "only while closed". Closed with #31 as Deviation 4, which the owner accepted.*
   - The open threshold is `max(−50 dBFS, floor + margin)`, clamped, with open/close hysteresis
     and a hold time.
   - The floor learns **only while the gate is closed**.
