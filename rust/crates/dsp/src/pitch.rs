@@ -219,7 +219,7 @@ impl Mpm {
         self.normalise(frame, energy);
         let lag = self.pick()?;
         let [a, b, c] = self.common_overlap(frame, lag)?;
-        let (offset, peak) = vertex(a, b, c);
+        let (offset, peak) = vertex(a, b, c)?;
         let clarity = to_f32(peak.min(1.0));
         if clarity < self.config.clarity_floor {
             return None;
@@ -368,7 +368,8 @@ impl Mpm {
 ///
 /// The vertex is at `δ = (a − c) / (2(a − 2b + c))`, where the parabola takes the value
 /// `b − (a − c)·δ / 4`. At a key maximum `|δ| ≤ ½`; values from [`Mpm::common_overlap`] can lean a
-/// little further, so `δ` is clamped to the bracket, `[−1, 1]`.
+/// little further. A vertex outside the bracket, `|δ| > 1`, is no peak at all (the middle value is
+/// not the highest), so it gives `None` and the frame is discarded rather than clamped to an edge.
 ///
 /// The vertex is exact for a parabola, and within 7.1·10⁻⁴ lag (0.041 cents) of a sine's
 /// `cos(ωτ)` peak at any lag of 30 or more. It is biased on a sharper peak: a sawtooth's NSDF
@@ -376,14 +377,17 @@ impl Mpm {
 /// to its curvature, and the vertex lands up to 0.053 lag from `T` whatever the window. The bias
 /// depends on how close the signal's content reaches Nyquist (0.013 lag below `fs/4`, 0.0035
 /// below `fs/8`), which is why the tuner's chain band-limits (`crate::range`).
-fn vertex(a: f64, b: f64, c: f64) -> (f64, f64) {
+fn vertex(a: f64, b: f64, c: f64) -> Option<(f64, f64)> {
     let curvature = a - 2.0 * b + c;
     if curvature.is_nan() || curvature >= 0.0 {
         // Flat: the vertex is the sample itself.
-        return (0.0, b);
+        return Some((0.0, b));
     }
-    let offset = (0.5 * (a - c) / curvature).clamp(-1.0, 1.0);
-    (offset, b - 0.25 * (a - c) * offset)
+    let offset = 0.5 * (a - c) / curvature;
+    if offset.abs() > 1.0 {
+        return None;
+    }
+    Some((offset, b - 0.25 * (a - c) * offset))
 }
 
 /// The key maxima of an NSDF (step 4): for each region where `n > 0`, after the one around lag 0,
@@ -619,8 +623,11 @@ mod tests {
             *n = 0.9 - 0.05 * d * d;
         }
         let n = |lag: usize| mpm.nsdf[lag];
-        let (offset, peak) = vertex(n(3), n(4), n(5));
+        let (offset, peak) = vertex(n(3), n(4), n(5)).unwrap();
         assert!((offset - 0.3).abs() < 1e-12 && (peak - 0.9).abs() < 1e-12);
+        // The middle value well below one neighbour: the vertex is 4.5 lags out, no peak at all.
+        assert_eq!(vertex(0.9, 0.5, 0.0), None);
+        assert!(vertex(0.6, 0.62, 0.0).is_some());
         // A lag with no neighbour below, or no pairs left above, has no common overlap.
         let mut frame = [0.0_f32; 16];
         crate::synth::Noise::new(2).fill(&mut frame, 0.5);
