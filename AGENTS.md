@@ -88,7 +88,8 @@ apps/diapason  →  packages/feature_*  →  packages/core_ui, core_domain, core
   It must stay testable offline with fixture buffers.
 - `diapason_ffi` (`packages/audio_engine/rust`, where cargokit builds it) contains **no logic** —
   only the flutter_rust_bridge API surface and type mapping. Business rules live in `session`/`engine`/`dsp`.
-- Dart never touches audio buffers. Dart sends commands and receives ~30 Hz state snapshots.
+- Dart never touches audio buffers. Dart sends commands and receives ~30 Hz state snapshots
+  (60 Hz while tuning, `adr/0028`).
 - No `dart:io`/plugin calls inside `core_ui` widgets; inject via `core_platform` interfaces.
 
 ## 6. Real-time audio rules (violating these ships audible bugs)

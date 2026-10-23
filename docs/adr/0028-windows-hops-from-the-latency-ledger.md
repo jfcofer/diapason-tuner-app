@@ -74,9 +74,9 @@ when its content stays well below the *analysis* Nyquist.
 ## Consequences
 
 - **M3 must publish tuner snapshots at 60 Hz;** the ledger's snapshot line binds it.
-- **Low power:** under `PLATFORM_AUDIO.md`'s low-power rule (snapshots 30 → 20 Hz), the tuner
+- **Low power:** under `PLATFORM_AUDIO.md`'s low-power rule (tuner snapshots 60 → 20 Hz), the tuner
   trades latency for battery, and that row of the ledger does not apply.
-- Mid's headroom is 1.5 ms: any added delay there (filter, hop, settling) needs a new decision.
+- Mid's headroom is 1.5 ms at 48 kHz and 1.1 ms at 44.1 kHz: any added delay there (filter, hop, settling) needs a new decision.
 - Host CPU, worst case, is about 0.6 % of one core: both filters, High's frames and the Low
   reference. The phone figure is owed (`T-003a` owes the NSDF's too).
 - From Low, a 1400 Hz note costs a scan (108–137 ms). The preset's starting range (M3) keeps the

@@ -181,7 +181,8 @@ its shell branch goes offstage; a dialog, a menu or a bottom sheet over it does 
 
 ## 6. Battery and thermals
 
-The tuner is the expensive mode. Reduce the snapshot rate from 30 Hz to 20 Hz under low-power mode,
-stop analysis entirely (keeping the stream open) after 60 s of silence below the gate, and drop the
-strobe animation to 30 fps when the device reports thermal pressure. Keep-awake is on only while the
+The tuner is the expensive mode. Reduce its snapshot rate from 60 Hz (`adr/0028`) to 20 Hz under
+low-power mode, where the latency ledger's snapshot line no longer holds; stop analysis entirely
+(keeping the stream open) after 60 s of silence below the gate; and drop the strobe animation to
+30 fps when the device reports thermal pressure. Keep-awake is on only while the
 tuner or metronome is active, and is released on every exit path — including the crash path.

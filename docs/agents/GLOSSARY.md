@@ -42,8 +42,8 @@ Missing its deadline produces an audible glitch, so allocation, locking and I/O 
 **Ring buffer (SPSC)** — single-producer single-consumer lock-free queue; how audio and commands
 cross between the RT thread and everything else.
 
-**Snapshot** — the immutable struct the engine publishes for the UI to read at ~30 Hz. Latest-wins,
-never queued.
+**Snapshot** — the immutable struct the engine publishes for the UI to read at ~30 Hz (60 Hz while
+tuning, `adr/0028`). Latest-wins, never queued.
 
 **Strobe** — the display where a rotating pattern's apparent motion is proportional to the pitch
 error, so being in tune makes it stand still. Our signature UI element (`DESIGN_SYSTEM.md` §1).
