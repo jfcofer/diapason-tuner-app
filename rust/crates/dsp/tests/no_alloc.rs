@@ -163,7 +163,8 @@ fn no_stage_allocates() {
             ] {
                 selector.observe(observation, position);
             }
-            selector.observe_reference(Some(82.41), position);
+            selector.observe_verifier(Range::Low, Some(82.41), position);
+            selector.observe_verifier(Range::Mid, Some(82.41), position);
             gate.set_unpitched(true);
         });
     }

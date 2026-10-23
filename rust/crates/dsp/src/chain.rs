@@ -5,7 +5,8 @@
 //! - [`Analysis`] runs on the analysis thread. It takes each block with its gate state and does:
 //!   - the band-limit and the ×4 decimation;
 //!   - the frames of every range, and `Mpm` on the selected range's;
-//!   - the [`RangeSelector`], including the Low range's reference frames;
+//!   - the [`OctaveGuard`] on each estimate, and the [`RangeSelector`], with the frames of the
+//!     ranges below the selected one that verify its octave (`docs/adr/0029`);
 //!   - the report, back to the gate, that the open gate has heard no pitch for a while
 //!     ([`Analysis::unpitched`], [`Front::set_unpitched`]).
 //!
@@ -19,8 +20,9 @@ use crate::convert::index_from_f64;
 use crate::filter::{DcBlock, Decimator, FilterError};
 use crate::frame::{FrameAssembler, FrameError};
 use crate::gate::{GateConfig, GateError, NoiseGate};
+use crate::octave::{Guarded, Octave, OctaveGuard, UNVERIFIED_CLARITY};
 use crate::pitch::{Mpm, MpmConfig, MpmError, PitchEstimate};
-use crate::range::{Observation, Path, Range, RangeSelector, RangeTable};
+use crate::range::{LOWEST_FUNDAMENTAL_HZ, Observation, Path, Range, RangeSelector, RangeTable};
 
 /// Seconds the gate may stay open without a clear pitch before the analysis calls it noise and
 /// the gate's floor learns from it ([`NoiseGate::set_unpitched`]). Long enough that a note's
@@ -146,15 +148,22 @@ pub struct Frame {
     pub end: u64,
     /// The range it was analysed in.
     pub range: Range,
-    /// What `Mpm` found.
+    /// What `Mpm` found, through the octave guard: `None` also while a jump waits for confirmation
+    /// (`crate::octave`).
     pub estimate: Option<PitchEstimate>,
+    /// Whether the estimate's octave is known, or only its pitch class and cents
+    /// (`docs/PRODUCT_SPEC.md` §2, `ambiguous octave`). [`Octave::Known`] when there is no estimate.
+    pub octave: Octave,
 }
 
 /// The analysis side. Under [`Selection::Auto`] both filters and all three frame assemblers run on
 /// every sample, so a range switch finds its window already full and costs one hop, not a window
 /// (`docs/adr/0028`). Frames are analysed only for the selected range, and only while the gate is
-/// open. While another range is selected, each Low frame is also analysed, as the reference that
-/// catches a range locked on the octave above ([`RangeSelector::observe_reference`]).
+/// open. Each frame of a range below the selected one is analysed too, as a verifier: Mid and Low
+/// under High, Low under Mid. They decide the octave of estimates the selected range cannot test
+/// and catch a range locked on the octave above ([`RangeSelector::observe_verifier`]). Each
+/// estimate passes the [`OctaveGuard`] first, with its NSDF's peaks at τ/2 and 2τ
+/// ([`Mpm::peak_near`]).
 ///
 /// ```
 /// use diapason_dsp::chain::{Analysis, Selection};
@@ -177,6 +186,7 @@ pub struct Analysis {
     band_limit: Decimator,
     frames: [FrameAssembler; 3],
     detectors: [Mpm; 3],
+    guard: OctaveGuard,
     position: u64,
     gate_open: bool,
     /// The position of the latest clear estimate, or of the latest closed-gate block.
@@ -233,6 +243,7 @@ impl Analysis {
             band_limit: table.band_limit()?,
             frames,
             detectors,
+            guard: OctaveGuard::new(),
             table,
             selection,
             position: 0,
@@ -320,25 +331,75 @@ impl Analysis {
             return;
         }
         let current = self.current();
-        let auto = matches!(self.selection, Selection::Auto(_));
         if range == current {
             if !self.gate_open {
+                self.guard.reset();
                 self.observe(Observation::Silent);
                 return;
             }
-            let estimate = self.analyse(range);
+            let (estimate, octave) = self.judge(range);
             on_frame(&Frame {
                 end: self.position,
                 range,
                 estimate,
+                octave,
             });
-            self.observe(
-                estimate.map_or(Observation::Unclear, |e| Observation::Pitch(e.frequency_hz)),
-            );
-        } else if range == Range::Low && auto && self.gate_open {
-            let reference = self.analyse(Range::Low).map(|e| e.frequency_hz);
-            self.selector.observe_reference(reference, self.position);
+        } else if matches!(self.selection, Selection::Auto(_)) && self.gate_open && range < current
+        {
+            let reading = self.analyse(range).map(|e| e.frequency_hz);
+            self.selector
+                .observe_verifier(range, reading, self.position);
+            if self.selector.current() != current {
+                self.guard.reset();
+            }
         }
+    }
+
+    /// The selected range's frame: `Mpm`, the octave guard, the selector, then the octave.
+    fn judge(&mut self, range: Range) -> (Option<PitchEstimate>, Octave) {
+        let lock = self.selector.held_frames(range);
+        // A period longer than the lowest note's is a common period of two notes, not a string; and
+        // an estimate the range cannot test the octave of is taken only from `UNVERIFIED_CLARITY`.
+        let pick = self.analyse(range).filter(|pick| {
+            let hz = pick.frequency_hz;
+            hz >= LOWEST_FUNDAMENTAL_HZ
+                && (pick.clarity >= UNVERIFIED_CLARITY || self.table.tests_octave(range, hz))
+        });
+        let guarded = if let Some(pick) = pick {
+            let up = self.peak_near(range, pick.period_samples / 2.0);
+            let down = self.peak_near(range, pick.period_samples * 2.0);
+            self.guard.judge(pick, up, down, lock)
+        } else {
+            self.guard.miss(lock);
+            None
+        };
+        let hz = guarded.map(|g| g.estimate.frequency_hz);
+        self.observe(hz.map_or(Observation::Unclear, Observation::Pitch));
+        if self.current() != range {
+            self.guard.reset();
+        }
+        let octave = match guarded {
+            Some(Guarded {
+                ambiguous: true, ..
+            }) => Octave::Ambiguous,
+            Some(Guarded { estimate, .. }) => match self.selection {
+                Selection::Auto(_) => self.selector.octave(range, estimate.frequency_hz),
+                Selection::Fixed(_) if self.table.tests_octave(range, estimate.frequency_hz) => {
+                    Octave::Known
+                }
+                Selection::Fixed(_) => Octave::Ambiguous,
+            },
+            None => Octave::Known,
+        };
+        (guarded.map(|g| g.estimate), octave)
+    }
+
+    /// The selected range's NSDF peak near `lag`, from the frame just analysed.
+    fn peak_near(&self, range: Range, lag: f64) -> Option<PitchEstimate> {
+        let index = slot(range);
+        let rate = self.table.spec(range).analysis_rate;
+        let window = self.frames.get(index)?.window();
+        self.detectors.get(index)?.peak_near(window, rate, lag)
     }
 
     fn observe(&mut self, observation: Observation) {
