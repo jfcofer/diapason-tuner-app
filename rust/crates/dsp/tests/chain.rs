@@ -9,6 +9,8 @@
 //! - The decimated path's accuracy, probed and recorded: where the crossover can sit.
 //! - **The headline gate:** sine and sawtooth within ±0.5 ¢ over 30–1400 Hz, 24 points per
 //!   octave, 8 phases, in every range that can hold each frequency.
+//! - Onset latency, per range, within its line of the ledger.
+//! - From its home range, the selector finds the range of each note.
 //!
 //! `cargo test -p diapason_dsp --test chain -- --nocapture` prints the measured tables.
 
@@ -35,6 +37,8 @@ const LOWEST_HZ: f64 = 30.0;
 const HIGHEST_HZ: f64 = 1_400.0;
 const POINTS_PER_OCTAVE: u32 = 24;
 const PHASES: usize = 8;
+/// The latency criterion: within ±5 ¢, and staying there.
+const SETTLED_CENTS: f64 = 5.0;
 
 type Generator = fn(&mut [f32], f64, u32, f64, f64);
 
@@ -379,4 +383,151 @@ fn a_sine_through_the_chain_is_within_half_a_cent_at_44_1_khz() {
 #[test]
 fn a_sawtooth_through_the_chain_is_within_half_a_cent_at_44_1_khz() {
     headline(44_100, "sawtooth", synth::sawtooth);
+}
+
+// ── Latency ─────────────────────────────────────────────────────────────────────────────────
+
+/// Input samples from the onset of a tone, after silence, to the end of the first frame from
+/// which every estimate is within ±5 ¢. `None` if the last frame is not.
+fn onset_latency(
+    rate: u32,
+    range: Range,
+    generate: Generator,
+    hz: f64,
+    phase_index: usize,
+    onset: usize,
+) -> Option<u64> {
+    let mut chain = Chain::new(rate, Selection::Fixed(range));
+    let ledger = chain.table().ledger(range);
+    let length = onset + samples(ledger.chain_seconds() + 0.1, rate);
+    let mut signal = vec![0.0_f32; length];
+    generate(&mut signal[onset..], hz, rate, 0.5, phase(phase_index));
+    let onset = u64::try_from(onset).unwrap();
+    let mut settled: Option<u64> = None;
+    for block in signal.chunks(192) {
+        chain.push(block, |event| {
+            let good = event
+                .estimate
+                .is_some_and(|e| cents(e.frequency_hz, hz).abs() <= SETTLED_CENTS);
+            if !good {
+                settled = None;
+            } else if settled.is_none() && event.end > onset {
+                settled = Some(event.end - onset);
+            }
+        });
+    }
+    settled
+}
+
+/// Each range's onset latency, measured on the audio clock, within its line of the ledger
+/// (`docs/AUDIO_ENGINE.md` §1): group delay + window + settling + one hop. The worst case over
+/// four phases and four onsets spread across a hop; "stays" means for 100 ms past the ledger's
+/// line.
+#[test]
+fn onset_latency_is_within_the_ledger() {
+    let notes: [(Range, &[f64]); 3] = [
+        (Range::Low, &[30.87, 41.2, 55.0]),
+        (Range::Mid, &[75.0, 80.0, 82.41, 110.0, 146.83]),
+        (Range::High, &[160.0, 196.0, 329.63, 659.26, 1_400.0]),
+    ];
+    for rate in SUPPORTED_RATES {
+        let table = RangeTable::new(rate).unwrap();
+        let silence = samples(0.05, rate);
+        for (range, frequencies) in notes {
+            let ledger = table.ledger(range);
+            let limit = ledger.chain_seconds() * f64::from(rate);
+            let hop = input_hop(&table, range);
+            for &hz in frequencies {
+                for (name, generate) in SIGNALS {
+                    let worst = std::thread::scope(|scope| {
+                        let handles: Vec<_> = (0..PHASES)
+                            .step_by(2)
+                            .flat_map(|p| (0..4).map(move |o| (p, silence + o * hop / 4)))
+                            .map(|(p, onset)| {
+                                scope.spawn(move || {
+                                    onset_latency(rate, range, generate, hz, p, onset)
+                                })
+                            })
+                            .collect();
+                        handles
+                            .into_iter()
+                            .map(|handle| {
+                                handle.join().unwrap().unwrap_or_else(|| {
+                                    panic!("{name} {hz} Hz, {range:?}, {rate} Hz: never settles")
+                                })
+                            })
+                            .max()
+                            .unwrap()
+                    });
+                    let worst = index_to_f64(usize::try_from(worst).unwrap());
+                    report(format_args!(
+                        "latency, {range:?} at {rate} Hz, {name} {hz:7.2} Hz: {:6.2} ms (ledger \
+                         {:6.2} ms, total {:6.1} ms)",
+                        worst * 1e3 / f64::from(rate),
+                        ledger.chain_seconds() * 1e3,
+                        ledger.total_seconds() * 1e3,
+                    ));
+                    assert!(
+                        worst <= limit,
+                        "{name} {hz} Hz in {range:?} at {rate} Hz: {:.2} ms to settle, ledger \
+                         {:.2} ms",
+                        worst * 1e3 / f64::from(rate),
+                        limit * 1e3 / f64::from(rate)
+                    );
+                }
+            }
+        }
+    }
+}
+
+// ── The selector in the loop ────────────────────────────────────────────────────────────────
+
+/// From the widest range, a steady tone ends in its own range and within the budget there.
+#[test]
+fn from_home_the_selector_finds_the_range_of_each_note() {
+    for rate in SUPPORTED_RATES {
+        let table = RangeTable::new(rate).unwrap();
+        for hz in [
+            30.87, 41.2, 82.41, 110.0, 196.0, 329.63, 659.26, 1_000.0, 1_400.0,
+        ] {
+            for (name, generate) in SIGNALS {
+                let mut chain = Chain::new(rate, Selection::Auto(Range::Low));
+                let mut signal = vec![0.0_f32; samples(0.6, rate)];
+                generate(&mut signal, hz, rate, 0.5, 0.4);
+                let mut last = None;
+                let mut arrived: Option<u64> = None;
+                for block in signal.chunks(256) {
+                    chain.push(block, |event| {
+                        if event.range == table.range_for(hz) {
+                            arrived.get_or_insert(event.end);
+                        } else {
+                            arrived = None;
+                        }
+                        last = Some(event);
+                    });
+                }
+                let last = last.unwrap();
+                let error = last
+                    .estimate
+                    .map_or(f64::INFINITY, |e| cents(e.frequency_hz, hz));
+                let arrived =
+                    index_to_f64(usize::try_from(arrived.unwrap_or(u64::MAX)).unwrap_or(0));
+                report(format_args!(
+                    "selector at {rate} Hz, {name} {hz:7.2} Hz: in {:?} after {:6.1} ms, last \
+                     frame {error:+.4} ¢",
+                    last.range,
+                    arrived * 1e3 / f64::from(rate)
+                ));
+                assert_eq!(
+                    last.range,
+                    table.range_for(hz),
+                    "{name} {hz} Hz at {rate} Hz"
+                );
+                assert!(
+                    error.abs() <= BUDGET_CENTS,
+                    "{name} {hz} Hz at {rate} Hz: {error} ¢"
+                );
+            }
+        }
+    }
 }
