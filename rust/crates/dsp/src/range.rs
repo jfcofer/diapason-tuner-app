@@ -1116,6 +1116,14 @@ mod tests {
             "§1's ledger has {} rows",
             rows.len()
         );
+        for row in &rows {
+            assert_eq!(
+                row.len(),
+                4,
+                "§1's row {:?} needs a label and three ranges",
+                row[0]
+            );
+        }
         for (row, (label, line)) in rows.iter().zip(lines) {
             assert!(
                 row[0].trim().starts_with(label),
