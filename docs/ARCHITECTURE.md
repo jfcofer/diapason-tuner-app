@@ -101,7 +101,7 @@ mic ──▶ [RT callback] ──▶ ring buffer ──▶ [analysis thread] �
           │  metronome                                            EngineSnapshot
           │  render                                                     │
           ▼                                                     [session thread]
-       speaker                                                    ~30 Hz stream
+       speaker                                      ~30 Hz stream (tuner: 60 Hz, adr/0028)
                                                                         ▼
                                                               Riverpod ──▶ widgets
    Dart commands ──▶ [session thread] ──▶ SPSC queue ──▶ consumed at top of RT callback
