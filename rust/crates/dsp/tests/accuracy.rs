@@ -225,7 +225,8 @@ fn the_sweep_and_the_window_rules_are_as_documented() {
 ///
 /// A dense probe in `T-003a` (20 001 log-spaced frequencies over 30–1400 Hz × 32 phases) put the
 /// worst case at −0.065 cents (1381.6 Hz, window 1024), a margin of more than 7× on this grid and
-/// on the property test below.
+/// on the property test below. With `T-003b`'s common-overlap step 5 (`pitch::common_overlap`)
+/// this grid's worst is 0.033 cents.
 #[test]
 fn a_sine_is_within_half_a_cent_across_the_sweep() {
     let cases = run_sweep(synth::sine, analysis_window);
@@ -237,6 +238,8 @@ fn a_sine_is_within_half_a_cent_across_the_sweep() {
 /// there the NSDF's window-edge terms move the peak: the dense probe found −0.507 cents at
 /// 1299.17 Hz (window 128), just past the budget. Recorded under a ceiling of 1 cent, the budget's
 /// "fails at" (`docs/AUDIO_ENGINE.md` §1), which catches a broken detector, not that edge effect.
+/// That probe predates `T-003b`'s common-overlap step 5, which removes most of the edge effect:
+/// this grid's worst is now 0.104 cents.
 #[test]
 fn a_sine_in_three_period_windows_stays_under_its_ceiling() {
     let cases = run_sweep(synth::sine, stress_window);
@@ -252,7 +255,8 @@ fn a_sine_in_three_period_windows_stays_under_its_ceiling() {
 /// curvature: the peak is as sharp as the lag grid, and the vertex lands up to 0.053 lag off,
 /// whatever the window. In cents that grows with frequency: the dense probe (5001 frequencies ×
 /// 16 phases) found −2.86 cents at 1384 Hz (window 1024). The ceiling, 4 cents, catches a broken
-/// detector (an octave is 1200 cents, one lag at 1400 Hz is about 50), not that bias.
+/// detector (an octave is 1200 cents, one lag at 1400 Hz is about 50), not that bias. The
+/// common-overlap step 5 of `T-003b` leaves the shape bias: this grid's worst is 2.77 cents.
 #[test]
 fn a_sawtooths_error_stays_under_its_ceiling() {
     let cases = run_sweep(synth::sawtooth, analysis_window);
@@ -263,7 +267,8 @@ fn a_sawtooths_error_stays_under_its_ceiling() {
 /// **Not the budget.** With three periods of the tone, the shape bias above adds to window-edge
 /// distortion: harmonics near Nyquist alias in the NSDF's sums (`2hω ≈ 2π`), which distorts the
 /// samples themselves, so that even interpolating with the exact peak shape leaves 2.2 cents. The
-/// dense probe found −6.86 cents at 1127 Hz (window 128); the ceiling is 8.
+/// dense probe found −6.86 cents at 1127 Hz (window 128); the ceiling is 8. With `T-003b`'s
+/// common-overlap step 5, this grid's worst is 3.90 cents.
 #[test]
 fn a_sawtooth_in_three_period_windows_stays_under_its_ceiling() {
     let cases = run_sweep(synth::sawtooth, stress_window);
