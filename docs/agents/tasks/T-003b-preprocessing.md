@@ -103,48 +103,48 @@ under the deny list `pitch` uses. Every buffer and coefficient is set in a const
 
 ## Implementation notes
 
-By `dsp-engineer`, 2026-10-22/23, three rounds. New modules `filter`, `gate`, `frame`, `range`,
-`chain`; design and numbers in `adr/0028` and `AUDIO_ENGINE.md`.
-- **Step 5's common overlap** (O(1)) removed whole-period spikes (−0.514 ¢ at 75.02 Hz, 44.1 kHz,
-  Mid); a vertex beyond ±1 lag gives no estimate.
-- **Selector (rounds 2–3).** A Low reference catches a range holding a low note's 2nd partial. A Low
-  window spanning a note change reads the notes' common period, so it acts only when fresh (after
-  the last switch, pitch change > 75 ¢ or end of a window-long reading), with two agreeing and
-  k ≤ 4. Readings below the band move down after holding a window; the scan runs downward; Mid
-  stops at 160 Hz. **Leap matrix** (reviewer's `leap.rs`, wrong clear frames from 60 ms): round 1
-  26/728 cases, 92 frames; round 2 161, 595; now 18, 68, all inside Low's own 100 ms window.
+By `dsp-engineer`, 2026-10-22/23, four rounds; design and numbers in `adr/0028`, `AUDIO_ENGINE.md`.
+- **Step 5's common overlap** (O(1)) removed whole-period spikes (−0.514 ¢, 75.02 Hz, 44.1 kHz).
+- **Selector.** A Low reference catches a range holding a low note's 2nd partial. It acts when
+  fresh and two agree, or after 250 ms of agreeing streak (round 4: High stayed stuck for 10 s).
+  Leap matrix (`leap.rs`, from 60 ms): round 1 26/728 cases, 92 frames; round 2 161/595; now 18/68.
 
-**Deviation 1 — resolved by the owner, 2026-10-23.** The 30 Hz-snapshot ledger totalled
-97.9/125.2/202.7 ms against 60/140 ms. The owner kept a worst-case ledger, moved tuner snapshots to
-60 Hz and set budgets of 85/110/190 ms (fails at 120/150/260). Totals at 48 kHz: 80.2, 108.5,
-186.0 ms. Mid's headroom: 1.5 / 1.1 ms (48 / 44.1 kHz). **Deviation 3:** the ledger adds a
-measured settling line (Low 15 ms, Mid 5, High 0).
+**Deviation 1 — resolved by the owner.** Budgets 85/110/190 ms (fails at 120/150/260), tuner
+snapshots at 60 Hz; totals 80.2/108.5/186.0 ms; Mid's headroom 1.5 / 1.1 ms (48 / 44.1 kHz).
+**Deviation 2:** the crossover is a range boundary chosen for latency (the ×4 path holds a 2× margin
+to ≥ 320 Hz). **Deviation 3:** a measured settling line (Low 15 ms, Mid 5, High 0).
 
-**Deviation 2 — the crossover is a range boundary chosen for latency.** Mid's ×4 window keeps a 2×
-margin to ≥ 320 Hz. A decimated 225-sample window reads +0.038 ¢ at 160 Hz (−0.82 ¢ before the
-common overlap: 48 kHz, 8 phases × 48/octave, scratch `examples/probe.rs`, uncommitted).
+**Deviation 4:** the gate's floor also learns while open after 2 s unpitched, not "only if closed".
+A room above −50 dBFS held it open, against `PRODUCT_SPEC.md` §2; held notes still stay open.
 
-**Deviation 4 — the gate's floor also learns while open, when unpitched.** The criterion says
-"only while the gate is closed". A room above −50 dBFS then held the gate open for ever, against
-`PRODUCT_SPEC.md` §2. After 2 s open with no clear pitch, `Analysis` reports the gate unpitched and
-the floor learns. A held note keeps a pitch, so the 10 s test still passes.
+**Deviation 5 — octave correctness across ranges moves to `T-003c-octave-guard`** (owner,
+2026-10-23). The ledger is from silence; downward changes into a weak fundamental cost more
+(`AUDIO_ENGINE.md` §1). Here they are bounded (settle ≤ 1 s, except chords) and kept under
+ceilings at the worst below plus a margin. **Baseline**, 48 / 44.1 kHz, home Mid:
+
+| Case | Wrong frames | First wrong (ms) | Settle (ms) |
+|---|---|---|---|
+| E4 → low E, stopped | 22 / 24 | 2.5 / 1.4 | 140 / 135 |
+| E4 → low E, 0.1 s gap | 0 / 0 | — | 27.5 / 27.3 |
+| E4 → low E, E4 rings (τ 0.6, 1.5, 3 s) | 48 / 48 | 2.5 / 1.4 | 120 / 120 |
+| A2 → bass E, stopped | 35 / 38 | 2.5 / 0.3 | 160 / 159 |
+| A2 → bass E, 0.1 s gap | 0 / 0 | — | 50 / 54 |
+| A2 → bass E, A2 rings τ 0.6 / 1.5 / 3 s (chord) | 87, 214, 297 / 85, 212, 298 | 2.5 / 0.3 | 1015 / 1051; > 1500 |
+| No-gap leap, weak, 82.41 → 41.2 / 196 → 98 Hz | 24, 22 / 26, 18 (leap rule) | — | — |
 
 ## Verification performed
 
 2026-10-23, Fedora 44 host (Ryzen 7 8840HS), rustc 1.98.0. Host only; no device.
-- `just verify` passed: 146 nextest tests (96 in `dsp`), 29 doctests.
-- **Headline** (24/octave + whole-period ±0.3 Hz, 8 phases): saw 0.087 ¢, sine 0.036 ¢. **Filters:**
-  stopband ≥ 85.40 dB (×4), 83.71 dB (band-limit), exact from the taps; ripple ≤ 0.001 dB.
-- **Latency** vs chain line: Low 117.1/123.0, Mid 49.1/50.5, High 21.7/21.9 ms. From either home,
-  160–169 Hz total ≤ 80.1 ms (85); 80 Hz ≤ 103.2 ms (110).
-- **Selector:** no-gap leap sweep, 0 wrong frames, ≤ 1 switch (412 probe leaps; 116 in the test).
-  Low E after E4 settles in Mid in 135–140 ms; bass E after A2 in Low in 158–160 ms. **Loud
-  room:** −45 dBFS closes in 2.26–3.11 s.
+- `just verify` passed: 148 nextest tests (98 in `dsp`), 29 doctests.
+- **Headline** (24/octave + whole-period ±0.3 Hz, 8 phases): saw 0.087 ¢, sine 0.036 ¢. Filters:
+  stopband ≥ 85.40 dB (×4), 83.71 dB (band-limit), from the taps; ripple ≤ 0.001 dB.
+- **Latency** vs chain line: Low 117.1/123.0, Mid 49.1/50.5, High 21.7/21.9 ms; from either home,
+  160–169 Hz ≤ 80.1 ms in all (85), 80 Hz ≤ 103.2 ms (110). Loud room closes in 2.26–3.11 s.
+- **Selector:** no-gap leaps (sine, saw) 0 wrong frames, ≤ 1 switch. Stuck patterns A and B leave
+  at 252.5 ms. Reviewer's `stuck.rs` ringing weak low E: 500 / 628 ms before, 280 / 285 after.
 - **Benches** (AC, quiet): decimate 8.67, band_limit 6.61 µs per 10 ms; frame low 11.76, mid 2.71,
-  high 5.85 µs per hop; nsdf 13.0/28.7/59.7 µs (the 10 % gate is noisy at this scale). Worst CPU
-  0.62 % of a host core. **The phone figure is owed.**
-- **Mutations**, each failing a test. Round 3: stale Low reference (11 wrong frames, 13 switches),
-  held-reading end ignored, downward at once, no agreement, uncapped k, Mid to 169.5 Hz (97.2 ms
-  against 85), upward scan, a doc cell or `IO_SECONDS` changed. Round 2: textbook step 5, no Low
-  reference, misses reset, no learning while open, no hysteresis, no NaN reset. Round 1: no
-  band-limit, detune, held note, settling, `vec!`, slowed bench.
+  high 5.85 µs per hop; nsdf 13.0/28.7/59.7 µs. Worst CPU 0.62 % of a host core; phone owed.
+- **Mutations** each fail a test. Round 4: no patience (A, B never leave); no Low reference (trap
+  cases stuck); no rewind; a dropped doc column. Round 3: stale reference, held-reading end ignored,
+  downward at once, no agreement, uncapped k, Mid to 169.5 Hz, upward scan, a doc cell or
+  `IO_SECONDS`. Rounds 1–2: step 5, decay, learning, hysteresis, NaN, band-limit, `vec!`, bench.
