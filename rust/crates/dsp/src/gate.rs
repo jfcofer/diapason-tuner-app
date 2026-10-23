@@ -14,7 +14,8 @@ use crate::level::RmsMeter;
 pub struct GateConfig {
     /// Length of one RMS block, in seconds. Decisions are made once per block.
     pub block_seconds: f64,
-    /// How much closed-gate history the noise floor is the minimum of, in seconds.
+    /// How much learned history the noise floor is the minimum of, in seconds: blocks heard while
+    /// the gate was closed, or open and unpitched ([`NoiseGate::set_unpitched`]).
     pub floor_seconds: f64,
     /// The open threshold never goes below this, in dBFS.
     pub minimum_open_dbfs: f64,
@@ -88,16 +89,17 @@ pub const SILENCE_DBFS: f64 = -200.0;
 ///
 /// A closed gate opens when `L ≥ open`. An open gate restarts its hold whenever `L ≥ close`, and
 /// closes once the hold has run out. The floor is the minimum block level over the last
-/// `floor_seconds` *of closed-gate blocks*: **it learns only while the gate is closed.** A floor
-/// that also learned while open would, two seconds into a held note, take the note for the noise,
-/// raise the threshold above it and close the gate on the player. Minimum statistics (Martin,
-/// *IEEE Trans. Speech Audio Process.* 9(5), 2001) is what keeps one loud block from moving it.
+/// `floor_seconds` *of learned blocks*. **It learns while the gate is closed, and while it is open
+/// only when told the open gate is unpitched** (below). A floor that learned from every open block
+/// would, two seconds into a held note, take the note for the noise, raise the threshold above it
+/// and close the gate on the player. Minimum statistics (Martin, *IEEE Trans. Speech Audio
+/// Process.* 9(5), 2001) is what keeps one loud block from moving it.
 ///
 /// The decisions depend only on the sample sequence, never on how it is cut into blocks. Every
 /// buffer is allocated by [`NoiseGate::new`]; processing is allocation-free and panic-free.
 ///
-/// A room louder than the minimum threshold opens the gate, and nothing is learned while it is
-/// open. The analysis side is what can tell noise from a note: when it has found no clear pitch
+/// A room louder than the minimum threshold opens the gate, and on its own the gate cannot tell
+/// that room from a note. The analysis side can: when it has found no clear pitch
 /// for [`crate::chain::UNPITCHED_SECONDS`] it says so ([`NoiseGate::set_unpitched`]), and the
 /// floor then learns while the gate is open, so the threshold rises over the room and the gate
 /// closes (`docs/PRODUCT_SPEC.md` §2: ambient noise raises the gate). A held note keeps a clear
@@ -119,7 +121,8 @@ pub struct NoiseGate {
     meter: RmsMeter,
     block: usize,
     in_block: usize,
-    /// Closed-gate block levels in dBFS, a ring of `history.len()` entries.
+    /// Learned block levels in dBFS (closed, or open and unpitched), a ring of `history.len()`
+    /// entries.
     history: Vec<f64>,
     learned: usize,
     next: usize,
@@ -256,7 +259,7 @@ impl NoiseGate {
         }
     }
 
-    /// Add the current block to the closed-gate history and take the floor as its minimum.
+    /// Add the current block to the learned history and take the floor as its minimum.
     fn learn(&mut self) {
         if let Some(slot) = self.history.get_mut(self.next) {
             *slot = self.level_dbfs;
@@ -337,8 +340,9 @@ mod tests {
         );
     }
 
-    /// The test that fails if the floor learns while the gate is open: two seconds in, the held
-    /// note would be the floor, the threshold 10 dB above it, and the gate would close.
+    /// The test that fails if the floor learns from an open gate that is not unpitched: two
+    /// seconds in, the held note would be the floor, the threshold 10 dB above it, and the gate
+    /// would close.
     #[test]
     fn a_note_held_for_ten_seconds_stays_open() {
         let mut gate = gate();
