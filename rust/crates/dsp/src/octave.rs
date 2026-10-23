@@ -290,6 +290,19 @@ mod tests {
         let up = at(329.6, 0.97);
         let shown = guard.judge(at(164.8, 0.99), Some(up), None, 16).unwrap();
         assert!(shown.ambiguous && shown.estimate == up);
+        // The threshold in absolute terms, from `pitch::tests`' measured ratios: a weak
+        // fundamental's second partial (0.6 of the note) is not comparable; 0.95 of it is.
+        let mut guard = locked();
+        assert_eq!(
+            guard.judge(pick, None, Some(at(82.41, 0.6 * 0.98)), 16),
+            None
+        );
+        let mut guard = locked();
+        assert!(
+            guard
+                .judge(pick, None, Some(at(82.41, 0.95 * 0.98)), 16)
+                .is_some()
+        );
         // A comparable peak that is not the held note changes nothing.
         let mut guard = locked();
         assert_eq!(guard.judge(pick, Some(at(329.6, 0.99)), None, 16), None);
