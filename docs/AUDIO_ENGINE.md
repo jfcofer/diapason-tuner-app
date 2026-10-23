@@ -40,7 +40,7 @@ bind this table:
 | Settling (the DC block's transient; High needs none, measured) | 15 | 5 | 0 |
 | One hop, waiting for the next frame | 5 | 2.5 | 2.5 |
 | **Chain line, asserted** (measured worst, both rates) | **122.7** (117.1) | **50.2** (49.1) | **21.9** (21.7) |
-| Smoothing reserve: two hops for `T-003c`'s median of five | 10 | 5 | 5 |
+| Smoothing reserve: two hops for `T-003f`'s median of five | 10 | 5 | 5 |
 | Snapshot period: tuner snapshots at 60 Hz | 16.7 | 16.7 | 16.7 |
 | One display frame (60 Hz) | 16.7 | 16.7 | 16.7 |
 | **Total** (budget) | **186.0** (190) | **108.5** (110) | **80.2** (85) |
@@ -50,6 +50,28 @@ ledger, with 30 Hz snapshots, showed I/O, snapshot and display alone summing to 
 the old 60 ms target before any analysis. Tuner snapshots now publish at the display rate, and
 each target sits just above its range's worst case. Under low-power mode the tuner trades latency
 for battery, and the snapshot line of this ledger does not apply.
+
+**The ledger, and the tests behind it, measure from silence.** A note that follows another can
+cost more. Moving *down* a range is the costly case: the range playing cannot see the new note's
+fundamental, and reads its second partial until the Low range, analysed alongside, moves the chain
+(§2). Measured with a weak fundamental (partials 0.3, 1, 0.4) by `tests/chain.rs`,
+`a_downward_change_into_a_weak_fundamental_settles_within_a_second`. Each total adds the target
+range's other ledger lines (58.3 ms for Mid, 63.3 ms for Low) to the chain's time.
+
+| Downward change, 48 / 44.1 kHz | Chain (ms) | Total (ms) | Target / fails at |
+|---|---|---|---|
+| E4 → low E, E4 stopped | 140 / 135 | 198 / 193 | 110 / 150 |
+| E4 → low E, after a 0.1 s gap | 27.5 / 27.3 | 86 / 86 | 110 / 150 |
+| E4 → low E, E4 ringing on (τ 0.6–3 s) | 120 / 120 | 178 / 178 | 110 / 150 |
+| A2 → bass E, A2 stopped | 160 / 159 | 223 / 222 | 190 / 260 |
+| A2 → bass E, after a 0.1 s gap | 50 / 54 | 113 / 117 | 190 / 260 |
+| A2 → bass E, A2 ringing on, τ 0.6 s | 1015 / 1051 | 1078 / 1115 | 190 / 260 |
+| A2 → bass E, A2 ringing on, τ ≥ 1.5 s | > 1500 | — | 190 / 260 |
+
+So downward changes miss §1's targets, and some miss the fail lines; a ringing A2 under a bass E
+is a chord, whose common period Low reads. This is owed by `T-003c-octave-guard`, which gates
+downward note changes inside §1's fail lines, 150 ms and 260 ms. `T-003b` only bounds them (1 s,
+except chords) and records them under ceilings. The budget rows above are unchanged.
 
 ## 2. Signal chain (tuner)
 
