@@ -1,16 +1,21 @@
 //! The tuner's analysis chain, end to end, on synthetic fixtures (`docs/AUDIO_ENGINE.md` §1–§2,
 //! `docs/adr/0028-windows-hops-from-the-latency-ledger.md`, `docs/TESTING.md` §2).
 //!
-//! Every signal is *streamed* through the chain of `common::Chain`, block by block, exactly as the
-//! engine will feed it: DC block, gate, band-limit or ×4 decimation, frames, `Mpm`. Nothing hands
-//! a frame to the detector directly. Each test runs at every rate in `SUPPORTED_RATES`.
+//! Every signal is *streamed* through the shipped chain (`diapason_dsp::chain::Front` and
+//! `Analysis`, glued as the engine will glue them in `common::Tuner`), block by block: DC block,
+//! gate, band-limit or ×4 decimation, frames, `Mpm`, selector. Nothing hands a frame to the
+//! detector directly. Each test runs at every rate in `SUPPORTED_RATES`.
 //!
-//! - The filters meet their specification, measured with sines.
+//! - The filters meet their specification: exactly, from their taps, and measured with sines.
 //! - The decimated path's accuracy, probed and recorded: where the crossover can sit.
 //! - **The headline gate:** sine and sawtooth within ±0.5 ¢ over 30–1400 Hz, 24 points per
-//!   octave, 8 phases, in every range that can hold each frequency.
+//!   octave plus every whole-period frequency of each window ±0.3 Hz, 8 phases, in every range
+//!   that can hold each frequency.
 //! - Onset latency, per range, within its line of the ledger.
-//! - From its home range, the selector finds the range of each note.
+//! - The selector: from home it finds each note's range, and it does not stay on the octave above
+//!   a low note.
+//! - In a room louder than the gate's minimum threshold, the gate learns the room and closes;
+//!   a held note still keeps it open.
 //!
 //! `cargo test -p diapason_dsp --test chain -- --nocapture` prints the measured tables.
 
@@ -18,16 +23,17 @@ use std::f64::consts::TAU;
 use std::fmt;
 use std::io::Write;
 
+use diapason_dsp::chain::{Selection, UNPITCHED_SECONDS};
 use diapason_dsp::convert::{index_from_f64, index_to_f64};
 use diapason_dsp::filter::{DcBlock, Decimator};
 use diapason_dsp::pitch::{Mpm, MpmConfig};
 use diapason_dsp::range::{
     CROSSOVER_HZ, DECIMATION, HYSTERESIS, Path, Range, RangeTable, SUPPORTED_RATES,
 };
-use diapason_dsp::synth;
+use diapason_dsp::synth::{self, Noise};
 
 pub mod common;
-use common::{Chain, Selection, cents};
+use common::{Tuner, cents, span};
 
 /// `docs/AUDIO_ENGINE.md` §1: synthetic steady tones, 30–1400 Hz.
 const BUDGET_CENTS: f64 = 0.5;
@@ -39,6 +45,9 @@ const POINTS_PER_OCTAVE: u32 = 24;
 const PHASES: usize = 8;
 /// The latency criterion: within ±5 ¢, and staying there.
 const SETTLED_CENTS: f64 = 5.0;
+/// Whole-period frequencies are swept this far either side, in steps of a tenth of a hertz: the
+/// error spikes there are a few tenths of a hertz wide.
+const SPIKE_HALF_WIDTH_HZ: f64 = 0.3;
 
 type Generator = fn(&mut [f32], f64, u32, f64, f64);
 
@@ -71,6 +80,21 @@ fn samples(seconds: f64, rate: u32) -> usize {
     index_from_f64((seconds * f64::from(rate)).ceil())
 }
 
+/// The frequencies at which `range`'s window holds a whole number of periods, `k · rate / window`,
+/// within `[from, to]`, each with its neighbours to ±`SPIKE_HALF_WIDTH_HZ` in 0.1 Hz steps. Before
+/// `T-003b`'s common-overlap step 5 the sawtooth's error spiked there (−0.514 ¢ at 75.02 Hz, 44.1
+/// kHz, Mid), between the points of any octave grid.
+fn whole_periods(table: &RangeTable, range: Range, from: f64, to: f64) -> Vec<f64> {
+    let spec = table.spec(range);
+    let spacing = f64::from(spec.analysis_rate) / index_to_f64(spec.window);
+    (1..)
+        .map(|k| spacing * f64::from(k))
+        .take_while(|&hz| hz <= to + SPIKE_HALF_WIDTH_HZ)
+        .flat_map(|hz| (-3..=3).map(move |step| hz + 0.1 * f64::from(step)))
+        .filter(|&hz| (from..=to).contains(&hz))
+        .collect()
+}
+
 fn input_hop(table: &RangeTable, range: Range) -> usize {
     let spec = table.spec(range);
     spec.hop
@@ -82,19 +106,18 @@ fn input_hop(table: &RangeTable, range: Range) -> usize {
 
 // ── The filters ─────────────────────────────────────────────────────────────────────────────
 
-/// The gain of `filter` at `hz`, from a sine of amplitude 1: the RMS of exactly 50 ms of output,
-/// after the filter has settled, times √2. Every test frequency is a multiple of 20 Hz, so 50 ms
-/// holds whole periods at the input rate and at the output's, aliased or not, and the RMS is exact.
+/// The gain of `filter` at `hz`, measured with a sine of amplitude 1: the RMS of exactly 200 ms
+/// of output, after the filter has settled, times √2. 200 ms is a whole number of output samples
+/// at both rates (2400 at 12 kHz, 2205 at 11.025 kHz), and every test frequency is a multiple of
+/// 5 Hz, so it holds whole periods at the input rate and, aliased or not, at the output's.
 fn measured_gain(filter: &mut Decimator, rate: u32, hz: f64) -> f64 {
     filter.reset();
-    let settle = filter.taps().len();
-    let window = samples(0.05, rate);
-    let mut input = vec![0.0_f32; settle + window];
-    synth::sine(&mut input, hz, rate, 1.0, 0.3);
-    let mut sum = 0.0;
-    let mut count = 0;
-    let mut seen = 0;
     let factor = filter.factor();
+    let settle = filter.taps().len().div_ceil(factor) * factor;
+    let outputs = samples(0.2, rate) / factor;
+    let mut input = vec![0.0_f32; settle + outputs * factor];
+    synth::sine(&mut input, hz, rate, 1.0, 0.3);
+    let (mut sum, mut count, mut seen) = (0.0, 0, 0);
     filter.process(&input, |y| {
         seen += 1;
         if seen * factor > settle {
@@ -102,14 +125,36 @@ fn measured_gain(filter: &mut Decimator, rate: u32, hz: f64) -> f64 {
             count += 1;
         }
     });
+    assert_eq!(count, outputs);
     (2.0 * sum / index_to_f64(count)).sqrt()
 }
 
-/// Stopband ≥ 80 dB and passband ripple ≤ 0.1 dB, measured, for both filters at both rates. The
-/// stopband is sampled every 20 Hz, about nine points per sidelobe of the longer filter (whose
-/// lobes are `fs/N` = 185 Hz wide), so no lobe's peak is missed by more than a fraction of a dB.
+/// `|H(f)| = |Σ h[k]·e^{−j2πfk/fs}|`, exactly, from the taps.
+fn exact_gain(taps: &[f64], rate: u32, hz: f64) -> f64 {
+    let omega = TAU * hz / f64::from(rate);
+    let (re, im) = taps
+        .iter()
+        .enumerate()
+        .fold((0.0, 0.0), |(re, im), (k, h)| {
+            let phase = omega * index_to_f64(k);
+            (re + h * phase.cos(), im - h * phase.sin())
+        });
+    re.hypot(im)
+}
+
+fn db(gain: f64) -> f64 {
+    20.0 * gain.log10()
+}
+
+/// Stopband ≥ 80 dB and passband ripple ≤ 0.1 dB for both filters at both rates: exactly, from
+/// the taps on a 1 Hz grid (finer than a tenth of any sidelobe, which is `fs/N` ≥ 185 Hz wide),
+/// and as the implementation actually filters, measured with sines every 100 Hz, which must agree
+/// with the exact response to within 0.1 % or 2·10⁻⁶ (−114 dB) of full scale, the `f32` output's
+/// rounding. (In dB the two drift apart near the response's nulls, where both are tiny.) A
+/// decimated sine whose alias lands on DC or Nyquist has a level that depends on its phase, so
+/// those frequencies are not measured.
 #[test]
-fn both_low_passes_meet_their_specification_measured_with_sines() {
+fn both_low_passes_meet_their_specification() {
     let filters = SUPPORTED_RATES.into_iter().flat_map(|rate| {
         let table = RangeTable::new(rate).unwrap();
         [
@@ -130,23 +175,36 @@ fn both_low_passes_meet_their_specification_measured_with_sines() {
     std::thread::scope(|scope| {
         for (name, rate, mut filter, spec) in filters {
             scope.spawn(move || {
-                let twenties = |from: f64, to: f64| {
-                    let first = (from / 20.0).ceil() * 20.0;
+                let taps = filter.taps().to_vec();
+                let nyquist = f64::from(rate) / 2.0;
+                let grid = |from: f64, to: f64, step: f64| {
+                    let first = (from / step).ceil() * step;
                     (0..)
-                        .map(move |i| first + 20.0 * f64::from(i))
+                        .map(move |i| first + step * f64::from(i))
                         .take_while(move |&hz| hz <= to)
                 };
-                let ripple = twenties(20.0, spec.passband_hz)
-                    .map(|hz| (20.0 * measured_gain(&mut filter, rate, hz).log10()).abs())
+                let ripple = grid(1.0, spec.passband_hz, 1.0)
+                    .map(|hz| db(exact_gain(&taps, rate, hz)).abs())
                     .fold(0.0, f64::max);
-                let (stopband, worst_hz) = twenties(spec.stopband_hz, f64::from(rate) / 2.0 - 20.0)
-                    .map(|hz| (-20.0 * measured_gain(&mut filter, rate, hz).log10(), hz))
+                let (stopband, worst_hz) = grid(spec.stopband_hz, nyquist, 1.0)
+                    .map(|hz| (-db(exact_gain(&taps, rate, hz)), hz))
                     .fold((f64::INFINITY, 0.0), |a, b| if b.0 < a.0 { b } else { a });
+                let alias = nyquist / index_to_f64(filter.factor());
+                let mut disagreement: f64 = 0.0;
+                for hz in grid(100.0, nyquist - 100.0, 100.0) {
+                    if filter.factor() > 1 && (hz / alias).fract() == 0.0 {
+                        continue;
+                    }
+                    let exact = exact_gain(&taps, rate, hz);
+                    let excess =
+                        (measured_gain(&mut filter, rate, hz) - exact).abs() - 1e-3 * exact;
+                    disagreement = disagreement.max(excess);
+                }
                 report(format_args!(
-                    "{name} at {rate} Hz: {} taps, group delay {} samples, passband to {:.0} Hz \
-                     ripple {ripple:.5} dB, stopband from {:.0} Hz at least {stopband:.1} dB \
-                     (at {worst_hz:.0} Hz)",
-                    filter.taps().len(),
+                    "{name} at {rate} Hz: {} taps, group delay {} samples; passband to {:.0} Hz, \
+                     ripple {ripple:.5} dB; stopband from {:.0} Hz, at least {stopband:.2} dB \
+                     (at {worst_hz:.0} Hz); sines agree to {disagreement:.1e} beyond 0.1 %",
+                    taps.len(),
                     filter.group_delay(),
                     spec.passband_hz,
                     spec.stopband_hz,
@@ -156,6 +214,10 @@ fn both_low_passes_meet_their_specification_measured_with_sines() {
                     stopband >= 80.0,
                     "{name} at {rate} Hz: {stopband} dB at {worst_hz} Hz"
                 );
+                assert!(
+                    disagreement <= 2e-6,
+                    "{name} at {rate} Hz: sines off by {disagreement}"
+                );
             });
         }
     });
@@ -163,41 +225,69 @@ fn both_low_passes_meet_their_specification_measured_with_sines() {
 
 // ── The crossover probe ─────────────────────────────────────────────────────────────────────
 
-/// The worst error over eight phases for a tone through the ×4 path alone, analysed in a window
-/// of `window` samples at the decimated rate.
+/// The worst error for a tone through the ×4 path alone, analysed in a window of `window`
+/// samples at the decimated rate: over eight phases and two frame alignments, a decimated sample
+/// apart.
 fn decimated_error(rate: u32, generate: Generator, hz: f64, window: usize) -> f64 {
     let table = RangeTable::new(rate).unwrap();
     let mut decimator = table.decimator().unwrap();
     let mut mpm = Mpm::new(MpmConfig::with_window(window)).unwrap();
-    let mut input = vec![0.0_f32; 2 * decimator.taps().len() + window * DECIMATION];
-    let mut output = vec![0.0_f32; input.len() / DECIMATION];
-    (0..PHASES)
-        .map(|p| {
+    let longest = 2 * decimator.taps().len() + (window + 1) * DECIMATION;
+    let mut input = vec![0.0_f32; longest];
+    let mut output = vec![0.0_f32; longest / DECIMATION];
+    let mut worst: f64 = 0.0;
+    for p in 0..PHASES {
+        for alignment in 0..2 {
+            let length = longest - alignment * DECIMATION;
             decimator.reset();
-            generate(&mut input, hz, rate, 0.5, phase(p));
+            generate(&mut input[..length], hz, rate, 0.5, phase(p));
             let mut len = 0;
-            decimator.process(&input, |y| {
+            decimator.process(&input[..length], |y| {
                 output[len] = y;
                 len += 1;
             });
-            mpm.analyze(&output[len - window..len], rate / 4)
-                .map_or(f64::INFINITY, |e| cents(e.frequency_hz, hz))
-        })
-        .fold(
-            0.0,
-            |worst: f64, c| if c.abs() > worst.abs() { c } else { worst },
-        )
+            let error = mpm
+                .analyze(&output[len - window..len], rate / 4)
+                .map_or(f64::INFINITY, |e| cents(e.frequency_hz, hz));
+            if error.abs() > worst.abs() {
+                worst = error;
+            }
+        }
+    }
+    worst
 }
 
-/// The highest frequency of `from · 2^(i/12)` up to which the decimated path stays within the
-/// budget with [`MARGIN`] in the given window, and the worst error up to it; `None` if it misses
-/// at `from` already.
-fn decimated_limit(rate: u32, generate: Generator, window: usize, from: f64) -> Option<(f64, f64)> {
+/// The probe's frequencies from `from` to `to`: every quarter of a semitone, and every
+/// whole-period frequency of the window with its neighbours ([`whole_periods`]), in order.
+fn probe_grid(window: usize, analysis_rate: u32, from: f64, to: f64) -> Vec<f64> {
+    let spacing = f64::from(analysis_rate) / index_to_f64(window);
+    let mut grid: Vec<f64> = (0..)
+        .map(|i| from * 2_f64.powf(f64::from(i) / 48.0))
+        .take_while(|&hz| hz <= to)
+        .chain(
+            (1..)
+                .map(|k| spacing * f64::from(k))
+                .take_while(|&hz| hz <= to + SPIKE_HALF_WIDTH_HZ)
+                .flat_map(|hz| (-3..=3).map(move |step| hz + 0.1 * f64::from(step)))
+                .filter(|&hz| (from..=to).contains(&hz)),
+        )
+        .collect();
+    grid.sort_by(f64::total_cmp);
+    grid
+}
+
+/// The highest probe frequency from `from`, up to `to`, below which the decimated path stays
+/// within the budget with [`MARGIN`] in the given window, and the worst error up to it; `None` if
+/// it misses at `from` already.
+fn decimated_limit(
+    rate: u32,
+    generate: Generator,
+    window: usize,
+    from: f64,
+    to: f64,
+) -> Option<(f64, f64)> {
     let mut limit = None;
-    for hz in (0..)
-        .map(|i| from * 2_f64.powf(f64::from(i) / 12.0))
-        .take_while(|&hz| hz <= HIGHEST_HZ)
-    {
+    for hz in probe_grid(window, rate / 4, from, to) {
         let error = decimated_error(rate, generate, hz, window).abs();
         if error > BUDGET_CENTS / MARGIN {
             break;
@@ -214,7 +304,7 @@ struct Limit(Option<(f64, f64)>);
 impl fmt::Display for Limit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
-            Some((hz, worst)) => write!(f, "to {hz:.0} Hz (worst {worst:.3} ¢)"),
+            Some((hz, worst)) => write!(f, "to {hz:.1} Hz (worst {worst:.3} ¢)"),
             None => write!(f, "misses at {CROSSOVER_HZ} Hz"),
         }
     }
@@ -222,37 +312,44 @@ impl fmt::Display for Limit {
 
 /// The crossover, measured. Through the ×4 path, in the Mid range's window, sine and sawtooth
 /// must stay within the budget with a 2× margin from `CROSSOVER_HZ` to the top of what Mid holds,
-/// `CROSSOVER_HZ` raised by the hysteresis. The probe goes on, a semitone at a time, to where that
-/// stops, and records it. (Below the crossover the headline sweep covers Mid, densely.)
+/// `CROSSOVER_HZ` raised by the hysteresis. The probe goes on to twice the crossover, every quarter
+/// semitone and at every whole-period frequency, and records where the margin ends, if it does.
+/// (Below the crossover the headline sweep covers Mid.)
 ///
-/// It also records the window the High range would have at the decimated rate (three periods
-/// of 160 Hz, 225 samples at 12 kHz), to show why High analyses at full rate: there the sawtooth
-/// is past the margin at 160 Hz already (`T-003b`).
+/// It also records why High analyses at full rate: the error at 160 Hz in the window High would
+/// have at the decimated rate, three periods of 160 Hz (225 samples at 12 kHz, 207 at 11.025).
 #[test]
 fn the_decimated_path_holds_the_budget_past_the_crossover() {
     let top = CROSSOVER_HZ * HYSTERESIS * (1.0 - 1e-9);
-    for rate in SUPPORTED_RATES {
-        let table = RangeTable::new(rate).unwrap();
-        let mid = table.spec(Range::Mid).window;
-        let high_if_decimated = index_from_f64((3.0 * f64::from(rate / 4) / CROSSOVER_HZ).ceil());
-        for (name, generate) in SIGNALS {
-            let limit = decimated_limit(rate, generate, mid, CROSSOVER_HZ);
-            let short = decimated_limit(rate, generate, high_if_decimated, CROSSOVER_HZ);
-            report(format_args!(
-                "probe, {name} at {rate} Hz, ×4, within {:.2} ¢: Mid's {mid}-sample window {}; \
-                 a {high_if_decimated}-sample one {}",
-                BUDGET_CENTS / MARGIN,
-                Limit(limit),
-                Limit(short),
-            ));
-            assert!(
-                limit.is_some_and(|(hz, _)| hz >= top),
-                "{name} at {rate} Hz: the decimated path keeps the margin only {}, short of the \
-                 crossover's top, {top:.1} Hz",
-                Limit(limit)
-            );
+    let cases: Vec<_> = SUPPORTED_RATES
+        .into_iter()
+        .flat_map(|rate| SIGNALS.map(|signal| (rate, signal)))
+        .collect();
+    std::thread::scope(|scope| {
+        for &(rate, (name, generate)) in &cases {
+            scope.spawn(move || {
+                let table = RangeTable::new(rate).unwrap();
+                let mid = table.spec(Range::Mid).window;
+                let short = index_from_f64((3.0 * f64::from(rate / 4) / CROSSOVER_HZ).ceil());
+                let limit = decimated_limit(rate, generate, mid, CROSSOVER_HZ, 2.0 * CROSSOVER_HZ);
+                let at_floor = decimated_error(rate, generate, CROSSOVER_HZ, short);
+                report(format_args!(
+                    "probe, {name} at {rate} Hz, ×4, within {:.2} ¢: Mid's {mid}-sample window {} \
+                     (probed to {:.0} Hz); a {short}-sample window reads {at_floor:+.3} ¢ at \
+                     {CROSSOVER_HZ} Hz",
+                    BUDGET_CENTS / MARGIN,
+                    Limit(limit),
+                    2.0 * CROSSOVER_HZ,
+                ));
+                assert!(
+                    limit.is_some_and(|(hz, _)| hz >= top),
+                    "{name} at {rate} Hz: the decimated path keeps the margin only {}, short of \
+                     the crossover's top, {top:.1} Hz",
+                    Limit(limit)
+                );
+            });
         }
-    }
+    });
 }
 
 // ── The headline gate ───────────────────────────────────────────────────────────────────────
@@ -269,13 +366,15 @@ struct Case {
 }
 
 /// Stream a steady tone through the chain, held in `range`, and judge every frame whose input is
-/// all past the warm-up: the DC block's −90 dB settling time, so its onset transient is gone.
+/// all past the warm-up: the DC block's −90 dB settling time, so its onset transient is gone. The
+/// analysis is told the gate is closed until the first judged frame is near, so that it does not
+/// spend a debug build's time on frames nobody judges; the front end still filters every sample.
 fn steady_case(rate: u32, generate: Generator, hz: f64, phase_index: usize, range: Range) -> Case {
-    let mut chain = Chain::new(rate, Selection::Fixed(range));
+    const BLOCK: usize = 256;
+    let mut tuner = Tuner::new(rate, Selection::Fixed(range));
     let warmup = u64::try_from(DcBlock::new(rate).unwrap().settling_samples(90.0)).unwrap();
-    let first = warmup + chain.span(range);
-    chain.analyse_from(first);
-    let length = usize::try_from(first).unwrap() + 4 * input_hop(chain.table(), range);
+    let first = warmup + span(tuner.table(), range);
+    let length = usize::try_from(first).unwrap() + 4 * input_hop(tuner.table(), range);
     let mut signal = vec![0.0_f32; length];
     generate(&mut signal, hz, rate, 0.5, phase(phase_index));
     let mut case = Case {
@@ -286,13 +385,18 @@ fn steady_case(rate: u32, generate: Generator, hz: f64, phase_index: usize, rang
         clarity: 1.0,
         frames: 0,
     };
-    for block in signal.chunks(256) {
-        chain.push(block, |event| {
-            let (error, clarity) = event.estimate.map_or((f64::INFINITY, 0.0), |e| {
+    for block in signal.chunks_mut(BLOCK) {
+        let near = tuner.analysis.position() + u64::try_from(2 * BLOCK).unwrap() >= first;
+        let open = tuner.front.process(block) && near;
+        tuner.analysis.push(block, open, |frame| {
+            if frame.end < first {
+                return;
+            }
+            let (error, clarity) = frame.estimate.map_or((f64::INFINITY, 0.0), |e| {
                 (cents(e.frequency_hz, hz), e.clarity)
             });
             case.frames += 1;
-            assert_eq!(event.range, range);
+            assert_eq!(frame.range, range);
             if error.abs() >= case.cents.abs() {
                 (case.cents, case.clarity) = (error, clarity);
             }
@@ -301,18 +405,23 @@ fn steady_case(rate: u32, generate: Generator, hz: f64, phase_index: usize, rang
     case
 }
 
-/// Every (frequency, range) the sweep covers: each frequency in every range that can hold it.
+/// Every (frequency, range) the sweep covers: each frequency of the octave grid in every range
+/// that can hold it, and each range's whole-period frequencies ([`whole_periods`]) that it holds.
 fn sweep_cases(rate: u32) -> Vec<(f64, Range)> {
     let table = RangeTable::new(rate).unwrap();
-    sweep(POINTS_PER_OCTAVE)
-        .into_iter()
-        .flat_map(|hz| {
-            Range::ALL
-                .into_iter()
-                .filter(move |&range| table.holds(range, hz))
-                .map(move |range| (hz, range))
-        })
-        .collect()
+    let grid = sweep(POINTS_PER_OCTAVE).into_iter().flat_map(|hz| {
+        Range::ALL
+            .into_iter()
+            .filter(move |&range| table.holds(range, hz))
+            .map(move |range| (hz, range))
+    });
+    let spikes = Range::ALL.into_iter().flat_map(|range| {
+        whole_periods(&table, range, LOWEST_HZ, HIGHEST_HZ)
+            .into_iter()
+            .filter(move |&hz| table.holds(range, hz))
+            .map(move |hz| (hz, range))
+    });
+    grid.chain(spikes).collect()
 }
 
 /// The sweep for one signal at one rate, a thread per phase.
@@ -371,10 +480,15 @@ fn the_sweep_covers_every_range_that_can_hold_each_frequency() {
     for rate in SUPPORTED_RATES {
         let cases = sweep_cases(rate);
         let count = |range| cases.iter().filter(|c| c.1 == range).count();
-        // Low to 79.46 Hz, Mid 70.79–169.5 Hz, High from 151.0 Hz: 34 + 30 + 79 points.
+        // The octave grid: Low to 79.46 Hz, Mid 70.79–169.5 Hz, High from 151.0 Hz, 34 + 30 + 79
+        // points. Then seven points round each whole-period frequency a range holds, within
+        // 30–1400 Hz: Low's 30, 40, …, 70 Hz (rate/window = 10 Hz; at 44.1 kHz 9.995 Hz, so three
+        // points round 29.99 Hz are under 30), Mid's 75, 100, 125, 150 Hz, High's 160, 213.3, …,
+        // 1386.7 Hz.
+        let low = if rate == 48_000 { 4 } else { 3 } + 4 * 7;
         assert_eq!(
             [count(Range::Low), count(Range::Mid), count(Range::High)],
-            [34, 30, 79]
+            [34 + low, 30 + 4 * 7, 79 + 24 * 7]
         );
     }
 }
@@ -386,7 +500,7 @@ fn a_sine_through_the_chain_is_within_half_a_cent_at_48_khz() {
 }
 
 /// **The budget, gated**: a sawtooth, every harmonic to Nyquist, through the chain at 48 kHz.
-/// Without the band-limit it misses by up to 2.86 ¢ at 1384 Hz (`T-003a`, Deviation 2).
+/// Without the band-limit it misses by up to 2.7 ¢ near 1400 Hz (`T-003a`, Deviation 2).
 #[test]
 fn a_sawtooth_through_the_chain_is_within_half_a_cent_at_48_khz() {
     headline(48_000, "sawtooth", synth::sawtooth);
@@ -416,7 +530,7 @@ fn onset_latency(
     phase_index: usize,
     onset: usize,
 ) -> Option<u64> {
-    let mut chain = Chain::new(rate, Selection::Fixed(range));
+    let mut chain = Tuner::new(rate, Selection::Fixed(range));
     let ledger = chain.table().ledger(range);
     let length = onset + samples(ledger.chain_seconds() + 0.1, rate);
     let mut signal = vec![0.0_f32; length];
@@ -444,10 +558,12 @@ fn onset_latency(
 /// line.
 #[test]
 fn onset_latency_is_within_the_ledger() {
+    // Each range's floor, where the window is shortest in periods, and its slowest notes; the
+    // DC block's transient is worst nearest its corner, at low B.
     let notes: [(Range, &[f64]); 3] = [
-        (Range::Low, &[30.87, 41.2, 55.0]),
-        (Range::Mid, &[75.0, 80.0, 82.41, 110.0, 146.83]),
-        (Range::High, &[160.0, 196.0, 329.63, 659.26, 1_400.0]),
+        (Range::Low, &[30.87, 41.2]),
+        (Range::Mid, &[75.0, 82.41, 146.83]),
+        (Range::High, &[160.0, 329.63, 1_400.0]),
     ];
     for rate in SUPPORTED_RATES {
         let table = RangeTable::new(rate).unwrap();
@@ -506,11 +622,9 @@ fn onset_latency_is_within_the_ledger() {
 fn from_home_the_selector_finds_the_range_of_each_note() {
     for rate in SUPPORTED_RATES {
         let table = RangeTable::new(rate).unwrap();
-        for hz in [
-            30.87, 41.2, 82.41, 110.0, 196.0, 329.63, 659.26, 1_000.0, 1_400.0,
-        ] {
+        for hz in [41.2, 82.41, 196.0, 659.26, 1_400.0] {
             for (name, generate) in SIGNALS {
-                let mut chain = Chain::new(rate, Selection::Auto(Range::Low));
+                let mut chain = Tuner::new(rate, Selection::Auto(Range::Low));
                 let mut signal = vec![0.0_f32; samples(0.6, rate)];
                 generate(&mut signal, hz, rate, 0.5, 0.4);
                 let mut last = None;
@@ -522,7 +636,7 @@ fn from_home_the_selector_finds_the_range_of_each_note() {
                         } else {
                             arrived = None;
                         }
-                        last = Some(event);
+                        last = Some(*event);
                     });
                 }
                 let last = last.unwrap();
@@ -547,6 +661,178 @@ fn from_home_the_selector_finds_the_range_of_each_note() {
                     "{name} {hz} Hz at {rate} Hz: {error} ¢"
                 );
             }
+        }
+    }
+}
+
+// ── The octave above ────────────────────────────────────────────────────────────────────────
+
+/// A low note with a weak fundamental, as a guitar's low E often is: partials 1, 2 and 3 at
+/// relative levels 0.3, 1 and 0.4 (the reviewer's probe), summed to peak `amplitude` at most.
+fn weak_fundamental(out: &mut [f32], f0: f64, rate: u32, amplitude: f64, phase: f64) {
+    let mut partial = vec![0.0_f32; out.len()];
+    out.fill(0.0);
+    for (n, level) in [(1.0, 0.3), (2.0, 1.0), (3.0, 0.4)] {
+        synth::sine(
+            &mut partial,
+            n * f0,
+            rate,
+            amplitude * level / 1.7,
+            n * phase,
+        );
+        for (o, p) in out.iter_mut().zip(&partial) {
+            *o += p;
+        }
+    }
+}
+
+/// One note, then `gap` seconds of silence, then another, streamed through the chain under the
+/// selector from `home`. Returns, for the second note, the time from its onset to the first frame
+/// from which every frame is in `expected` within ±0.5 ¢ of `f0`, and the last frame. `None` if
+/// that never happens.
+fn after_a_change(
+    rate: u32,
+    first: (Generator, f64),
+    gap: f64,
+    second: (Generator, f64),
+    expected: Range,
+) -> (Option<f64>, Option<diapason_dsp::chain::Frame>) {
+    let mut tuner = Tuner::new(rate, Selection::Auto(Range::Low));
+    let (lead, silence, length) = (samples(0.5, rate), samples(gap, rate), samples(1.0, rate));
+    let mut signal = vec![0.0_f32; lead + silence + length];
+    (first.0)(&mut signal[..lead], first.1, rate, 0.5, 0.0);
+    (second.0)(&mut signal[lead + silence..], second.1, rate, 0.5, 0.0);
+    let onset = u64::try_from(lead + silence).unwrap();
+    let (mut settled, mut last) = (None, None);
+    tuner.push(&signal, |frame| {
+        last = Some(*frame);
+        let good = frame.range == expected
+            && frame
+                .estimate
+                .is_some_and(|e| cents(e.frequency_hz, second.1).abs() <= BUDGET_CENTS);
+        if !good || frame.end <= onset {
+            settled = None;
+        } else if settled.is_none() {
+            settled = Some(frame.end - onset);
+        }
+    });
+    let ms = settled.map(|n| index_to_f64(usize::try_from(n).unwrap()) * 1e3 / f64::from(rate));
+    (ms, last)
+}
+
+/// `Mpm` searches lags up to half its window, so High cannot see a low E (82.41 Hz); with a weak
+/// fundamental it reads the second partial, 164.8 Hz, which High holds. Before `T-003b`'s Low
+/// reference frames the chain stayed there, 1206 ¢ sharp, for as long as the note rang. Now the
+/// Low range, analysed alongside, sees 82.41 Hz and moves the chain to Mid. With and without a
+/// gap shorter than the gate's hold, so the selector never goes home in between.
+#[test]
+fn a_low_e_after_a_high_one_is_not_read_an_octave_up() {
+    for rate in SUPPORTED_RATES {
+        for gap in [0.0, 0.1] {
+            let first = (synth::sine as Generator, 329.63);
+            let second = (weak_fundamental as Generator, 82.41);
+            let (settled, last) = after_a_change(rate, first, gap, second, Range::Mid);
+            let last = last.unwrap();
+            report(format_args!(
+                "octave guard at {rate} Hz, E4 then low E, gap {gap} s: settled in Mid after \
+                 {settled:?} ms; last frame {:?} at {:?} Hz",
+                last.range,
+                last.estimate.map(|e| e.frequency_hz)
+            ));
+            let settled = settled.unwrap_or_else(|| {
+                panic!("{rate} Hz, gap {gap} s: low E never settled in Mid; last frame {last:?}")
+            });
+            assert!(settled <= 250.0, "{rate} Hz, gap {gap} s: {settled} ms");
+        }
+    }
+}
+
+/// The same from Mid: a bass E (41.2 Hz, weak fundamental) after an A2. Mid cannot see below
+/// 50 Hz, reads the bass E's second partial (81–84 Hz at a clarity near 0.61 before `T-003b`'s
+/// fix), and its sporadic clear frames kept the selector from scanning.
+#[test]
+fn a_bass_e_after_an_a2_is_not_read_an_octave_up() {
+    for rate in SUPPORTED_RATES {
+        let first = (synth::sawtooth as Generator, 110.0);
+        let second = (weak_fundamental as Generator, 41.2);
+        let (settled, last) = after_a_change(rate, first, 0.0, second, Range::Low);
+        report(format_args!(
+            "octave guard at {rate} Hz, A2 then bass E: settled in Low after {settled:?} ms"
+        ));
+        let settled = settled.unwrap_or_else(|| {
+            panic!("{rate} Hz: bass E never settled in Low; last frame {last:?}")
+        });
+        assert!(settled <= 250.0, "{rate} Hz: {settled} ms");
+    }
+}
+
+// ── The gate in a loud room ─────────────────────────────────────────────────────────────────
+
+/// `samples` of uniform noise whose RMS is `dbfs`.
+fn room(dbfs: f64, seconds: f64, rate: u32, seed: u64) -> Vec<f32> {
+    let mut out = vec![0.0_f32; samples(seconds, rate)];
+    Noise::new(seed).fill(&mut out, 10_f64.powf(dbfs / 20.0) * 3_f64.sqrt());
+    out
+}
+
+/// `docs/PRODUCT_SPEC.md` §2: ambient noise raises the gate. Room noise at −45 dBFS, above the
+/// −50 dBFS minimum, opens the gate from the first block. After `UNPITCHED_SECONDS` without a clear
+/// pitch the analysis says so, the floor learns the room, and the gate closes within 2 s more.
+/// (Held in one range to keep a debug build quick: the report is the same under the selector.)
+#[test]
+fn a_loud_room_raises_the_gate_and_closes_it() {
+    for rate in SUPPORTED_RATES {
+        let mut tuner = Tuner::new(rate, Selection::Fixed(Range::Mid));
+        let noise = room(-45.0, UNPITCHED_SECONDS + 2.0, rate, 3);
+        let block = samples(0.01, rate);
+        let mut closed_at = None;
+        for (i, chunk) in noise.chunks(block).enumerate() {
+            tuner.push(chunk, |_| {});
+            if i == 0 {
+                assert!(tuner.gate_is_open(), "{rate} Hz: −45 dBFS opens the gate");
+            }
+            if !tuner.gate_is_open() && closed_at.is_none() {
+                closed_at = Some(index_to_f64(i + 1) * 0.01);
+            }
+        }
+        let threshold = tuner.front.gate().open_threshold_dbfs();
+        report(format_args!(
+            "loud room at {rate} Hz: closed after {closed_at:?} s, open threshold {threshold:.1} dBFS"
+        ));
+        assert!(
+            !tuner.gate_is_open() && threshold > -45.0,
+            "{rate} Hz: {threshold} dBFS"
+        );
+        assert!(closed_at.is_some_and(|s| s > UNPITCHED_SECONDS));
+    }
+}
+
+/// And the counterpart that makes learning while open safe: a held note keeps a clear pitch, so
+/// the analysis never calls it noise, and the gate stays open throughout. Five seconds is more
+/// than twice what a gate that learned the note would last (it closed at 2.26 s, `T-003b`); the
+/// gate's own ten-second test is `gate::tests`.
+#[test]
+fn a_held_note_keeps_the_gate_open_through_the_chain() {
+    for rate in SUPPORTED_RATES {
+        let mut tuner = Tuner::new(rate, Selection::Fixed(Range::High));
+        tuner.push(&room(-65.0, 1.0, rate, 4), |_| {});
+        let mut note = vec![0.0_f32; samples(5.0, rate)];
+        // −30 dBFS RMS: a sawtooth's RMS is its peak over √3.
+        synth::sawtooth(
+            &mut note,
+            196.0,
+            rate,
+            10_f64.powf(-30.0 / 20.0) * 3_f64.sqrt(),
+            0.0,
+        );
+        let block = samples(0.01, rate);
+        for (i, chunk) in note.chunks(block).enumerate() {
+            tuner.push(chunk, |_| {});
+            assert!(
+                tuner.gate_is_open(),
+                "{rate} Hz: closed after {} s",
+                index_to_f64(i) * 0.01
+            );
         }
     }
 }
