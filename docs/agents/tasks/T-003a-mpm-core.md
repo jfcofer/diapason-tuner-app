@@ -1,7 +1,7 @@
 ---
 id: T-003a
 title: MPM pitch detector, synthetic fixtures, and the bench gate
-status: in-progress
+status: done
 milestone: M2
 owner: claude
 created: 2026-10-22
@@ -63,7 +63,7 @@ Read: `docs/AUDIO_ENGINE.md` §1, §3 and §8, `docs/adr/0005`, `docs/adr/0018` 
   measurement still owed, not a claim.
 - [x] An ADR records that synthetic fixtures are generated in code and only recordings are checked
   in, and `AUDIO_ENGINE.md` §8 links it
-- [x] `just verify` passes; all six CI jobs green (#30)
+- [x] `just verify` passes; all six CI jobs green; rebase-merged as #30 (2026-10-22)
 
 ## Out of scope
 
