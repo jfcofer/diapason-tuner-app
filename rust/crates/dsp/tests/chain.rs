@@ -1293,7 +1293,7 @@ fn an_octave_the_range_cannot_test_is_ambiguous_until_a_lower_range_reads_the_no
 
 /// **The case that is ambiguous by nature, decided** (`docs/adr/0029`): a note an octave above a
 /// string still ringing. The lower string rings (τ 1.5 s) 10 or 12 dB under the one plucked an
-/// octave above it, E2/E3, A2/A3, B2/B3, D3/D4 and G3/G4, home Mid. A range that sees both reads
+/// octave above it, E2/E3, A2/A3, B2/B3, D3/D4, G3/G4 and A3/A4, home Mid. A range that sees both reads
 /// the lower one as often as the upper: it is shown ambiguous (letter and cents), never with its
 /// own octave, judged from the onset as the leap rule judges. The chain never moves back down to
 /// it, whether a verifier or the current range reads it (`T-003b`'s patience did after 250 ms), and
@@ -1302,7 +1302,7 @@ fn an_octave_the_range_cannot_test_is_ambiguous_until_a_lower_range_reads_the_no
 #[test]
 fn the_octave_above_a_still_ringing_string_stays_ambiguous_and_never_moves_down() {
     let saw = synth::sawtooth as Generator;
-    let lower = [82.41, 110.0, 123.47, 146.83, 196.0];
+    let lower = [82.41, 110.0, 123.47, 146.83, 196.0, 220.0];
     let cases: Vec<(f64, Ending)> = lower
         .into_iter()
         .flat_map(|hz| [10.0, 12.0].map(|db| (hz, Ending::Under(1.5, db))))

@@ -86,11 +86,6 @@ pub const REPEATS: f32 = 0.975;
 /// read since the note locked for the octave above to count as entering ([`OctaveGuard::judge`]).
 pub const RISE: f32 = 0.5;
 
-/// The octave above a note is *present* in a frame that reads the note when its τ/2 peak has at
-/// least this fraction of the note's clarity. A string an octave above one still ringing reads
-/// about 0.9 there (G3 under G4); a weak fundamental alone, 0.6 (`synth::WEAK_FUNDAMENTAL`).
-pub const OCTAVE_ABOVE_PRESENT: f32 = 0.75;
-
 /// After a locked note, a note other than it is taken only from this clarity. Two notes sounding
 /// together read as neither, and their mixture is less periodic than either.
 pub const NEW_NOTE_CLARITY: f32 = 0.85;
@@ -145,7 +140,7 @@ pub struct OctaveGuard {
     /// The lowest τ/2 ratio the held note has read since it locked ([`RISE`]).
     up_floor: Option<f32>,
     /// The note the estimate left by moving up an octave, and for how many frames in a row it has
-    /// been read with the octave above absent ([`OctaveGuard::is_ringing_below`]).
+    /// been read since the upper one last was ([`OctaveGuard::is_ringing_below`]).
     below: Option<(f64, usize)>,
 }
 
@@ -178,10 +173,10 @@ impl OctaveGuard {
         self.held
     }
 
-    /// Whether `hz` is the note the estimate left by moving up an octave, read again while the
-    /// octave above still shows in the frame (its τ/2 peak at least [`OCTAVE_ABOVE_PRESENT`] of
-    /// the pick's clarity, within the last window): the lower string still ringing under the one
-    /// plucked an octave above it. Its octave is not the note's: show it ambiguous (`docs/adr/0029`).
+    /// Whether `hz` is the note the estimate left by moving up an octave, read again before it has
+    /// held for a window without the upper one in between: the lower string still ringing under the
+    /// one plucked an octave above it (G3 under G4, read by the range that sees both). Its octave
+    /// is not the note's: show it ambiguous (`docs/adr/0029`).
     #[must_use]
     pub fn is_ringing_below(&self, hz: f64) -> bool {
         self.below
@@ -265,7 +260,7 @@ impl OctaveGuard {
         let hz = pick.frequency_hz;
         let Some(held) = self.held.filter(|&held| cents(hz, held).abs() > JUMP_CENTS) else {
             let rose = self.octave_above_rose(&pick, half, lock_frames);
-            let mut guarded = self.accept(pick, half, lock_frames);
+            let mut guarded = self.accept(pick, lock_frames);
             if rose {
                 self.doubt = lock_frames;
                 guarded.ambiguous = true;
@@ -277,7 +272,7 @@ impl OctaveGuard {
             _ => 1,
         };
         if agreeing >= CONFIRM_FRAMES {
-            return Some(self.accept(pick, half, lock_frames));
+            return Some(self.accept(pick, lock_frames));
         }
         // (a): the held note's octave, if the frame has a comparable peak there.
         let comparable = |candidate: &PitchEstimate| {
@@ -295,22 +290,22 @@ impl OctaveGuard {
         // (b): from an estimate not yet locked, a jump without a bridge is taken at once (an onset
         // settling); one with a bridge waited above, as from a locked one.
         if self.run < lock_frames {
-            return Some(self.accept(pick, half, lock_frames));
+            return Some(self.accept(pick, lock_frames));
         }
         self.pending = Some((hz, agreeing));
         None
     }
 
     /// Whether the octave above a locked, held note has just entered: its peak at τ/2 has risen by
-    /// [`RISE`] over the lowest it read from a window after the note locked. A string plucked an octave above one
+    /// [`RISE`] over the lowest it read since the note locked. The level is the NSDF's value at
+    /// τ/2, not a peak there: a peak barely formed comes and goes, and a weak fundamental's steady
+    /// 0.6 would then read as a rise. A string plucked an octave above one
     /// still ringing, in a range that sees both, reads as the lower one; only this rise tells.
     fn octave_above_rose(&mut self, pick: &PitchEstimate, half: f32, lock_frames: usize) -> bool {
         let held = self
             .held
             .is_some_and(|held| cents(pick.frequency_hz, held).abs() <= SAME_NOTE_CENTS);
-        // From a window after the lock on: until then the window still holds the note's onset, where
-        // a weak fundamental's τ/2 peak is not yet formed (its steady 0.6 would read as a rise).
-        if !held || self.run < 2 * lock_frames || pick.clarity <= 0.0 {
+        if !held || self.run < lock_frames || pick.clarity <= 0.0 {
             return false;
         }
         let ratio = half / pick.clarity;
@@ -319,17 +314,16 @@ impl OctaveGuard {
         ratio - floor >= RISE
     }
 
-    fn accept(&mut self, pick: PitchEstimate, half: f32, lock_frames: usize) -> Guarded {
+    fn accept(&mut self, pick: PitchEstimate, lock_frames: usize) -> Guarded {
         let hz = pick.frequency_hz;
         let previous = self.held;
         let same = previous.is_some_and(|held| cents(hz, held).abs() <= SAME_NOTE_CENTS);
-        // The note the estimate left by moving up an octave, while the octave above it still shows.
-        let present = half >= OCTAVE_ABOVE_PRESENT * pick.clarity;
+        // The note the estimate left by moving up an octave: until it has been read for a window
+        // without the upper one in between, it is the lower string still ringing.
         let near = |a: f64, b: f64| cents(a, b).abs() <= SAME_NOTE_CENTS;
         self.below = match self.below {
-            Some((low, absent)) if near(hz, low) => {
-                let absent = if present { 0 } else { absent + 1 };
-                (absent < lock_frames).then_some((low, absent))
+            Some((low, read)) if near(hz, low) => {
+                (read + 1 < lock_frames).then_some((low, read + 1))
             }
             Some((low, _)) if near(hz, 2.0 * low) => Some((low, 0)),
             _ => previous
@@ -564,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn the_lower_string_left_by_an_octave_up_is_ringing_while_the_octave_above_shows() {
+    fn the_lower_string_left_by_an_octave_up_is_ringing_until_it_holds_alone_for_a_window() {
         let mut guard = OctaveGuard::new();
         for _ in 0..4 {
             guard.judge(at(196.0, 1.0), None, None, 0.0, 16);
@@ -572,10 +566,13 @@ mod tests {
         // Up an octave, unlocked: taken at once; G3 is now the string below.
         guard.judge(at(392.0, 0.9), None, None, 0.0, 16);
         assert!(guard.is_ringing_below(196.0) && !guard.is_ringing_below(392.0));
-        // Read again with the octave above present, it stays the string below.
-        guard.judge(at(196.0, 1.0), None, None, 0.9, 16);
+        // Read again, alternating with the upper one, it stays the string below.
+        for _ in 0..40 {
+            guard.judge(at(196.0, 1.0), None, None, 0.9, 16);
+            guard.judge(at(392.0, 0.9), None, None, 0.0, 16);
+        }
         assert!(guard.is_ringing_below(196.0));
-        // A window of frames without the octave above, and it is a note again.
+        // A window of frames of it alone, and it is a note again.
         for _ in 0..16 {
             guard.judge(at(196.0, 1.0), None, None, 0.1, 16);
         }

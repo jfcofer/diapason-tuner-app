@@ -11,10 +11,16 @@
 //!   twice the period and `OctaveGuard::judge`: what each selected frame pays on top of
 //!   `chain/frame` (Mid's shape, a weak low E, the case whose octave Mid cannot test).
 //!
+//! - `chain/analysis`: one 10 ms block through the whole `chain::Analysis`, held in High on a G3
+//!   (196 Hz, whose octave High cannot test): band-limit and decimator, High's frames with the
+//!   octave guard, and the Mid and Low verifier frames. The worst case per 10 ms of input, so the
+//!   CPU figure is this over 10 ms.
+//!
 //! `just bench` compares the medians with `benches/baseline.json` (`tools/bench-compare.sh`): the
 //! ids are the baseline's keys, so renaming one orphans its baseline.
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use diapason_dsp::chain::{Analysis, Selection};
 use diapason_dsp::frame::FrameAssembler;
 use diapason_dsp::octave::OctaveGuard;
 use diapason_dsp::pitch::{Mpm, MpmConfig};
@@ -105,6 +111,22 @@ fn chain(c: &mut Criterion) {
             let up = mpm.peak_near(frame, mid.analysis_rate, pick.period_samples / 2.0);
             let down = mpm.peak_near(frame, mid.analysis_rate, pick.period_samples * 2.0);
             guard.judge(pick, up, down, 0.6, lock)
+        });
+    });
+
+    // One second of a G3 pluck, cycled a block at a time, so every block is real signal.
+    let mut g3 = vec![0.0_f32; usize::try_from(RATE).expect("small")];
+    pluck(&mut g3, 196.0, RATE, 0.8, &Pluck::default());
+    let mut analysis = Analysis::new(RATE, Selection::Auto(Range::High)).expect("a supported rate");
+    let mut blocks = g3.chunks(BLOCK).cycle();
+    group.bench_function("analysis", |b| {
+        b.iter(|| {
+            let block = blocks.next().unwrap_or_default();
+            let mut estimates = 0_usize;
+            analysis.push(std::hint::black_box(block), true, |frame| {
+                estimates += usize::from(frame.estimate.is_some());
+            });
+            estimates
         });
     });
     group.finish();
