@@ -1,11 +1,13 @@
 //! `Mpm::analyze` never allocates: every window size the accuracy sweep uses, over tones, noise,
 //! silence and malformed frames, with allocation trapping armed (`docs/AUDIO_ENGINE.md` §7,
 //! `docs/TESTING.md` §2). Nor does the pre-processing chain in front of it: `DcBlock`,
-//! `NoiseGate`, both `Decimator`s, `FrameAssembler`, `RangeSelector`, `OctaveGuard` and
-//! `Mpm::peak_near`, and all of them streamed together through the shipped `chain::Front` and
-//! `chain::Analysis` (`common::Tuner`), including the verifier frames of the ranges below the
-//! selected one, the octave guard's jumps and the gate learning while open. Construction allocates, by design,
-//! and runs outside the trap.
+//! `NoiseGate`, both `Decimator`s, `FrameAssembler`, `RangeSelector`, `OctaveGuard`, `Mpm::peak_near`
+//! and `Mpm::value_at`. Each path of the octave guard is driven on its own and asserted reached:
+//! lock and the octave above rising, hysteresis, bridge, the tests after a note, the string left
+//! below. And all of it streamed together through the shipped `chain::Front` and `chain::Analysis`
+//! (`common::Tuner`), asserting that ambiguous frames and range switches occurred, which the verifier
+//! frames and the gate learning while open bring. Construction allocates, by design, and runs
+//! outside the trap.
 //!
 //! `assert_no_alloc` aborts the process on a trapped allocation; it cannot panic, because
 //! panicking allocates. So the canary that proves the trap is armed runs in a child process: this
@@ -177,6 +179,7 @@ fn no_stage_allocates() {
     let mut frames = FrameAssembler::new(480, 30).unwrap();
     let mut selector = RangeSelector::new(&table, Range::Low);
     let mut guard = OctaveGuard::new();
+    let mut reached = [false; 6];
     let mut mpm = Mpm::new(MpmConfig::with_window(480)).unwrap();
     let mut window = [0.0_f32; 480];
     synth::partials(
@@ -216,26 +219,50 @@ fn no_stage_allocates() {
             let _ = selector.octave(Range::High, 164.8);
             gate.set_unpitched(true);
         });
+        // Every path of the octave guard, each one's outcome checked after the trap: a lock and the
+        // rise of the octave above, the hysteresis, the bridge, the tests after a note, and the
+        // string left below by an octave up.
         assert_no_alloc(|| {
             if let Some(pick) = mpm.analyze(&window, 12_000) {
                 let up = mpm.peak_near(&window, 12_000, pick.period_samples / 2.0);
                 let down = mpm.peak_near(&window, 12_000, pick.period_samples * 2.0);
-                for _ in 0..20 {
-                    guard.judge(pick, up, down, 16);
-                }
-                let octave = PitchEstimate {
-                    frequency_hz: 2.0 * pick.frequency_hz,
+                let level = mpm.value_at(pick.period_samples / 2.0).unwrap_or(0.0);
+                let at = |factor: f64| PitchEstimate {
+                    frequency_hz: factor * pick.frequency_hz,
                     ..pick
                 };
-                guard.judge(octave, None, Some(pick), 16);
-                guard.miss(16);
-                guard.shown(Some(pick.frequency_hz), true, 16);
-                let _ = guard.must_repeat(&octave);
+                for _ in 0..40 {
+                    guard.judge(pick, up, down, -0.5, 16);
+                }
+                reached[0] = level.is_finite();
+                reached[1] = guard
+                    .judge(pick, None, None, 0.9, 16)
+                    .is_some_and(|g| g.ambiguous);
+                reached[2] = guard.judge(at(1.5), None, None, 0.0, 16).is_none();
+                reached[3] = guard
+                    .judge(at(2.0), None, Some(pick), 0.0, 16)
+                    .is_some_and(|g| g.ambiguous);
+                for _ in 0..16 {
+                    guard.shown(Some(pick.frequency_hz), true, 16);
+                }
+                reached[4] =
+                    guard.must_repeat(&at(2.0)) && guard.is_new_note(1.5 * pick.frequency_hz);
+                guard.reset();
+                for _ in 0..4 {
+                    guard.judge(pick, None, None, 0.0, 16);
+                }
+                guard.judge(at(2.0), None, None, 0.0, 16);
+                reached[5] = guard.is_ringing_below(pick.frequency_hz);
                 guard.switched();
+                guard.miss(16);
             }
         });
     }
     assert!(outputs > signal.len());
+    assert!(
+        reached.iter().all(|&r| r),
+        "octave guard paths reached: {reached:?}"
+    );
 }
 
 #[test]

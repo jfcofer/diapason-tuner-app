@@ -276,6 +276,17 @@ impl Mpm {
         })
     }
 
+    /// The NSDF `n` (step 3) at `round(lag)`, from the frame [`Self::analyze`] last judged: a level
+    /// where there may be no peak, for the octave guard's view of the octave above (`crate::octave`).
+    /// O(1). `None` outside the searched lags or for a lag that is not a number.
+    #[must_use]
+    pub fn value_at(&self, lag: f64) -> Option<f64> {
+        if lag.is_nan() || lag < 0.0 {
+            return None;
+        }
+        self.nsdf.get(index_from_f64(lag.round())).copied()
+    }
+
     /// Step 1: `L · r(τ)` into `self.autocorrelation`, through the Wiener–Khinchin theorem: the
     /// autocorrelation is the inverse transform of the power spectrum `|X[k]|²`. Returns the frame's
     /// energy `Σ x²`, or `None` for silence, non-finite input or an FFT error (which the buffer

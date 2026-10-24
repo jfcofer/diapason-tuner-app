@@ -864,6 +864,9 @@ struct Trap {
     /// **The note arrives:** as `known_ms`, but within `WRONG_NOTE_CENTS`: the right note in the
     /// right octave, whatever its cents. Recorded where the needle's ±5 ¢ is out of reach.
     note_ms: Option<f64>,
+    /// Frames from the onset on in a range below the highest one reached since the onset: how
+    /// often the chain moved back down.
+    fell: usize,
 }
 
 /// A note for 0.5 s ending as `ending` says, then `second` for 1.5 s: the signal, and the onset of
@@ -935,13 +938,17 @@ fn octave_trap(
         needle_ms: None,
         known_ms: None,
         note_ms: None,
+        fell: 0,
     };
+    let mut highest: Option<Range> = None;
     tuner.push(&signal, |frame| {
         let judged = judge.judged(frame);
         if frame.end <= onset {
             return;
         }
         let at = ms(frame.end);
+        trap.fell += usize::from(highest.is_some_and(|high| frame.range < high));
+        highest = highest.max(Some(frame.range));
         if judged && shows_other_than(frame, to) {
             trap.wrong += 1;
             trap.first_wrong_ms.get_or_insert(at);
@@ -1152,6 +1159,85 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
     });
 }
 
+/// `hz` raised by `cents`.
+fn detune(hz: f64, cents: f64) -> f64 {
+    hz * 2_f64.powf(cents / 1_200.0)
+}
+
+/// **Detuned strings, gated** (`T-003c` round 3): the downward changes and chords of
+/// [`a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave`] with both strings
+/// detuned, as strings being tuned are: ±30 ¢ either way, and the offsets the review found
+/// (A2 +30 ¢ over low B −30 ¢, A2 +15 ¢ or in tune over bass E −30 ¢, and so on). With the old
+/// note 12 dB under, no judged frame shows a wrong note and the new note, octave known, arrives
+/// within 1 s. Ringing loud, it is a chord (E4 only once it is more than 50 ¢ off the fourth
+/// harmonic): no frame shows a third note, known or ambiguous, nor the notes' common period. E4
+/// ringing loud within 50 ¢ of the harmonic shows no wrong note, and may hold the octave ambiguous.
+#[test]
+fn a_detuned_downward_change_or_chord_never_shows_a_wrong_or_third_note() {
+    let a2 = synth::sawtooth as Generator;
+    let offsets = [
+        (30.0, -30.0),
+        (-30.0, 30.0),
+        (30.0, 30.0),
+        (-30.0, -30.0),
+        (30.0, -15.0),
+        (-15.0, -30.0),
+        (15.0, -30.0),
+        (0.0, -30.0),
+    ];
+    let families: [(&str, f64, Generator, f64); 3] = [
+        ("A2 → bass E", 110.0, weak_fundamental, 41.2),
+        ("A2 → low B", 110.0, weak_low_b, 30.87),
+        ("E4 → low E", 329.63, weak_fundamental, 82.41),
+    ];
+    let endings = [
+        Ending::Under(1.5, 12.0),
+        Ending::Ringing(1.5),
+        Ending::Ringing(3.0),
+    ];
+    std::thread::scope(|scope| {
+        for (name, first, second, to) in families {
+            for (d1, d2) in offsets {
+                for ending in endings {
+                    for rate in SUPPORTED_RATES {
+                        scope.spawn(move || {
+                            let (from, to) = (detune(first, d1), detune(to, d2));
+                            let trap = octave_trap(rate, Range::Mid, (a2, from), (second, to), ending);
+                            let off_harmonic = (d1 - d2).abs() > WRONG_NOTE_CENTS;
+                            let chord = matches!(ending, Ending::Ringing(_))
+                                && (first < 300.0 || off_harmonic);
+                            report(format_args!(
+                                "detuned {name} {d1:+} / {d2:+} ¢ {ending:?} at {rate} Hz: {} judged \
+                                 wrong, third note {} known / {} ambiguous, {} common-period; \
+                                 needle {:?} ms, note {:?} ms",
+                                trap.wrong,
+                                trap.third_known,
+                                trap.third_ambiguous,
+                                trap.common_period,
+                                trap.needle_ms,
+                                trap.note_ms,
+                            ));
+                            let what = format_args!("{name} {d1:+}/{d2:+} {ending:?} at {rate} Hz");
+                            if chord {
+                                let third = trap.third_known + trap.third_ambiguous;
+                                assert_eq!((third, trap.common_period), (0, 0), "{what}: {trap:?}");
+                            } else {
+                                assert_eq!(trap.wrong, 0, "{what}: {trap:?}");
+                                // A loud, nearly harmonic string may hold the octave ambiguous.
+                                assert!(
+                                    matches!(ending, Ending::Ringing(_))
+                                        || trap.note_ms.is_some_and(|ms| ms <= 1_000.0),
+                                    "{what}: {trap:?}"
+                                );
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    });
+}
+
 /// Half a second of nothing before a note: the gate stays closed and the selector at home.
 fn silence(out: &mut [f32], _: f64, _: u32, _: f64, _: f64) {
     out.fill(0.0);
@@ -1206,60 +1292,53 @@ fn an_octave_the_range_cannot_test_is_ambiguous_until_a_lower_range_reads_the_no
 }
 
 /// **The case that is ambiguous by nature, decided** (`docs/adr/0029`): a note an octave above a
-/// string still ringing. An E2 rings (τ 1.5 s); an E3 is plucked over it, 10 dB louder, so the E3
-/// takes over the shared period and the chain moves up an octave to it. Mid, which sees both, then
-/// reads the E2 below: the lower string, not the E3's fundamental. The chain never moves back down
-/// to it (`T-003b`'s patience did after 250 ms), and the E3 stays ambiguous until Mid reads the E3
-/// itself, once the E2 has decayed. While the E2 is the louder, Mid keeps reading it (recorded).
+/// string still ringing. The lower string rings (τ 1.5 s) 10 or 12 dB under the one plucked an
+/// octave above it, E2/E3, A2/A3, B2/B3, D3/D4 and G3/G4, home Mid. A range that sees both reads
+/// the lower one as often as the upper: it is shown ambiguous (letter and cents), never with its
+/// own octave, judged from the onset as the leap rule judges. The chain never moves back down to
+/// it, whether a verifier or the current range reads it (`T-003b`'s patience did after 250 ms), and
+/// the upper note's octave is known once the lower string has faded. Where the lower string is the
+/// louder, the range that sees both shows it (recorded).
 #[test]
 fn the_octave_above_a_still_ringing_string_stays_ambiguous_and_never_moves_down() {
-    let e2 = (synth::sawtooth as Generator, 82.41);
-    let e3 = (synth::sawtooth as Generator, 164.82);
-    for rate in SUPPORTED_RATES {
-        for (ending, decided) in [
-            (Ending::Under(1.5, 10.0), true),
-            (Ending::Ringing(1.5), false),
-        ] {
-            let (signal, onset) = trap_signal(rate, e2, e3, ending);
-            let onset = u64::try_from(onset).unwrap();
-            let mut tuner = Tuner::new(rate, Selection::Auto(Range::Mid));
-            let (mut up, mut back_down, mut known_e2_after_up, mut ambiguous) = (None, 0, 0, 0);
-            let mut known = None;
-            tuner.push(&signal, |frame| {
-                if frame.end <= onset {
-                    return;
-                }
-                let ms = index_to_f64(usize::try_from(frame.end - onset).unwrap()) * 1e3
-                    / f64::from(rate);
-                if frame.range == Range::High {
-                    up.get_or_insert(ms);
-                } else if up.is_some() {
-                    back_down += 1;
-                }
-                if up.is_some() && frame.estimate.is_some() {
-                    if octave_known(frame) {
-                        known.get_or_insert(ms);
-                        known_e2_after_up += usize::from(shows_other_than(frame, e3.1));
-                    } else {
-                        ambiguous += 1;
+    let saw = synth::sawtooth as Generator;
+    let lower = [82.41, 110.0, 123.47, 146.83, 196.0];
+    let cases: Vec<(f64, Ending)> = lower
+        .into_iter()
+        .flat_map(|hz| [10.0, 12.0].map(|db| (hz, Ending::Under(1.5, db))))
+        .chain([(82.41, Ending::Ringing(1.5))])
+        .collect();
+    std::thread::scope(|scope| {
+        for &(hz, ending) in &cases {
+            for rate in SUPPORTED_RATES {
+                scope.spawn(move || {
+                    let trap = octave_trap(rate, Range::Mid, (saw, hz), (saw, 2.0 * hz), ending);
+                    report(format_args!(
+                        "octave above a ringing {hz} Hz at {rate} Hz, {ending:?}: {} judged wrong \
+                         (first at {:?} ms), needle {:?} ms, octave known {:?} ms, {} frames back \
+                         down",
+                        trap.wrong, trap.first_wrong_ms, trap.needle_ms, trap.known_ms, trap.fell
+                    ));
+                    assert_eq!(
+                        (trap.wrong, trap.fell),
+                        (0, 0),
+                        "{hz} Hz, {ending:?}, {rate} Hz: {trap:?}"
+                    );
+                    if matches!(ending, Ending::Under(..)) {
+                        assert_eq!(
+                            (trap.wrong, trap.fell),
+                            (0, 0),
+                            "{hz} Hz, {ending:?}, {rate} Hz: {trap:?}"
+                        );
+                        assert!(
+                            trap.known_ms.is_some(),
+                            "{hz} Hz, {ending:?}, {rate} Hz: {trap:?}"
+                        );
                     }
-                }
-            });
-            report(format_args!(
-                "octave above a ringing E2 at {rate} Hz, {ending:?}: up after {up:?} ms, \
-                 {ambiguous} ambiguous frames, then known after {known:?} ms; {back_down} frames \
-                 back down, {known_e2_after_up} known E2 frames after the move"
-            ));
-            if decided {
-                assert!(up.is_some_and(|ms| ms < 500.0), "{rate} Hz: never moved up");
-                assert_eq!((back_down, known_e2_after_up), (0, 0), "{rate} Hz");
-                assert!(
-                    ambiguous > 0 && known.is_some(),
-                    "{rate} Hz: {ambiguous}, {known:?}"
-                );
+                });
             }
         }
-    }
+    });
 }
 
 /// A pinch harmonic (strong second and third partials) and a bass's low B with a weak fundamental
