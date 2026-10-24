@@ -69,25 +69,26 @@ every case below, no frame shows a wrong note once judged by the leap rule (§2)
 | E4 → low E, E4 stopped | 62.5 / 61.3 | 120.8 / 119.7 | 170 / 170.5 | 110 / 150 |
 | E4 → low E, after a 0.1 s gap | 32.5 / 32.4 | 90.8 / 90.8 | 140 / 139.0 | 110 / 150 |
 | E4 → low E, E4 rings 12 dB under (τ 0.6–3 s) | 55 / 53.7 | 113.3 / 112.1 | 165 / 165.4 | 110 / 150 |
-| A2 → bass E, A2 stopped | 115 / 118.6 | 178.3 / 181.9 | as the needle | 190 / 260 |
-| A2 → bass E, after a 0.1 s gap | 50 / 53.5 | 113.3 / 116.8 | as the needle | 190 / 260 |
+| A2 → bass E, A2 stopped | 110 / 113.6 | 173.3 / 176.9 | as the needle | 190 / 260 |
+| A2 → bass E, after a 0.1 s gap | 60 / 58.5 | 123.3 / 121.8 | as the needle | 190 / 260 |
 | A2 → bass E, A2 rings 12 dB under, τ 0.6 / 1.5 s | 110, 185 / 148.5 | 173.3, 248.3 / 211.8 | as the needle | 190 / 260 |
-| A2 → low B, A2 stopped | 115 / 113.6 | 178.3 / 176.9 | as the needle | 190 / 260 |
-| **Not met:** A2 → bass E, 12 dB under, τ 3 s | 330 / 402.9 | 393.3 / 466.3 | as the needle | 190 / 260 |
-| **Not met:** A2 → low B, 12 dB under, τ 1.5 s | 585 / 358.0 | 648.3 / 421.4 | as the needle | 190 / 260 |
+| A2 → low B, A2 stopped | 105 / 108.6 | 168.3 / 171.9 | as the needle | 190 / 260 |
+| **Gated in `T-003f`:** A2 → bass E, 12 dB under, τ 3 s | 330 / 402.9 | 393.3 / 466.3 | as the needle | 190 / 260 |
+| **Gated in `T-003f`:** A2 → low B, 12 dB under, τ 1.5 s | 585 / 358.0 | 648.3 / 421.4 | as the needle | 190 / 260 |
 
-Every gated change meets its fail line but the last two, and they miss on cents, not octave. The
-right note, octave known, is shown from 95–114 ms (totals 158–177 ms). Low's estimate under a
-string ringing 12 dB down then wanders past ±5 ¢ in single frames, by up to 6.1 ¢ under a bass E
-and 8 ¢ under a low B, for as long as that string lasts: a three-period window's limit. `T-003f`'s
-median of five, which the smoothing line reserves, removes single frames. The test records both as
-`Gate::Shortfall`, held to what they meet. A low E's octave is known only once Low, which can see
-41.2 Hz, reads it (§2), so 105–110 ms after the needle.
+Every change gated here meets its fail line. The last two miss it on cents, not octave, and their
+260 ms gate is `T-003f`'s (owner, 2026-10-23). The right note, octave known, is shown from
+95–114 ms (totals 158–177 ms). Low's estimate under a string ringing 12 dB down then wanders past
+±5 ¢ in single frames, by up to 6.1 ¢ under a bass E and 8 ¢ under a low B, for as long as that
+string lasts: a three-period window's limit. `T-003f`'s median of five, which the smoothing line
+reserves, removes single frames. Until then the test holds both to regression ceilings
+(`Gate::Shortfall`: these totals plus 20 ms). A low E's octave is known only once Low, which can
+see 41.2 Hz, reads it (§2), so 105–110 ms after the needle.
 
 Two louder cases are recorded only. E4 ringing at the new note's level is a harmonic of it: the
 needle moves in 12.5 / 11.3 ms, and the octave is known in 175 ms. A2 ringing over a bass E or a low
-B is a chord. It never shows the notes' common period or an ambiguous third note. Mid can read the
-A2's octave below, 55 Hz, as the mixture's period, though, and that shows as a third note (§3).
+B is a chord. It shows `None`, ambiguity or the old note, never a third note: not the notes'
+common period, and not a reading near the old one that is no period (§3's repeat test).
 
 ## 2. Signal chain (tuner)
 
@@ -177,7 +178,7 @@ current band moves the chain to that pitch's range under four conditions:
 - it is at least 28.32 Hz, and it is not the octave below a pitch the chain has just moved up to.
   That would be the lower string still ringing under the one just plucked, which stays ambiguous.
 
-Two more rules keep guesses off the display. No estimate below 28.32 Hz is shown: it is a chord's
+Two more rules keep guesses off the display, and §3's repeat test a third. No estimate below 28.32 Hz is shown: it is a chord's
 common period (A2 over a bass E reads 27.5 Hz). An estimate whose octave its range cannot test is
 taken only from clarity 0.75 (`octave::UNVERIFIED_CLARITY`). Such a reading is a partial of a
 fundamental the range cannot see, and the other partials skew it: Mid's reading of a weak bass E at
@@ -238,9 +239,17 @@ defences, which work as one, over the selected range's frames:
   at 2τ, so the octave below a note is as clear as the note: measured, at least 0.999 of it. A weak
   fundamental's second partial reads 0.55–0.65 of it (`pitch::tests`). Preferring the old octave
   without a bound would hold a leap from E2 to E3 on E2 for good.
+- **The repeat test, against chords.** After a note shown with its octave known for a window, an
+  estimate that is barely clear (under 0.75) or an octave of that note must be a period. Its NSDF
+  peak at 2τ must reach 0.975 of its clarity (`REPEATS`), wherever the range can search 2τ; where it
+  cannot (Mid at 55 Hz), the estimate stays `ambiguous octave` until a verifier reads it. Two notes
+  sounding together read as neither, but near one of them, and do not repeat. Measured on filled
+  windows: single notes, plucks with inharmonicity to 10⁻³, and notes under a string 12 dB down
+  read at least 0.9895. The third notes of A2 over a bass E or a low B read at most 0.959. A melody
+  over a bass (0.72–0.82) is the held note, and is not tested.
 
-Tests: `octave::tests` covers both cases of (b), the hysteresis holding and giving way, and the
-threshold at its edge and in absolute terms. `tests/chain.rs` holds the leap sweep to zero wrong
+Tests: `octave::tests` covers both cases of (b), the hysteresis holding and giving way, the
+threshold at its edge and in absolute terms, and which estimates must repeat. `tests/chain.rs` holds the leap sweep to zero wrong
 frames. The octave of notes a range cannot test is the range selector's (§2).
 
 **Smoothing.** Two separate values leave the engine, and conflating them is a design error:
