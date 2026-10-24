@@ -136,7 +136,7 @@ notes: `T-014-consonant-chords`. **Deviation 3:** the rules after a note cost on
 
 ## Verification performed
 
-2026-10-24, Fedora 44 host (Ryzen 7 8840HS), rustc 1.98.0, host only. CI not run (no PR).
+2026-10-24, Ryzen 7 8840HS, rustc 1.98.0, host only. `just verify` passed (169 tests, 31 doctests).
 - **Gates** (both rates): leap sweep 0 wrong; downward changes per §1; detuned (8 offset pairs, 3
   families) and octave above a ringing string (6 pairs, 10–12 dB) 0 wrong, chords 0 third notes.
 - **Held-out probes** (other notes, ±7/22/45 ¢, 4 octave pairs): every gated case passes; their
