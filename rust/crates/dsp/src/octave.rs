@@ -6,11 +6,19 @@
 //!   within [`SAME_NOTE_CENTS`] of itself, for a window's worth of frames) is shown only once
 //!   [`CONFIRM_FRAMES`] consecutive frames agree on it. Until then the frame gives `None`: never the
 //!   old note, because a held note that the player has left is the commonest wrong reading.
-//! - **(a) The τ/2 and 2τ test.** While such a jump waits, if the frame's NSDF has a peak of
-//!   comparable clarity ([`COMPARABLE`]) at half or twice the chosen lag, and that peak is the
-//!   held note, the frame shows it, flagged [`Octave::Ambiguous`]: the frame alone cannot tell the
-//!   two octaves apart, and the history says which one was playing. It shows the letter and the
-//!   cents, which an octave error keeps, without the octave number (`docs/PRODUCT_SPEC.md` §2).
+//! - **(a) The τ/2 and 2τ test.** When the estimate jumps from the held one, locked or not, and
+//!   the frame's NSDF has a peak of comparable clarity ([`COMPARABLE`]) at half or twice the
+//!   chosen lag that is the held note, the frame shows that peak, flagged [`Octave::Ambiguous`],
+//!   and the jump waits for [`CONFIRM_FRAMES`] agreeing frames, as from a locked one: the frame
+//!   alone cannot tell the two octaves apart, and the history says which one was playing. It
+//!   shows the letter and the cents, which an octave error keeps, without the octave number
+//!   (`docs/PRODUCT_SPEC.md` §2). Without such a peak, a jump from an estimate not yet locked is
+//!   taken at once (an onset settling).
+//! - **After a note.** While a locked note may still sound, two strings sound together, and
+//!   read as neither: the guard says which estimates must prove they are one note
+//!   ([`OctaveGuard::must_repeat`], [`OctaveGuard::is_new_note`]), when the octave above a held
+//!   note has entered ([`RISE`]), and when a reading is the lower string the estimate just left
+//!   by moving up an octave ([`OctaveGuard::is_ringing_below`]).
 //!
 //! So an octave flicker of one or two frames inside a held note shows the held note, ambiguous,
 //! and a real change costs at most two hops (5 ms in Mid and High) of `None` or ambiguity.
@@ -74,6 +82,19 @@ pub const UNVERIFIED_CLARITY: f32 = 0.75;
 /// are clear and no octave of the note before (removing the wider search changed no figure).
 pub const REPEATS: f32 = 0.975;
 
+/// How far, as a fraction of the held note's clarity, its peak at τ/2 must rise over the lowest it
+/// read since the note locked for the octave above to count as entering ([`OctaveGuard::judge`]).
+pub const RISE: f32 = 0.5;
+
+/// The octave above a note is *present* in a frame that reads the note when its τ/2 peak has at
+/// least this fraction of the note's clarity. A string an octave above one still ringing reads
+/// about 0.9 there (G3 under G4); a weak fundamental alone, 0.6 (`synth::WEAK_FUNDAMENTAL`).
+pub const OCTAVE_ABOVE_PRESENT: f32 = 0.75;
+
+/// After a locked note, a note other than it is taken only from this clarity. Two notes sounding
+/// together read as neither, and their mixture is less periodic than either.
+pub const NEW_NOTE_CLARITY: f32 = 0.85;
+
 /// What the guard made of one frame's estimate.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Guarded {
@@ -93,12 +114,12 @@ pub struct Guarded {
 /// let at = |hz: f64| PitchEstimate { frequency_hz: hz, period_samples: 12_000.0 / hz, clarity: 0.99 };
 /// let mut guard = OctaveGuard::new();
 /// for _ in 0..16 {
-///     guard.judge(at(110.0), None, None, 16); // locked after a window's worth of frames
+///     guard.judge(at(110.0), None, None, 0.0, 16); // locked after a window's worth of frames
 /// }
 /// // A fifth up waits for three frames that agree; meanwhile there is nothing to show.
-/// assert_eq!(guard.judge(at(164.8), None, None, 16), None);
-/// assert_eq!(guard.judge(at(164.8), None, None, 16), None);
-/// assert!(guard.judge(at(164.8), None, None, 16).is_some());
+/// assert_eq!(guard.judge(at(164.8), None, None, 0.0, 16), None);
+/// assert_eq!(guard.judge(at(164.8), None, None, 0.0, 16), None);
+/// assert!(guard.judge(at(164.8), None, None, 0.0, 16).is_some());
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct OctaveGuard {
@@ -121,6 +142,11 @@ pub struct OctaveGuard {
     locked: Option<f64>,
     /// The note of the current run of frames shown known, and the run's length.
     known_run: Option<(f64, usize)>,
+    /// The lowest τ/2 ratio the held note has read since it locked ([`RISE`]).
+    up_floor: Option<f32>,
+    /// The note the estimate left by moving up an octave, and for how many frames in a row it has
+    /// been read with the octave above absent ([`OctaveGuard::is_ringing_below`]).
+    below: Option<(f64, usize)>,
 }
 
 impl OctaveGuard {
@@ -141,6 +167,7 @@ impl OctaveGuard {
         *self = Self {
             locked: self.locked,
             known_run: self.known_run,
+            below: self.below,
             ..Self::default()
         };
     }
@@ -149,6 +176,25 @@ impl OctaveGuard {
     #[must_use]
     pub fn held(&self) -> Option<f64> {
         self.held
+    }
+
+    /// Whether `hz` is the note the estimate left by moving up an octave, read again while the
+    /// octave above still shows in the frame (its τ/2 peak at least [`OCTAVE_ABOVE_PRESENT`] of
+    /// the pick's clarity, within the last window): the lower string still ringing under the one
+    /// plucked an octave above it. Its octave is not the note's: show it ambiguous (`docs/adr/0029`).
+    #[must_use]
+    pub fn is_ringing_below(&self, hz: f64) -> bool {
+        self.below
+            .is_some_and(|(low, _)| cents(hz, low).abs() <= SAME_NOTE_CENTS)
+    }
+
+    /// Whether `hz` is a note other than the last one locked since the last silence, which may
+    /// still be sounding: more than [`SAME_NOTE_CENTS`] from it. Such a note must be clear,
+    /// [`NEW_NOTE_CLARITY`].
+    #[must_use]
+    pub fn is_new_note(&self, hz: f64) -> bool {
+        self.locked
+            .is_some_and(|locked| cents(hz, locked).abs() > SAME_NOTE_CENTS)
     }
 
     /// Whether a note has been locked since the last silence, and so may still be sounding under
@@ -212,19 +258,26 @@ impl OctaveGuard {
         pick: PitchEstimate,
         up: Option<PitchEstimate>,
         down: Option<PitchEstimate>,
+        half: f32,
         lock_frames: usize,
     ) -> Option<Guarded> {
         self.misses = 0;
         let hz = pick.frequency_hz;
         let Some(held) = self.held.filter(|&held| cents(hz, held).abs() > JUMP_CENTS) else {
-            return Some(self.accept(pick));
+            let rose = self.octave_above_rose(&pick, half, lock_frames);
+            let mut guarded = self.accept(pick, half, lock_frames);
+            if rose {
+                self.doubt = lock_frames;
+                guarded.ambiguous = true;
+            }
+            return Some(guarded);
         };
         let agreeing = match self.pending {
             Some((previous, count)) if cents(hz, previous).abs() <= SAME_NOTE_CENTS => count + 1,
             _ => 1,
         };
         if agreeing >= CONFIRM_FRAMES {
-            return Some(self.accept(pick));
+            return Some(self.accept(pick, half, lock_frames));
         }
         // (a): the held note's octave, if the frame has a comparable peak there.
         let comparable = |candidate: &PitchEstimate| {
@@ -239,20 +292,54 @@ impl OctaveGuard {
                 ambiguous: true,
             });
         }
-        // (b): from an estimate not yet locked, a jump is taken at once (an onset settling).
+        // (b): from an estimate not yet locked, a jump without a bridge is taken at once (an onset
+        // settling); one with a bridge waited above, as from a locked one.
         if self.run < lock_frames {
-            return Some(self.accept(pick));
+            return Some(self.accept(pick, half, lock_frames));
         }
         self.pending = Some((hz, agreeing));
         None
     }
 
-    fn accept(&mut self, pick: PitchEstimate) -> Guarded {
-        let hz = pick.frequency_hz;
-        let same = self
+    /// Whether the octave above a locked, held note has just entered: its peak at τ/2 has risen by
+    /// [`RISE`] over the lowest it read from a window after the note locked. A string plucked an octave above one
+    /// still ringing, in a range that sees both, reads as the lower one; only this rise tells.
+    fn octave_above_rose(&mut self, pick: &PitchEstimate, half: f32, lock_frames: usize) -> bool {
+        let held = self
             .held
-            .is_some_and(|held| cents(hz, held).abs() <= SAME_NOTE_CENTS);
+            .is_some_and(|held| cents(pick.frequency_hz, held).abs() <= SAME_NOTE_CENTS);
+        // From a window after the lock on: until then the window still holds the note's onset, where
+        // a weak fundamental's τ/2 peak is not yet formed (its steady 0.6 would read as a rise).
+        if !held || self.run < 2 * lock_frames || pick.clarity <= 0.0 {
+            return false;
+        }
+        let ratio = half / pick.clarity;
+        let floor = self.up_floor.map_or(ratio, |floor| floor.min(ratio));
+        self.up_floor = Some(floor);
+        ratio - floor >= RISE
+    }
+
+    fn accept(&mut self, pick: PitchEstimate, half: f32, lock_frames: usize) -> Guarded {
+        let hz = pick.frequency_hz;
+        let previous = self.held;
+        let same = previous.is_some_and(|held| cents(hz, held).abs() <= SAME_NOTE_CENTS);
+        // The note the estimate left by moving up an octave, while the octave above it still shows.
+        let present = half >= OCTAVE_ABOVE_PRESENT * pick.clarity;
+        let near = |a: f64, b: f64| cents(a, b).abs() <= SAME_NOTE_CENTS;
+        self.below = match self.below {
+            Some((low, absent)) if near(hz, low) => {
+                let absent = if present { 0 } else { absent + 1 };
+                (absent < lock_frames).then_some((low, absent))
+            }
+            Some((low, _)) if near(hz, 2.0 * low) => Some((low, 0)),
+            _ => previous
+                .filter(|&old| !same && near(hz, 2.0 * old))
+                .map(|old| (old, 0)),
+        };
         self.run = if same { self.run.saturating_add(1) } else { 1 };
+        if !same {
+            self.up_floor = None;
+        }
         let doubted = same && self.doubt > 0;
         self.doubt = if doubted { self.doubt - 1 } else { 0 };
         self.held = Some(hz);
@@ -285,7 +372,7 @@ mod tests {
     fn locked() -> OctaveGuard {
         let mut guard = OctaveGuard::new();
         for _ in 0..16 {
-            guard.judge(at(82.41, 0.99), None, None, 16);
+            guard.judge(at(82.41, 0.99), None, None, 0.0, 16);
         }
         guard
     }
@@ -294,40 +381,40 @@ mod tests {
     fn a_jump_from_a_locked_estimate_holds_for_two_frames_and_gives_way_on_the_third() {
         // Holds: two frames of a fifth up, then the held note again, show nothing wrong.
         let mut guard = locked();
-        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 16), None);
-        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 16), None);
-        let back = guard.judge(at(82.4, 0.99), None, None, 16).unwrap();
+        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 0.0, 16), None);
+        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 0.0, 16), None);
+        let back = guard.judge(at(82.4, 0.99), None, None, 0.0, 16).unwrap();
         assert!(!back.ambiguous && (back.estimate.frequency_hz - 82.4).abs() < 1e-9);
         // Gives way: three in a row.
-        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 16), None);
-        assert_eq!(guard.judge(at(123.6, 0.95), None, None, 16), None);
-        let jumped = guard.judge(at(123.5, 0.95), None, None, 16).unwrap();
+        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 0.0, 16), None);
+        assert_eq!(guard.judge(at(123.6, 0.95), None, None, 0.0, 16), None);
+        let jumped = guard.judge(at(123.5, 0.95), None, None, 0.0, 16).unwrap();
         assert!((jumped.estimate.frequency_hz - 123.5).abs() < 1e-12);
         assert!(guard.held().is_some_and(|hz| (hz - 123.5).abs() < 1e-12));
         // A missing frame breaks the run; disagreeing frames restart it.
         let mut guard = locked();
-        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 16), None);
+        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 0.0, 16), None);
         guard.miss(16);
-        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 16), None);
-        assert_eq!(guard.judge(at(196.0, 0.95), None, None, 16), None);
-        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 16), None);
-        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 16), None);
-        assert!(guard.judge(at(123.5, 0.95), None, None, 16).is_some());
+        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 0.0, 16), None);
+        assert_eq!(guard.judge(at(196.0, 0.95), None, None, 0.0, 16), None);
+        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 0.0, 16), None);
+        assert_eq!(guard.judge(at(123.5, 0.95), None, None, 0.0, 16), None);
+        assert!(guard.judge(at(123.5, 0.95), None, None, 0.0, 16).is_some());
     }
 
     #[test]
     fn an_estimate_not_yet_locked_and_a_glide_move_at_once() {
         let mut guard = OctaveGuard::new();
         for _ in 0..15 {
-            guard.judge(at(82.41, 0.99), None, None, 16);
+            guard.judge(at(82.41, 0.99), None, None, 0.0, 16);
         }
-        assert!(guard.judge(at(164.8, 0.99), None, None, 16).is_some());
+        assert!(guard.judge(at(164.8, 0.99), None, None, 0.0, 16).is_some());
         // A bend, 590 ¢ in 59 steps of 10 ¢, never jumps.
         let mut guard = locked();
         for step in 1..=59 {
             let hz = 82.41 * 2_f64.powf(f64::from(step) * 10.0 / 1_200.0);
             assert!(
-                guard.judge(at(hz, 0.99), None, None, 16).is_some(),
+                guard.judge(at(hz, 0.99), None, None, 0.0, 16).is_some(),
                 "{step}"
             );
         }
@@ -336,7 +423,7 @@ mod tests {
         for _ in 0..16 {
             guard.miss(16);
         }
-        assert!(guard.judge(at(196.0, 0.99), None, None, 16).is_some());
+        assert!(guard.judge(at(196.0, 0.99), None, None, 0.0, 16).is_some());
     }
 
     #[test]
@@ -345,36 +432,41 @@ mod tests {
         // 2τ, the octave below, is the held note.
         let edge = at(82.41, COMPARABLE * 0.98);
         let mut guard = locked();
-        let shown = guard.judge(pick, None, Some(edge), 16).unwrap();
+        let shown = guard.judge(pick, None, Some(edge), 0.0, 16).unwrap();
         assert!(shown.ambiguous && shown.estimate == edge);
         // Just below the threshold it is not comparable: nothing is shown.
         let below = at(82.41, COMPARABLE * 0.98 - 1e-4);
         let mut guard = locked();
-        assert_eq!(guard.judge(pick, None, Some(below), 16), None);
+        assert_eq!(guard.judge(pick, None, Some(below), 0.0, 16), None);
         // τ/2, the octave above, likewise, when the held note is above.
         let mut guard = OctaveGuard::new();
         for _ in 0..16 {
-            guard.judge(at(329.63, 0.99), None, None, 16);
+            guard.judge(at(329.63, 0.99), None, None, 0.0, 16);
         }
         let up = at(329.6, 0.97);
-        let shown = guard.judge(at(164.8, 0.99), Some(up), None, 16).unwrap();
+        let shown = guard
+            .judge(at(164.8, 0.99), Some(up), None, 0.0, 16)
+            .unwrap();
         assert!(shown.ambiguous && shown.estimate == up);
         // The threshold in absolute terms, from `pitch::tests`' measured ratios: a weak
         // fundamental's second partial (0.6 of the note) is not comparable; 0.95 of it is.
         let mut guard = locked();
         assert_eq!(
-            guard.judge(pick, None, Some(at(82.41, 0.6 * 0.98)), 16),
+            guard.judge(pick, None, Some(at(82.41, 0.6 * 0.98)), 0.0, 16),
             None
         );
         let mut guard = locked();
         assert!(
             guard
-                .judge(pick, None, Some(at(82.41, 0.95 * 0.98)), 16)
+                .judge(pick, None, Some(at(82.41, 0.95 * 0.98)), 0.0, 16)
                 .is_some()
         );
         // A comparable peak that is not the held note changes nothing.
         let mut guard = locked();
-        assert_eq!(guard.judge(pick, Some(at(329.6, 0.99)), None, 16), None);
+        assert_eq!(
+            guard.judge(pick, Some(at(329.6, 0.99)), None, 0.0, 16),
+            None
+        );
     }
 
     #[test]
@@ -383,17 +475,17 @@ mod tests {
         let mut guard = locked();
         let (e2, e3) = (at(82.41, 1.0), at(164.82, 1.0));
         for _ in 0..40 {
-            assert!(guard.judge(e3, None, Some(e2), 16).unwrap().ambiguous);
-            assert!(guard.judge(e2, Some(e3), None, 16).unwrap().ambiguous);
+            assert!(guard.judge(e3, None, Some(e2), 0.0, 16).unwrap().ambiguous);
+            assert!(guard.judge(e2, Some(e3), None, 0.0, 16).unwrap().ambiguous);
         }
         // Once the upper one is gone, a window of agreeing frames makes it known again.
         for frame in 1..16 {
             assert!(
-                guard.judge(e2, None, None, 16).unwrap().ambiguous,
+                guard.judge(e2, None, None, 0.0, 16).unwrap().ambiguous,
                 "{frame}"
             );
         }
-        assert!(!guard.judge(e2, None, None, 16).unwrap().ambiguous);
+        assert!(!guard.judge(e2, None, None, 0.0, 16).unwrap().ambiguous);
     }
 
     #[test]
@@ -418,11 +510,80 @@ mod tests {
         assert!(guard.must_repeat(&at(106.6, 0.6)) && guard.must_repeat(&at(587.3, 0.74)));
         assert!(!guard.must_repeat(&at(587.3, 0.78)) && !guard.must_repeat(&at(108.0, 0.9)));
         assert!(!guard.must_repeat(&at(82.41, UNVERIFIED_CLARITY)));
+        // Any note other than the locked one is new; the locked one, within half a semitone, is not.
+        assert!(guard.is_new_note(82.41) && guard.is_new_note(220.0));
+        assert!(!guard.is_new_note(110.0) && !guard.is_new_note(112.5));
         // A switch keeps the lock; silence forgets it.
         guard.switched();
         assert!(guard.must_repeat(&at(55.0, 0.9)));
         guard.reset();
         assert!(!guard.must_repeat(&at(55.0, 0.61)));
+    }
+
+    #[test]
+    fn a_jump_from_an_unlocked_estimate_waits_only_if_the_held_note_bridges_it() {
+        let mut guard = OctaveGuard::new();
+        for _ in 0..4 {
+            guard.judge(at(82.41, 0.99), None, None, 0.0, 16);
+        }
+        // Not locked: a comparable peak at the held note bridges it, and the jump waits.
+        let (e3, e2) = (at(164.82, 0.99), at(82.41, 0.99));
+        assert!(guard.judge(e3, None, Some(e2), 0.0, 16).unwrap().ambiguous);
+        assert!(guard.judge(e3, None, Some(e2), 0.0, 16).unwrap().ambiguous);
+        assert!(!guard.judge(e3, None, Some(e2), 0.0, 16).unwrap().ambiguous);
+        // Without one, it is taken at once.
+        let mut guard = OctaveGuard::new();
+        for _ in 0..4 {
+            guard.judge(at(82.41, 0.99), None, None, 0.0, 16);
+        }
+        let taken = guard.judge(e3, None, None, 0.0, 16).unwrap();
+        assert!(!taken.ambiguous && taken.estimate == e3);
+    }
+
+    #[test]
+    fn the_octave_above_entering_a_held_note_makes_its_octave_ambiguous() {
+        let mut guard = locked();
+        let e2 = at(82.41, 1.0);
+        // A window after the lock the floor is the held note's τ/2 level: a sawtooth's, −0.5.
+        for _ in 0..16 {
+            assert!(!guard.judge(e2, None, None, -0.5, 16).unwrap().ambiguous);
+        }
+        // Steady at a weak fundamental's 0.6 from the start would not rise; a step of RISE does.
+        assert!(
+            !guard
+                .judge(e2, None, None, -0.5 + RISE - 0.01, 16)
+                .unwrap()
+                .ambiguous
+        );
+        assert!(guard.judge(e2, None, None, 0.86, 16).unwrap().ambiguous);
+        // A note whose τ/2 level is steady never trips it.
+        let mut weak = locked();
+        for _ in 0..200 {
+            assert!(!weak.judge(e2, None, None, 0.6, 16).unwrap().ambiguous);
+        }
+    }
+
+    #[test]
+    fn the_lower_string_left_by_an_octave_up_is_ringing_while_the_octave_above_shows() {
+        let mut guard = OctaveGuard::new();
+        for _ in 0..4 {
+            guard.judge(at(196.0, 1.0), None, None, 0.0, 16);
+        }
+        // Up an octave, unlocked: taken at once; G3 is now the string below.
+        guard.judge(at(392.0, 0.9), None, None, 0.0, 16);
+        assert!(guard.is_ringing_below(196.0) && !guard.is_ringing_below(392.0));
+        // Read again with the octave above present, it stays the string below.
+        guard.judge(at(196.0, 1.0), None, None, 0.9, 16);
+        assert!(guard.is_ringing_below(196.0));
+        // A window of frames without the octave above, and it is a note again.
+        for _ in 0..16 {
+            guard.judge(at(196.0, 1.0), None, None, 0.1, 16);
+        }
+        assert!(!guard.is_ringing_below(196.0));
+        // A new note is not; silence forgets it.
+        guard.judge(at(392.0, 0.9), None, None, 0.0, 16);
+        guard.judge(at(261.6, 0.9), None, None, 0.0, 16);
+        assert!(!guard.is_ringing_below(196.0));
     }
 
     #[test]
@@ -433,10 +594,10 @@ mod tests {
         let e3 = at(164.82, 0.999);
         let e2 = at(82.41, 0.999);
         for _ in 0..2 {
-            assert!(guard.judge(e3, None, Some(e2), 16).unwrap().ambiguous);
+            assert!(guard.judge(e3, None, Some(e2), 0.0, 16).unwrap().ambiguous);
         }
-        let third = guard.judge(e3, None, Some(e2), 16).unwrap();
+        let third = guard.judge(e3, None, Some(e2), 0.0, 16).unwrap();
         assert!(!third.ambiguous && third.estimate == e3);
-        assert!(!guard.judge(e3, None, Some(e2), 16).unwrap().ambiguous);
+        assert!(!guard.judge(e3, None, Some(e2), 0.0, 16).unwrap().ambiguous);
     }
 }

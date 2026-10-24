@@ -508,7 +508,8 @@ pub const REFERENCE_PATIENCE_SECONDS: f64 = 0.25;
 ///     end: a bound on how long a wrong reading can hold a range;
 ///   - **except** the octave below a pitch the chain has just moved up an octave to: that is the
 ///     lower string still ringing under the one just plucked, the case that is ambiguous by
-///     nature. The estimate stays ambiguous while both sound, and nothing moves (`docs/adr/0029`).
+///     nature. The estimate stays ambiguous while both sound, and nothing moves, whether a
+///     verifier or the current range itself reads it ([`Self::observe`]; `docs/adr/0029`).
 ///
 /// ```
 /// use diapason_dsp::octave::Octave;
@@ -700,6 +701,14 @@ impl RangeSelector {
             Observation::Pitch(hz) if hz.is_finite() && hz > 0.0 => {
                 self.misses = self.misses.saturating_sub(1);
                 self.clear_run += 1;
+                // The lower string still ringing under the octave the chain just moved up to, read
+                // by the current range itself: neither a change of note nor a reason to move down.
+                if self
+                    .came_from
+                    .is_some_and(|from| cents(hz, from).abs() <= HARMONIC_TOLERANCE_CENTS)
+                {
+                    return self.current;
+                }
                 let previous = self.pitch;
                 if previous.is_none_or(|old| cents(hz, old).abs() > CHANGE_CENTS) {
                     let from = self.came_from;
@@ -1279,6 +1288,13 @@ mod tests {
         }
         assert_eq!(selector.current(), Range::High);
         assert_eq!(selector.octave(Range::High, 164.82), Octave::Ambiguous);
+        // High itself reading the E2 below its band, for longer than its window: no move down.
+        for _ in 0..40 {
+            assert_eq!(
+                selector.observe(Observation::Pitch(82.41), clock.tick()),
+                Range::High
+            );
+        }
         // Once the E2 has decayed, Mid reads the E3 itself: known.
         selector.observe_verifier(Range::Mid, Some(164.8), clock.tick());
         assert_eq!(selector.octave(Range::High, 164.82), Octave::Known);

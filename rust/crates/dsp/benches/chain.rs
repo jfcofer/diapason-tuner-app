@@ -104,7 +104,7 @@ fn chain(c: &mut Criterion) {
             let frame = std::hint::black_box(&window);
             let up = mpm.peak_near(frame, mid.analysis_rate, pick.period_samples / 2.0);
             let down = mpm.peak_near(frame, mid.analysis_rate, pick.period_samples * 2.0);
-            guard.judge(pick, up, down, lock)
+            guard.judge(pick, up, down, 0.6, lock)
         });
     });
     group.finish();

@@ -16,11 +16,11 @@
 
 use std::fmt;
 
-use crate::convert::{index_from_f64, index_to_f64};
+use crate::convert::{index_from_f64, index_to_f64, to_f32};
 use crate::filter::{DcBlock, Decimator, FilterError};
 use crate::frame::{FrameAssembler, FrameError};
 use crate::gate::{GateConfig, GateError, NoiseGate};
-use crate::octave::{Guarded, Octave, OctaveGuard, REPEATS, UNVERIFIED_CLARITY};
+use crate::octave::{Guarded, NEW_NOTE_CLARITY, Octave, OctaveGuard, REPEATS, UNVERIFIED_CLARITY};
 use crate::pitch::{Mpm, MpmConfig, MpmError, PitchEstimate};
 use crate::range::{LOWEST_FUNDAMENTAL_HZ, Observation, Path, Range, RangeSelector, RangeTable};
 
@@ -135,7 +135,10 @@ impl Front {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selection {
     /// Always this range, and only its path runs: a range locked by hand, and how the accuracy
-    /// and latency tests measure one range.
+    /// and latency tests measure one range. No range below it is analysed, so nothing verifies an
+    /// octave: an estimate the range cannot test itself stays [`Octave::Ambiguous`] for as long as
+    /// it lasts (a low E, 82.41 Hz, in `Fixed(Range::Mid)`). That is the decision, not a gap: a
+    /// range locked by hand has given up the ranges that could tell.
     Fixed(Range),
     /// The [`RangeSelector`], starting at, and returning to on silence, this home range.
     Auto(Range),
@@ -346,7 +349,11 @@ impl Analysis {
             });
         } else if matches!(self.selection, Selection::Auto(_)) && self.gate_open && range < current
         {
-            let reading = self.analyse(range).map(|e| e.frequency_hz);
+            // A verifier's reading must pass the same tests, or a chord's would verify an octave.
+            let reading = self
+                .analyse(range)
+                .filter(|e| self.acceptable(range, e))
+                .map(|e| e.frequency_hz);
             self.selector
                 .observe_verifier(range, reading, self.position);
             if self.selector.current() != current {
@@ -363,16 +370,14 @@ impl Analysis {
         // estimate the range cannot test the octave of is taken only from `UNVERIFIED_CLARITY`; and
         // after a note, which may still sound, an estimate near it must be a period, which a
         // chord's is not (`OctaveGuard::must_repeat`).
-        let pick = self.analyse(range).filter(|pick| {
-            let hz = pick.frequency_hz;
-            hz >= LOWEST_FUNDAMENTAL_HZ
-                && (pick.clarity >= UNVERIFIED_CLARITY || self.table.tests_octave(range, hz))
-                && (!self.guard.must_repeat(pick) || self.repeats(range, pick))
-        });
+        let pick = self
+            .analyse(range)
+            .filter(|pick| self.acceptable(range, pick));
         let guarded = if let Some(pick) = pick {
             let up = self.peak_near(range, pick.period_samples / 2.0);
             let down = self.peak_near(range, pick.period_samples * 2.0);
-            self.guard.judge(pick, up, down, lock)
+            let half = self.value_at(range, pick.period_samples / 2.0);
+            self.guard.judge(pick, up, down, half, lock)
         } else {
             self.guard.miss(lock);
             None
@@ -394,7 +399,8 @@ impl Analysis {
                 // provisional until a verifier, which can, reads it. Low has none below it.
                 let provisional =
                     after_a_note && range != Range::Low && !self.searches_double(range, &estimate);
-                if verified || (self.table.tests_octave(range, hz) && !provisional) {
+                let below = self.guard.is_ringing_below(hz);
+                if !below && (verified || (self.table.tests_octave(range, hz) && !provisional)) {
                     Octave::Known
                 } else {
                     Octave::Ambiguous
@@ -405,6 +411,20 @@ impl Analysis {
         let shown = guarded.map(|g| g.estimate.frequency_hz);
         self.guard.shown(shown, octave == Octave::Known, lock);
         (guarded.map(|g| g.estimate), octave)
+    }
+
+    /// Whether an estimate of `range` may be taken at all (`docs/adr/0029`):
+    /// - a period longer than the lowest note's is a chord's common period, not a string;
+    /// - an estimate whose octave below the range cannot see needs [`UNVERIFIED_CLARITY`];
+    /// - after a locked note, which may still sound, an estimate near it (an octave of it, or
+    ///   barely clear) must be a period ([`REPEATS`]), and any other note must be clearly one
+    ///   ([`NEW_NOTE_CLARITY`]): two notes sounding together read as neither.
+    fn acceptable(&self, range: Range, pick: &PitchEstimate) -> bool {
+        let hz = pick.frequency_hz;
+        hz >= LOWEST_FUNDAMENTAL_HZ
+            && (pick.clarity >= UNVERIFIED_CLARITY || self.table.tests_octave(range, hz))
+            && (!self.guard.must_repeat(pick) || self.repeats(range, pick))
+            && (!self.guard.is_new_note(hz) || pick.clarity >= NEW_NOTE_CLARITY)
     }
 
     /// Whether `range` can search twice `pick`'s period.
@@ -429,6 +449,14 @@ impl Analysis {
         detector
             .peak_near(frames.window(), rate, lag)
             .is_some_and(|double| double.clarity >= REPEATS * pick.clarity)
+    }
+
+    /// The selected range's NSDF at `lag`, from the frame just analysed; 0 where it has none.
+    fn value_at(&self, range: Range, lag: f64) -> f32 {
+        self.detectors
+            .get(slot(range))
+            .and_then(|detector| detector.value_at(lag))
+            .map_or(0.0, to_f32)
     }
 
     /// The selected range's NSDF peak near `lag`, from the frame just analysed.
@@ -489,6 +517,23 @@ mod tests {
         sine(&mut tone, 220.0, 48_000, 0.5, 0.0);
         analysis.push(&tone, true, |_| {});
         assert!(!analysis.unpitched(), "a clear pitch resets it");
+    }
+
+    #[test]
+    fn a_fixed_range_never_verifies_an_octave_it_cannot_test() {
+        for (hz, expected) in [(82.41, Octave::Ambiguous), (110.0, Octave::Known)] {
+            let mut analysis = Analysis::new(48_000, Selection::Fixed(Range::Mid)).unwrap();
+            let mut tone = vec![0.0_f32; 48_000];
+            crate::synth::sawtooth(&mut tone, hz, 48_000, 0.5, 0.0);
+            let mut octaves = Vec::new();
+            analysis.push(&tone, true, |frame| {
+                if frame.end > 4_800 && frame.estimate.is_some() {
+                    octaves.extend([frame.octave]);
+                }
+            });
+            assert!(octaves.len() > 300, "{hz} Hz");
+            assert!(octaves.iter().all(|&octave| octave == expected), "{hz} Hz");
+        }
     }
 
     #[test]
