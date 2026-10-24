@@ -241,41 +241,26 @@ impl Mpm {
 
     /// The NSDF's peak nearest `lag`, as an estimate, from the frame [`Self::analyze`] last judged:
     /// the octave guard's test of `τ/2` and `2τ` (`docs/AUDIO_ENGINE.md` §3, `crate::octave`).
-    /// [`Self::peak_within`] one lag: the sub-sample period doubled or halved lands within one lag of
-    /// its sample.
-    #[must_use]
-    pub fn peak_near(&self, frame: &[f32], sample_rate: u32, lag: f64) -> Option<PitchEstimate> {
-        self.peak_within(frame, sample_rate, lag, 1)
-    }
-
-    /// The NSDF's highest local maximum within `reach` lags of `round(lag)`, as an estimate, from
-    /// the frame [`Self::analyze`] last judged. It is refined exactly as the chosen period is,
-    /// steps 5 and 6, over its common overlap, so its clarity compares like for like with
-    /// [`PitchEstimate::clarity`]. O(`reach`): it reuses the NSDF, `r` and `m` that `analyze` kept,
-    /// and no second FFT runs. The clarity floor is *not* applied.
+    ///
+    /// The peak is the highest local maximum of `n` at `round(lag)` or one lag either side (the
+    /// sub-sample period doubled or halved lands within one lag of its sample). It is then refined
+    /// exactly as the chosen period is, steps 5 and 6, over its common overlap, so its clarity
+    /// compares like for like with [`PitchEstimate::clarity`]. O(1): it reuses the NSDF, `r` and
+    /// `m` that `analyze` kept, and no second FFT runs. The clarity floor is *not* applied.
     ///
     /// `frame` must be the frame `analyze` last returned `Some` for; with any other the answer is
     /// meaningless (but still allocation-free and panic-free). `None` where there is no local
-    /// maximum there, or `lag` has no neighbour on each side within the searched lags.
+    /// maximum near `lag`, or `lag` has no neighbour on each side within the searched lags.
     #[must_use]
-    pub fn peak_within(
-        &self,
-        frame: &[f32],
-        sample_rate: u32,
-        lag: f64,
-        reach: usize,
-    ) -> Option<PitchEstimate> {
+    pub fn peak_near(&self, frame: &[f32], sample_rate: u32, lag: f64) -> Option<PitchEstimate> {
         if frame.len() != self.config.window || sample_rate == 0 || lag.is_nan() || lag < 1.0 {
             return None;
         }
         let centre = index_from_f64(lag.round());
         let maxima = KeyMaxima::new(&self.nsdf);
-        let first = centre.saturating_sub(reach);
-        let last = centre
-            .saturating_add(reach)
-            .min(self.max_lag.saturating_sub(1));
-        let peak = (first..=last)
-            .filter(|&tau| maxima.is_local_maximum(tau))
+        let peak = [centre.saturating_sub(1), centre, centre.saturating_add(1)]
+            .into_iter()
+            .filter(|&tau| tau < self.max_lag && maxima.is_local_maximum(tau))
             .max_by(|&a, &b| maxima.value(a).total_cmp(&maxima.value(b)))?;
         let [a, b, c] = self.common_overlap(frame, peak)?;
         let (offset, value) = vertex(a, b, c)?;
@@ -731,11 +716,6 @@ mod tests {
         crate::synth::sawtooth(&mut frame, 110.0, rate, 0.5, 0.0);
         let pick = mpm.analyze(&frame, rate).unwrap();
         assert_eq!(mpm.peak_near(&frame, rate, pick.period_samples / 2.0), None);
-        // Two lags off 2τ, one lag of reach finds no peak, three find the one at 2τ.
-        let off = 2.0 * pick.period_samples + 2.0;
-        assert_eq!(mpm.peak_within(&frame, rate, off, 1), None);
-        let found = mpm.peak_within(&frame, rate, off, 3).unwrap();
-        assert!((found.frequency_hz - 55.0).abs() < 0.01, "{found:?}");
         // Beyond the searched lags, at no lag, or for a frame it cannot judge: none.
         assert_eq!(mpm.peak_near(&frame, rate, 6.0 * pick.period_samples), None);
         for lag in [f64::NAN, 0.0, -5.0, f64::INFINITY] {

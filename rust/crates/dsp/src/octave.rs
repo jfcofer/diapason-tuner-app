@@ -63,19 +63,16 @@ pub const COMPARABLE: f32 = 0.9;
 /// chord (A2 over a bass E) at 0.62–0.66 by ±88 ¢, a third note's pitch class.
 pub const UNVERIFIED_CLARITY: f32 = 0.75;
 
-/// A period repeats: the NSDF of a signal periodic at `τ` peaks at `2τ` as high as at `τ`. Where the
-/// range can search `2τ`, an estimate is taken only if its peak near `2τ` (within
-/// [`REPEAT_REACH`] lags) has at least this fraction of its clarity. A chord's reading is the
-/// period of neither note, and does not repeat. Measured in `T-003c` on every frame of a filled
-/// window: a single note, plucks with inharmonicity to 10⁻³ and a note under a string ringing
-/// 12 dB down included, reads at least 0.9895; the third notes of two chords (A2 over a bass E,
-/// over a low B) at most 0.959. The threshold sits between.
+/// A period repeats: the NSDF of a signal periodic at `τ` peaks at `2τ` as high as at `τ`. After a
+/// locked note, an estimate near it ([`OctaveGuard::must_repeat`]) is taken only if, where its range
+/// can search `2τ`, its peak there (`Mpm::peak_near`) has at least this fraction of its clarity. A
+/// chord's reading is the period of neither note, and does not repeat. Measured in `T-003c` on
+/// every frame of a filled window, searching up to four lags from `2τ`: single notes, plucks with
+/// inharmonicity to 10⁻³ and notes under a string ringing 12 dB down read at least 0.9895; the
+/// third notes of two chords (A2 over a bass E, over a low B) at most 0.959. The threshold sits
+/// between. Only the interfered notes needed more than one lag, and they are never tested: they
+/// are clear and no octave of the note before (removing the wider search changed no figure).
 pub const REPEATS: f32 = 0.975;
-
-/// How far from `2τ`, in lags, [`REPEATS`] looks for the peak: a string ringing 12 dB under the
-/// note moves it, and within one lag 79–93 frames of a correct reading had no peak at all
-/// (A2 over a bass E, `T-003c`).
-pub const REPEAT_REACH: usize = 4;
 
 /// What the guard made of one frame's estimate.
 #[derive(Debug, Clone, Copy, PartialEq)]
