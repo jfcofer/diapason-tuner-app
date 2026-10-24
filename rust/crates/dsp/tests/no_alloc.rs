@@ -229,6 +229,10 @@ fn no_stage_allocates() {
                 };
                 guard.judge(octave, None, Some(pick), 16);
                 guard.miss(16);
+                guard.shown(Some(pick.frequency_hz), true, 16);
+                let _ = guard.must_repeat(&octave);
+                let _ = mpm.peak_within(&window, 12_000, pick.period_samples * 2.0, 4);
+                guard.switched();
             }
         });
     }
