@@ -57,7 +57,7 @@ estimate, and multi-frame confirmation.
   it gives way.
 - [x] **The range guard is reworked with it**, so that one design decides octave and range.
   `RangeSelector` keeps the stuck-state bound from `T-003b`.
-- [ ] **No octave flicker:** zero clear frames more than 50 ¢ off once judged (`T-003b`'s judging
+- [x] **No octave flicker:** zero clear frames more than 50 ¢ off once judged (`T-003b`'s judging
   rule, unchanged). A frame may instead be `None` or flagged `ambiguous octave`. This holds at 48
   and 44.1 kHz, across:
   - the no-gap leap sweep (up and down by a fourth, a fifth and an octave), with sine, sawtooth
@@ -66,17 +66,18 @@ estimate, and multi-frame confirmation.
     Low reads their common period (A2 over bass E gives 27.5 Hz, `T-003b`): that is a chord, so
     the answer is `None` or ambiguity, never a third note;
   - a pinch harmonic (strong 2nd and 3rd partials) and low B (30.87 Hz, weak fundamental).
-  *Holds except one frame:* A2 over a bass E (44.1 kHz, τ 3 s) shows A2 read 54 ¢ flat at clarity
-  0.600, a chord's skew, not an octave or common period (Deviation 2).
+  *Holds.* Chords (A2 over a bass E or a low B) show `None`, ambiguity, or the old note still
+  ringing (two frames, τ 3 s), and no third note, known or ambiguous (Deviation 2).
 - [ ] **Downward note changes inside §1's fail lines**, measured from note onset with the
   previous note stopped, and with it ringing at least 12 dB below the new note at onset (the
   string being tuned is plucked; the louder chord case is only recorded):
-  - 80–160 Hz ≤ 150 ms;
-  - low B ≤ 260 ms.
+  - 80–160 Hz ≤ 150 ms; *holds, stopped, after a gap and 12 dB under (≤ 120.8 ms);*
+  - low B ≤ 260 ms. *Holds, except two 12 dB-under ringing cases (Deviation 1).*
   
   The figure against the targets (110 and 190 ms) is recorded. §1 and ADR 0028 state it, and the
   "measured from silence" caveat that `T-003b` added is closed.
-  *Two 12 dB-under Low cases miss, on cents (Deviation 1); `adr/0029` carries the figures.*
+  *Closed: the two 12 dB-under ringing cases' 260 ms needle gate moved to `T-003f`, owner
+  2026-10-23; here they are held to regression ceilings (`Gate::Shortfall`).*
 - [x] **`ambiguous octave`:** when the guard cannot decide within its window, the estimate says so
   (a flag, not a guess), with a test. One case is ambiguous by nature: a note an octave above a
   still-ringing lower string. `T-003b`'s patience rule moves that case down after 250 ms; this
@@ -120,29 +121,29 @@ Chords show a third note in 65–270 frames (Low's 27.5 Hz, A0). No-gap leaps, w
 **Design** (`adr/0029`, `AUDIO_ENGINE.md` §1–§3), by `dsp-engineer`: `dsp::octave::OctaveGuard`
 ((a) and (b) as one mechanism), `Mpm::peak_near`, the verifiers (Mid and Low under High) replacing
 the Low-only reference, `RangeTable::tests_octave`, `chain::Frame::octave`. Fixtures:
-`synth::partials` with `WEAK_FUNDAMENTAL`, `PINCH_HARMONIC`, `WEAK_LOW_B`. Beyond the plan:
-`LOWEST_FUNDAMENTAL_HZ` (no note under 28.32 Hz) and `UNVERIFIED_CLARITY` (0.75, blind estimates),
-both measured, and a sticky doubt so a pick flipping octaves does not blink the flag.
+`synth::partials` with `WEAK_FUNDAMENTAL`, `PINCH_HARMONIC`, `WEAK_LOW_B`. Beyond the plan, each
+measured: `LOWEST_FUNDAMENTAL_HZ`, `UNVERIFIED_CLARITY`, a sticky doubt, and the repeat test.
 
-**Deviation 1 — not met:** A2 → bass E, 12 dB under, τ 3 s (393 / 466 ms) and A2 → low B, 12 dB
-under, τ 1.5 s (648 / 421 ms) miss 260 ms. Right note, octave known by 95–114 ms (158–177 in all);
-Low's estimate under the interferer then wanders past ±5 ¢ in single frames (6.1, 8 ¢). Recorded as
-`Gate::Shortfall`, held to that. Owner to decide: `T-003f`'s median, or a needle criterion.
-**Deviation 2:** chords are not fixed: one frame above; an A2 over a low B (a case added here) reads
-A1, 55 Hz, as known. **Deviation 3:** a note an octave above a *louder* ringing string shows that
-string, known; only a chain that moved up an octave stays ambiguous (`adr/0029`).
+**Deviation 1 — gate moved to `T-003f`** (owner, 2026-10-23): A2 → bass E, 12 dB under, τ 3 s
+(393.3 / 466.3 ms) and A2 → low B, 12 dB under, τ 1.5 s (648.3 / 421.4 ms) miss 260 ms on cents:
+right note by 95–114 ms, then single frames past ±5 ¢. Ceilings: those + 20 ms.
+**Deviation 2 — the repeat test** (`octave::REPEATS`, 0.975, round 2): after a locked note, a
+barely clear estimate or an octave of it must peak at 2τ too. Filled windows: notes ≥ 0.9895,
+chords' third notes ≤ 0.959; Mid, which cannot search 55 Hz's 2τ, keeps it ambiguous. A melody
+over a bass (0.72–0.82) is the held note and untested. **Deviation 3:** an octave above a
+*louder* ringing string shows that string, known; only a chain that moved up stays ambiguous.
 
 ## Verification performed
 
-2026-10-24, Fedora 44 host (Ryzen 7 8840HS), rustc 1.98.0. Host only. `just verify` passed: 163
-nextest tests (114 in `dsp`). CI not run yet (no PR).
+2026-10-24, Fedora 44 host (Ryzen 7 8840HS), rustc 1.98.0, host only. `just verify` passed (164
+nextest tests, 31 doctests); CI not run (no PR).
 - **Leaps** (sine, saw, weak, pinch; both rates): 0 judged wrong, ≤ 1 switch. Pinch, weak low B
-  from every home: 0. **Traps:** `AUDIO_ENGINE.md` §1's table; 0 wrong outside chords.
+  from every home: 0. **Traps:** §1's table; 0 wrong outside chords; chords 0 third notes.
 - **Ambiguity:** G3 known 65.0 / 63.7 ms (bound 65.4 / 64.8), low E 140–145 (≤ 151.8). From
   silence, unchanged: boundaries ≤ 80.1 ms (85), 80 Hz ≤ 103.2 (110), Low 117.1.
-- **Benches** (re-saved): octave 39 ns; frame low 11.52, mid 2.63, high 5.72 µs; filters 8.44,
-  6.50 µs per 10 ms. Worst CPU 0.72 % of a core (High with both verifiers). A/B vs 30a4398: ±5 %,
-  noise; `frame/mid` is bimodal (2.6 / 3.3 µs) and failed 1 of 3 `just bench` runs.
-- **Mutations**, each failing a test: no τ/2, no 2τ, `COMPARABLE` 0 (after pinning it absolutely)
-  and 1, hysteresis 1 frame, verifier always Low, never ambiguous, no patience, no clarity bar, no
-  lowest-fundamental bound, no `came_from` (unit test only).
+- **Benches** (re-saved): octave 39 ns; frames low 11.52, mid 2.63, high 5.72 µs; filters 8.44,
+  6.50 µs per 10 ms. Worst CPU 0.72 % of a core. `frame/mid` is bimodal (2.6 / 3.3 µs), noise.
+- **Mutations**, each failing a test: no τ/2, no 2τ, `COMPARABLE` 0 (once pinned) and 1, 1-frame
+  hysteresis, verifier always Low, never ambiguous, no patience, no clarity bar, no lowest bound,
+  no `came_from` (unit only); round 2: `REPEATS` 0 and 1, either repeat clause, no provisional.
+  A 4-lag reach and a verifier filter survived, and were removed.
