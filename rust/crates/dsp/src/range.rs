@@ -1095,7 +1095,7 @@ mod tests {
         assert_eq!(selector.held_frames(Range::High), 8);
     }
 
-    /// Frames every 2.5 ms at 48 kHz, a Low reference every other one (Low's 5 ms hop), and the
+    /// Frames every 2.5 ms at 48 kHz, a Low verifier frame every other one (Low's 5 ms hop), and the
     /// frame index at which the selector left High; `None` if it never did in 10 s.
     fn leaves_high(current: impl Fn(usize) -> Observation) -> Option<usize> {
         let table = RangeTable::new(48_000).unwrap();
@@ -1117,7 +1117,7 @@ mod tests {
 
     /// Pattern A (`T-003b` round 4): High's wrong reading of a low E, 164.8 Hz, in clear runs of
     /// nine broken by one unclear frame. Every break ends a held reading and restarts freshness, so
-    /// the fresh path never fires; the agreeing streak of Low references does, within the bound.
+    /// the fresh path never fires; the agreeing streak of Low verifier frames does, within the bound.
     #[test]
     fn a_reading_broken_every_few_frames_cannot_hold_a_range_past_the_patience() {
         let left = leaves_high(|frame| {
@@ -1132,7 +1132,7 @@ mod tests {
 
     /// Pattern B: High flips between the second and third partials, 164.8 and 247.2 Hz, every
     /// 75 ms. Each flip is a change of pitch that restarts freshness; both are multiples of the
-    /// Low reference, so the streak holds, and the selector leaves within the bound.
+    /// Low verifier, so the streak holds, and the selector leaves within the bound.
     #[test]
     fn a_reading_flipping_between_partials_cannot_hold_a_range_past_the_patience() {
         let left = leaves_high(|frame| {
