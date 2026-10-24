@@ -115,35 +115,35 @@ lines (Mid 58.3, Low 63.3 ms). Before `T-003c` every frame's octave counts as kn
 | A2 → bass E, rings (chord, τ 0.6, 1.5, 3) | 72, 199, 282 / 70, 197, 283 | 1015 / 1051; never | — | same |
 | A2 → low B, stopped | 10 / 12 | 100 / 94.3 | 163.3 / 157.6 | 100 / 98.6 |
 
-Chords show a third note in 65–270 frames (Low's 27.5 Hz, A0). No-gap leaps, weak, an octave down:
-82.41 → 41.2 Hz 24 / 26 wrong, 196 → 98 Hz 22 / 18; every other leap 0.
+Chords show a third note in 65–270 frames (A0). Weak octave leaps down: 18–26 wrong; others 0.
 
-**Design** (`adr/0029`, `AUDIO_ENGINE.md` §1–§3), by `dsp-engineer`: `dsp::octave::OctaveGuard`
-((a) and (b) as one mechanism), `Mpm::peak_near`, the verifiers (Mid and Low under High) replacing
-the Low-only reference, `RangeTable::tests_octave`, `chain::Frame::octave`. Fixtures:
-`synth::partials` with `WEAK_FUNDAMENTAL`, `PINCH_HARMONIC`, `WEAK_LOW_B`. Beyond the plan, each
-measured: `LOWEST_FUNDAMENTAL_HZ`, `UNVERIFIED_CLARITY`, a sticky doubt, and the repeat test.
+**Design** (`adr/0029`, `AUDIO_ENGINE.md` §1–§3), by `dsp-engineer`: `dsp::octave::OctaveGuard`,
+`Mpm::peak_near`/`value_at`, verifiers (Mid and Low under High) replacing the Low-only reference,
+`RangeTable::tests_octave`, `chain::Frame::octave`, fixtures in `synth::partials`. Each rule
+beyond the plan measured: the lowest note, clarity bars, sticky doubt, the repeat test.
+**Review round 3** (2026-10-24): the ringing-string rule binds the selected range too, the guard
+tracks the string left below and the octave above entering (`RISE`), and after a note a new note
+needs 0.85 and verifier readings pass the same tests. Margins set on the review's fixtures,
+checked on held-out ones (other notes, ±7/22/45 ¢): every gated case passes.
 
 **Deviation 1 — gate moved to `T-003f`** (owner, 2026-10-23): A2 → bass E, 12 dB under, τ 3 s
-(393.3 / 466.3 ms) and A2 → low B, 12 dB under, τ 1.5 s (648.3 / 421.4 ms) miss 260 ms on cents:
-right note by 95–114 ms, then single frames past ±5 ¢. Ceilings: those + 20 ms.
-**Deviation 2 — the repeat test** (`octave::REPEATS`, 0.975, round 2): after a locked note, a
-barely clear estimate or an octave of it must peak at 2τ too. Filled windows: notes ≥ 0.9895,
-chords' third notes ≤ 0.959; Mid, which cannot search 55 Hz's 2τ, keeps it ambiguous. A melody
-over a bass (0.72–0.82) is the held note and untested. **Deviation 3:** an octave above a
-*louder* ringing string shows that string, known; only a chain that moved up stays ambiguous.
+(393.3 / 466.3 ms) and A2 → low B, 12 dB under, τ 1.5 s (648.3 / 421.4 ms) miss 260 ms on cents;
+ceilings: those + 20 ms. **Deviation 2 — chords are gated for the families tested only**: A2 over a
+bass E or low B and E4 over low E, ±30 ¢. Consonant intervals (A2 + D3 → D1, D3 + G3 → G1, B3 + E4
+→ E2) and other loud pairs (G2/low B, C3/bass E, A2 + 60–100 ¢ over bass E) still show third
+notes: `T-014-consonant-chords`. **Deviation 3:** the rules after a note cost onsets after a gap
+(A2 → bass E 85 / 83.4 ms, was 50 / 53.5) and E4 ringing loud (needle 60 ms, was 12.5).
 
 ## Verification performed
 
-2026-10-24, Fedora 44 host (Ryzen 7 8840HS), rustc 1.98.0, host only. `just verify` passed (164
-nextest tests, 31 doctests); CI not run (no PR).
-- **Leaps** (sine, saw, weak, pinch; both rates): 0 judged wrong, ≤ 1 switch. Pinch, weak low B
-  from every home: 0. **Traps:** §1's table; 0 wrong outside chords; chords 0 third notes.
-- **Ambiguity:** G3 known 65.0 / 63.7 ms (bound 65.4 / 64.8), low E 140–145 (≤ 151.8). From
-  silence, unchanged: boundaries ≤ 80.1 ms (85), 80 Hz ≤ 103.2 (110), Low 117.1.
-- **Benches** (re-saved): octave 39 ns; frames low 11.52, mid 2.63, high 5.72 µs; filters 8.44,
-  6.50 µs per 10 ms. Worst CPU 0.72 % of a core. `frame/mid` is bimodal (2.6 / 3.3 µs), noise.
-- **Mutations**, each failing a test: no τ/2, no 2τ, `COMPARABLE` 0 (once pinned) and 1, 1-frame
-  hysteresis, verifier always Low, never ambiguous, no patience, no clarity bar, no lowest bound,
-  no `came_from` (unit only); round 2: `REPEATS` 0 and 1, either repeat clause, no provisional.
-  A 4-lag reach and a verifier filter survived, and were removed.
+2026-10-24, Fedora 44 host (Ryzen 7 8840HS), rustc 1.98.0, host only. CI not run (no PR).
+- **Gates** (both rates): leap sweep 0 wrong; downward changes per §1; detuned (8 offset pairs, 3
+  families) and octave above a ringing string (6 pairs, 10–12 dB) 0 wrong, chords 0 third notes.
+- **Held-out probes** (other notes, ±7/22/45 ¢, 4 octave pairs): every gated case passes; their
+  loud chords are `T-014`. Ambiguity: G3 known 65.0 / 63.7 ms, low E 140–145. From silence: low B
+  needle 75 / 68.7 ms from home Low, unchanged; boundaries ≤ 80.1 ms.
+- **Benches** (baseline: median of five runs): analysis 77.7 µs per 10 ms in High, so 0.78 % of a
+  core; octave 35 ns; frames low 12.0, mid 2.79 (bimodal 2.7 / 3.3), high 5.90 µs.
+- **Mutations**, each failing a test: rounds 1–2 as before; round 3: no ringing check in
+  `observe` or the verifier, no rise, no string-below, new-note bar 0, unfiltered verifiers.
+  Two that failed nothing (delayed rise floor, presence threshold) were removed.

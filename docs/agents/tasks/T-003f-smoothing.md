@@ -21,7 +21,7 @@ miss.
 
 Read first:
 - `docs/AUDIO_ENGINE.md` §1 (budgets, the ledger's smoothing reserve, the downward-change table and
-  its two cases "not met") and §3 (smoothing, lock detection, the octave guard);
+  its two rows "Gated in `T-003f`") and §3 (smoothing, lock detection, the octave guard);
 - `docs/adr/0028` (ledger, `SMOOTHING_HOPS`) and `docs/adr/0029` (octave guard, `ambiguous octave`).
 
 Prior art:
