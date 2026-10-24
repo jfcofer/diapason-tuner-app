@@ -16,11 +16,11 @@
 
 use std::fmt;
 
-use crate::convert::index_from_f64;
+use crate::convert::{index_from_f64, index_to_f64};
 use crate::filter::{DcBlock, Decimator, FilterError};
 use crate::frame::{FrameAssembler, FrameError};
 use crate::gate::{GateConfig, GateError, NoiseGate};
-use crate::octave::{Guarded, Octave, OctaveGuard, UNVERIFIED_CLARITY};
+use crate::octave::{Guarded, Octave, OctaveGuard, REPEAT_REACH, REPEATS, UNVERIFIED_CLARITY};
 use crate::pitch::{Mpm, MpmConfig, MpmError, PitchEstimate};
 use crate::range::{LOWEST_FUNDAMENTAL_HZ, Observation, Path, Range, RangeSelector, RangeTable};
 
@@ -346,11 +346,15 @@ impl Analysis {
             });
         } else if matches!(self.selection, Selection::Auto(_)) && self.gate_open && range < current
         {
-            let reading = self.analyse(range).map(|e| e.frequency_hz);
+            // After a note, a verifier's reading must be a period too, or a chord's would verify.
+            let reading = self
+                .analyse(range)
+                .filter(|e| !self.guard.must_repeat(e) || self.repeats(range, e))
+                .map(|e| e.frequency_hz);
             self.selector
                 .observe_verifier(range, reading, self.position);
             if self.selector.current() != current {
-                self.guard.reset();
+                self.guard.switched();
             }
         }
     }
@@ -358,12 +362,16 @@ impl Analysis {
     /// The selected range's frame: `Mpm`, the octave guard, the selector, then the octave.
     fn judge(&mut self, range: Range) -> (Option<PitchEstimate>, Octave) {
         let lock = self.selector.held_frames(range);
-        // A period longer than the lowest note's is a common period of two notes, not a string; and
-        // an estimate the range cannot test the octave of is taken only from `UNVERIFIED_CLARITY`.
+        let after_a_note = self.guard.after_a_note();
+        // A period longer than the lowest note's is a common period of two notes, not a string; an
+        // estimate the range cannot test the octave of is taken only from `UNVERIFIED_CLARITY`; and
+        // after a note, which may still sound, an estimate near it must be a period, which a
+        // chord's is not (`OctaveGuard::must_repeat`).
         let pick = self.analyse(range).filter(|pick| {
             let hz = pick.frequency_hz;
             hz >= LOWEST_FUNDAMENTAL_HZ
                 && (pick.clarity >= UNVERIFIED_CLARITY || self.table.tests_octave(range, hz))
+                && (!self.guard.must_repeat(pick) || self.repeats(range, pick))
         });
         let guarded = if let Some(pick) = pick {
             let up = self.peak_near(range, pick.period_samples / 2.0);
@@ -376,22 +384,55 @@ impl Analysis {
         let hz = guarded.map(|g| g.estimate.frequency_hz);
         self.observe(hz.map_or(Observation::Unclear, Observation::Pitch));
         if self.current() != range {
-            self.guard.reset();
+            self.guard.switched();
         }
         let octave = match guarded {
             Some(Guarded {
                 ambiguous: true, ..
             }) => Octave::Ambiguous,
-            Some(Guarded { estimate, .. }) => match self.selection {
-                Selection::Auto(_) => self.selector.octave(range, estimate.frequency_hz),
-                Selection::Fixed(_) if self.table.tests_octave(range, estimate.frequency_hz) => {
+            Some(Guarded { estimate, .. }) => {
+                let hz = estimate.frequency_hz;
+                let verified = matches!(self.selection, Selection::Auto(_))
+                    && self.selector.verified(range, hz);
+                // After a note, a period the range cannot test for repeating may be a chord's:
+                // provisional until a verifier, which can, reads it. Low has none below it.
+                let provisional =
+                    after_a_note && range != Range::Low && !self.searches_double(range, &estimate);
+                if verified || (self.table.tests_octave(range, hz) && !provisional) {
                     Octave::Known
+                } else {
+                    Octave::Ambiguous
                 }
-                Selection::Fixed(_) => Octave::Ambiguous,
-            },
+            }
             None => Octave::Known,
         };
+        let shown = guarded.map(|g| g.estimate.frequency_hz);
+        self.guard.shown(shown, octave == Octave::Known, lock);
         (guarded.map(|g| g.estimate), octave)
+    }
+
+    /// Whether `range` can search twice `pick`'s period.
+    fn searches_double(&self, range: Range, pick: &PitchEstimate) -> bool {
+        self.detectors.get(slot(range)).is_some_and(|detector| {
+            2.0 * pick.period_samples + 1.0 < index_to_f64(detector.max_lag())
+        })
+    }
+
+    /// Whether `pick`'s period repeats at twice it ([`REPEATS`]), or its range cannot search there.
+    fn repeats(&self, range: Range, pick: &PitchEstimate) -> bool {
+        if !self.searches_double(range, pick) {
+            return true;
+        }
+        let index = slot(range);
+        let rate = self.table.spec(range).analysis_rate;
+        let (Some(frames), Some(detector)) = (self.frames.get(index), self.detectors.get(index))
+        else {
+            return false;
+        };
+        let lag = 2.0 * pick.period_samples;
+        detector
+            .peak_within(frames.window(), rate, lag, REPEAT_REACH)
+            .is_some_and(|double| double.clarity >= REPEATS * pick.clarity)
     }
 
     /// The selected range's NSDF peak near `lag`, from the frame just analysed.

@@ -63,6 +63,20 @@ pub const COMPARABLE: f32 = 0.9;
 /// chord (A2 over a bass E) at 0.62–0.66 by ±88 ¢, a third note's pitch class.
 pub const UNVERIFIED_CLARITY: f32 = 0.75;
 
+/// A period repeats: the NSDF of a signal periodic at `τ` peaks at `2τ` as high as at `τ`. Where the
+/// range can search `2τ`, an estimate is taken only if its peak near `2τ` (within
+/// [`REPEAT_REACH`] lags) has at least this fraction of its clarity. A chord's reading is the
+/// period of neither note, and does not repeat. Measured in `T-003c` on every frame of a filled
+/// window: a single note, plucks with inharmonicity to 10⁻³ and a note under a string ringing
+/// 12 dB down included, reads at least 0.9895; the third notes of two chords (A2 over a bass E,
+/// over a low B) at most 0.959. The threshold sits between.
+pub const REPEATS: f32 = 0.975;
+
+/// How far from `2τ`, in lags, [`REPEATS`] looks for the peak: a string ringing 12 dB under the
+/// note moves it, and within one lag 79–93 frames of a correct reading had no peak at all
+/// (A2 over a bass E, `T-003c`).
+pub const REPEAT_REACH: usize = 4;
+
 /// What the guard made of one frame's estimate.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Guarded {
@@ -103,6 +117,13 @@ pub struct OctaveGuard {
     /// decide (a window's worth): a pick flipping between two octaves every other frame, as under
     /// a lower string still ringing, keeps the octave ambiguous rather than blinking it.
     doubt: usize,
+    /// The last note shown with its octave known for a window's worth of frames in a row
+    /// ([`OctaveGuard::shown`]). Kept through misses and range switches, forgotten only on
+    /// silence: while it may still be sounding, some estimates must be periods
+    /// ([`OctaveGuard::must_repeat`]).
+    locked: Option<f64>,
+    /// The note of the current run of frames shown known, and the run's length.
+    known_run: Option<(f64, usize)>,
 }
 
 impl OctaveGuard {
@@ -112,15 +133,66 @@ impl OctaveGuard {
         Self::default()
     }
 
-    /// Forget everything: silence, or a range switch (its frames are a different detector's).
+    /// Forget everything: silence.
     pub fn reset(&mut self) {
         *self = Self::default();
+    }
+
+    /// A range switch: the next frames are a different detector's, so nothing is held or locked
+    /// for the hysteresis any more; the last locked note is remembered.
+    pub fn switched(&mut self) {
+        *self = Self {
+            locked: self.locked,
+            known_run: self.known_run,
+            ..Self::default()
+        };
     }
 
     /// The latest accepted estimate, in hertz.
     #[must_use]
     pub fn held(&self) -> Option<f64> {
         self.held
+    }
+
+    /// Whether a note has been locked since the last silence, and so may still be sounding under
+    /// whatever comes next. `false` for an onset from silence.
+    #[must_use]
+    pub fn after_a_note(&self) -> bool {
+        self.locked.is_some()
+    }
+
+    /// Whether `pick` must repeat at twice its period ([`REPEATS`]) to be taken: after a locked
+    /// note, if it is barely clear (under [`UNVERIFIED_CLARITY`]) or an octave of that note (its
+    /// pitch class within [`SAME_NOTE_CENTS`], another octave). Two notes sounding together read
+    /// as neither, but near one of them: the last note dragged flat at the clarity floor, or its
+    /// octave below, the mixture's quasi-period (A2 over a low B reads A1). A real new note is a
+    /// period, and passes; a held melody over a bass, which does not repeat cleanly (0.72–0.82),
+    /// is neither, and is not tested (`T-003c`).
+    #[must_use]
+    pub fn must_repeat(&self, pick: &PitchEstimate) -> bool {
+        self.locked.is_some_and(|locked| {
+            let off = cents(pick.frequency_hz, locked);
+            let class = off - 1_200.0 * (off / 1_200.0).round();
+            pick.clarity < UNVERIFIED_CLARITY
+                || (class.abs() <= SAME_NOTE_CENTS && off.abs() > JUMP_CENTS)
+        })
+    }
+
+    /// What the frame finally showed: `hz`, and whether its octave was known. A run of
+    /// `lock_frames` known frames of one note locks it.
+    pub fn shown(&mut self, hz: Option<f64>, known: bool, lock_frames: usize) {
+        let Some(hz) = hz.filter(|_| known) else {
+            self.known_run = None;
+            return;
+        };
+        let run = match self.known_run {
+            Some((note, run)) if cents(hz, note).abs() <= SAME_NOTE_CENTS => run + 1,
+            _ => 1,
+        };
+        self.known_run = Some((hz, run));
+        if run >= lock_frames {
+            self.locked = Some(hz);
+        }
     }
 
     /// A frame without an estimate. It breaks a run of confirming frames; `lock_frames` of them in
@@ -325,6 +397,35 @@ mod tests {
             );
         }
         assert!(!guard.judge(e2, None, None, 16).unwrap().ambiguous);
+    }
+
+    #[test]
+    fn after_a_locked_note_only_estimates_near_it_must_repeat() {
+        let mut guard = OctaveGuard::new();
+        // From silence nothing must repeat; nor after a run too short to lock, or not known.
+        assert!(!guard.must_repeat(&at(55.0, 0.61)));
+        for _ in 0..15 {
+            guard.shown(Some(110.0), true, 16);
+        }
+        assert!(!guard.after_a_note());
+        guard.shown(Some(110.0), false, 16);
+        guard.shown(Some(110.0), true, 16);
+        assert!(!guard.after_a_note());
+        for _ in 0..16 {
+            guard.shown(Some(110.0), true, 16);
+        }
+        assert!(guard.after_a_note());
+        // Locked on A2: its octaves and anything barely clear must repeat; a clear other note,
+        // or the A2 itself, need not.
+        assert!(guard.must_repeat(&at(55.0, 0.9)) && guard.must_repeat(&at(220.4, 0.9)));
+        assert!(guard.must_repeat(&at(106.6, 0.6)) && guard.must_repeat(&at(587.3, 0.74)));
+        assert!(!guard.must_repeat(&at(587.3, 0.78)) && !guard.must_repeat(&at(108.0, 0.9)));
+        assert!(!guard.must_repeat(&at(82.41, UNVERIFIED_CLARITY)));
+        // A switch keeps the lock; silence forgets it.
+        guard.switched();
+        assert!(guard.must_repeat(&at(55.0, 0.9)));
+        guard.reset();
+        assert!(!guard.must_repeat(&at(55.0, 0.61)));
     }
 
     #[test]

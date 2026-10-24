@@ -995,8 +995,9 @@ enum Gate {
     /// No judged wrong frame; the latency is recorded only. The old note rings on, loud, as a
     /// harmonic of the new one (the louder case, `T-003c`'s criteria record only).
     NoWrongFrame,
-    /// A chord: the old note rings on, loud, and is no harmonic of the new one. Never its common
-    /// period, never an ambiguous third note; the rest is recorded.
+    /// A chord: the old note rings on, loud, and is no harmonic of the new one. Never a third note:
+    /// not the notes' common period, and no frame, known or ambiguous, showing a note that is not
+    /// sounding (`octave::REPEATS`). Showing the old note is allowed; the rest is recorded.
     Chord,
     /// A gated case `T-003c` does not meet, recorded with its figures in its task file: Low's
     /// estimate under an old note ringing 12 dB down wanders past ±5 ¢ in single frames (to 6.1 ¢
@@ -1032,7 +1033,7 @@ impl fmt::Display for Named<'_> {
 /// - stopped, gap and 12 dB under: the needle within §1's fail line once the target range's other
 ///   ledger lines are added (150 ms for a low E, 260 ms for a bass's E or low B). The figure
 ///   against the targets (110 and 190 ms) is reported;
-/// - chords never show their common period or an ambiguous third note;
+/// - chords never show a third note: not their common period, nor any other note not sounding;
 /// - the octave is known within 1 s, except in chords.
 #[test]
 fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
@@ -1121,7 +1122,8 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
                     ));
                     let what = Named(case, rate, &trap);
                     if case.gate == Gate::Chord {
-                        assert!(trap.common_period == 0 && trap.third_ambiguous == 0, "{what}");
+                        let third = trap.third_known + trap.third_ambiguous;
+                        assert!(trap.common_period == 0 && third == 0, "{what}");
                         return;
                     }
                     assert_eq!(trap.wrong, 0, "{what}");

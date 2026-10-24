@@ -635,16 +635,22 @@ impl RangeSelector {
     /// the current pitch since it last changed; otherwise [`Octave::Ambiguous`].
     #[must_use]
     pub fn octave(&self, range: Range, hz: f64) -> Octave {
-        let verified = self.verified_at == Some(self.settled_at)
-            && range == self.current
-            && self
-                .pitch
-                .is_some_and(|pitch| cents(hz, pitch).abs() <= HARMONIC_TOLERANCE_CENTS);
-        if verified || self.table.tests_octave(range, hz) {
+        if self.verified(range, hz) || self.table.tests_octave(range, hz) {
             Octave::Known
         } else {
             Octave::Ambiguous
         }
+    }
+
+    /// Whether a fresh verifier has read the current pitch, `hz` from a frame of `range`, since it
+    /// last changed.
+    #[must_use]
+    pub fn verified(&self, range: Range, hz: f64) -> bool {
+        self.verified_at == Some(self.settled_at)
+            && range == self.current
+            && self
+                .pitch
+                .is_some_and(|pitch| cents(hz, pitch).abs() <= HARMONIC_TOLERANCE_CENTS)
     }
 
     /// Frames without a clear pitch, gate open, before `range` gives way to the next.
