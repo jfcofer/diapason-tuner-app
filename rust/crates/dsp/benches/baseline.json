@@ -1,16 +1,17 @@
 {
   "host": "Linux x86_64; AMD Ryzen 7 8840HS w/ Radeon 780M Graphics",
   "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
-  "date": "2026-10-23",
+  "date": "2026-10-24",
   "unit": "ns (median)",
   "benches": {
-    "chain/band_limit": 6605.891576405153,
-    "chain/decimate": 8668.752441523993,
-    "chain/frame/high": 5850.181201550387,
-    "chain/frame/low": 11763.389229445253,
-    "chain/frame/mid": 2707.7850757275964,
-    "nsdf/2048": 13012.602444852444,
-    "nsdf/4096": 28686.621614035088,
-    "nsdf/8192": 59682.71596638655
+    "chain/band_limit": 6504.58211985165,
+    "chain/decimate": 8438.70552092592,
+    "chain/frame/high": 5721.426698931236,
+    "chain/frame/low": 11520.997080630214,
+    "chain/frame/mid": 2629.7467786448933,
+    "chain/octave": 38.82568621702056,
+    "nsdf/2048": 12888.78479635956,
+    "nsdf/4096": 28086.24013024013,
+    "nsdf/8192": 58430.44730220279
   }
 }
