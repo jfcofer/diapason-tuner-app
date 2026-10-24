@@ -257,7 +257,11 @@ impl Mpm {
             return None;
         }
         let centre = index_from_f64(lag.round());
-        let maxima = KeyMaxima::new(&self.nsdf);
+        // Only the local-maximum test is needed: no scan for the first zero crossing, so O(1).
+        let maxima = KeyMaxima {
+            nsdf: &self.nsdf,
+            lag: 0,
+        };
         let peak = [centre.saturating_sub(1), centre, centre.saturating_add(1)]
             .into_iter()
             .filter(|&tau| tau < self.max_lag && maxima.is_local_maximum(tau))
