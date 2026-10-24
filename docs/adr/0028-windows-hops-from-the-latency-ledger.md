@@ -1,6 +1,6 @@
 # 0028 — Analysis windows, hops and the decimation crossover come from the latency ledger
 
-**Status:** Accepted · 2026-10-23
+**Status:** Accepted · 2026-10-23 · in part superseded by [0029](0029-octave-guard.md)
 
 ## Context
 
