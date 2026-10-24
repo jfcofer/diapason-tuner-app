@@ -999,13 +999,18 @@ enum Gate {
     /// not the notes' common period, and no frame, known or ambiguous, showing a note that is not
     /// sounding (`octave::REPEATS`). Showing the old note is allowed; the rest is recorded.
     Chord,
-    /// A gated case `T-003c` does not meet, recorded with its figures in its task file: Low's
-    /// estimate under an old note ringing 12 dB down wanders past ±5 ¢ in single frames (to 6.1 ¢
-    /// for a bass E, 8 ¢ for low B, a three-period window's limit, not an octave error), so the
-    /// needle's "stays" misses the fail line. Held instead to what it does meet: no judged wrong
-    /// frame, and the right note, octave known, within the fail line.
-    Shortfall,
+    /// **The 260 ms needle gate of these cases is `T-003f`'s** (owner, 2026-10-23): Low's estimate
+    /// under an old note ringing 12 dB down wanders past ±5 ¢ in single frames (to 6.1 ¢ for a bass
+    /// E, 8 ¢ for low B: a three-period window's limit, not an octave error), and `T-003f`'s median
+    /// of five removes single frames. Here: no judged wrong frame, the octave known within 1 s, the
+    /// right note within the fail line, and a regression ceiling on the needle's total, the worst
+    /// measured in `T-003c` at 48 and 44.1 kHz plus [`SHORTFALL_MARGIN_MS`]. `T-003f`'s criteria
+    /// turn these ceilings into the fail line.
+    Shortfall(f64, f64),
 }
+
+/// The margin over a [`Gate::Shortfall`] case's measured needle total, in ms: four Low hops.
+const SHORTFALL_MARGIN_MS: f64 = 20.0;
 
 /// One downward note change into a low note whose fundamental a range playing cannot see.
 struct TrapCase {
@@ -1032,7 +1037,8 @@ impl fmt::Display for Named<'_> {
 /// - no judged frame shows a wrong note (an ambiguous one by its pitch class), except in chords;
 /// - stopped, gap and 12 dB under: the needle within §1's fail line once the target range's other
 ///   ledger lines are added (150 ms for a low E, 260 ms for a bass's E or low B). The figure
-///   against the targets (110 and 190 ms) is reported;
+///   against the targets (110 and 190 ms) is reported. Two 12 dB-under cases are `T-003f`'s to
+///   gate, and held to regression ceilings here ([`Gate::Shortfall`]);
 /// - chords never show a third note: not their common period, nor any other note not sounding;
 /// - the octave is known within 1 s, except in chords.
 #[test]
@@ -1060,7 +1066,7 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
             a2,
             low_b,
             Ending::Under(1.5, 12.0),
-            Gate::Shortfall,
+            Gate::Shortfall(648.3, 421.4),
         ),
         case("A2 → low B", a2, low_b, Ending::Ringing(1.5), Gate::Chord),
     ];
@@ -1068,7 +1074,7 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
         // Low reads the bass E under an A2 ringing 12 dB down with single frames up to 6.1 ¢ off
         // for as long as the A2 lasts: with τ = 3 s, past the fail line (see `Gate::Shortfall`).
         let under = if tau > 2.0 {
-            Gate::Shortfall
+            Gate::Shortfall(393.3, 466.3)
         } else {
             Gate::FailLine
         };
@@ -1132,8 +1138,11 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
                         Gate::FailLine => {
                             assert!(total <= fail, "{what}: {total:.1} ms, fails at {fail} ms");
                         }
-                        Gate::Shortfall => {
+                        Gate::Shortfall(at_48, at_44) => {
+                            let measured = if rate == 48_000 { at_48 } else { at_44 };
+                            let ceiling = measured + SHORTFALL_MARGIN_MS;
                             assert!(arrived <= fail, "{what}: {arrived:.1} ms, fails at {fail} ms");
+                            assert!(total <= ceiling, "{what}: {total:.1} ms, ceiling {ceiling} ms");
                         }
                         Gate::NoWrongFrame | Gate::Chord => {}
                     }
