@@ -67,10 +67,10 @@ every case below, no frame shows a wrong note once judged by the leap rule (§2)
 | Downward change, 48 / 44.1 kHz | Needle (ms) | Total (ms) | Octave known (ms) | Target / fails at |
 |---|---|---|---|---|
 | E4 → low E, E4 stopped | 62.5 / 61.3 | 120.8 / 119.7 | 170 / 170.5 | 110 / 150 |
-| E4 → low E, after a 0.1 s gap | 32.5 / 32.4 | 90.8 / 90.8 | 140 / 139.0 | 110 / 150 |
+| E4 → low E, after a 0.1 s gap | 35 / 37.5 | 93.3 / 95.9 | 145 / 149.2 | 110 / 150 |
 | E4 → low E, E4 rings 12 dB under (τ 0.6–3 s) | 55 / 53.7 | 113.3 / 112.1 | 165 / 165.4 | 110 / 150 |
 | A2 → bass E, A2 stopped | 110 / 113.6 | 173.3 / 176.9 | as the needle | 190 / 260 |
-| A2 → bass E, after a 0.1 s gap | 60 / 58.5 | 123.3 / 121.8 | as the needle | 190 / 260 |
+| A2 → bass E, after a 0.1 s gap | 85 / 83.4 | 148.3 / 146.8 | as the needle | 190 / 260 |
 | A2 → bass E, A2 rings 12 dB under, τ 0.6 / 1.5 s | 110, 185 / 148.5 | 173.3, 248.3 / 211.8 | as the needle | 190 / 260 |
 | A2 → low B, A2 stopped | 105 / 108.6 | 168.3 / 171.9 | as the needle | 190 / 260 |
 | **Gated in `T-003f`:** A2 → bass E, 12 dB under, τ 3 s | 330 / 402.9 | 393.3 / 466.3 | as the needle | 190 / 260 |
@@ -86,9 +86,15 @@ reserves, removes single frames. Until then the test holds both to regression ce
 see 41.2 Hz, reads it (§2), so 105–110 ms after the needle.
 
 Two louder cases are recorded only. E4 ringing at the new note's level is a harmonic of it: the
-needle moves in 12.5 / 11.3 ms, and the octave is known in 175 ms. A2 ringing over a bass E or a low
+needle moves in 60 / 58.7 ms, and the octave is known in 170 ms. A2 ringing over a bass E or a low
 B is a chord. It shows `None`, ambiguity or the old note, never a third note: not the notes'
-common period, and not a reading near the old one that is no period (§3's repeat test).
+common period, and not a reading near the old one that is no single note (§3). That holds for those
+two chords and E4 over low E, each detuned ±30 ¢ (`tests/chain.rs`,
+`a_detuned_downward_change_or_chord_never_shows_a_wrong_or_third_note`), **and not for loud chords
+in general:** a consonant interval (a fourth or fifth: A2 + D3 reads D1, D3 + G3 G1, B3 + E4 E2, at
+clarity 1.0) is periodic at the common period and cannot be told from one note by periodicity, and
+other pairs read the old note's sub-harmonic (G2 over low B, C3 over bass E). That is
+`T-014-consonant-chords`, a known gap that predates `T-003c`.
 
 ## 2. Signal chain (tuner)
 
@@ -176,9 +182,14 @@ current band moves the chain to that pitch's range under four conditions:
 - two such frames of that verifier agree, or such frames have agreed for 250 ms (a bound on how
   long a wrong reading can hold a range, `REFERENCE_PATIENCE_SECONDS`);
 - it is at least 28.32 Hz, and it is not the octave below a pitch the chain has just moved up to.
-  That would be the lower string still ringing under the one just plucked, which stays ambiguous.
+  That would be the lower string still ringing under the one just plucked, which stays ambiguous;
+  the selected range reading it does not move the chain down either (`RangeSelector::observe`).
 
-Two more rules keep guesses off the display, and §3's repeat test a third. No estimate below 28.32 Hz is shown: it is a chord's
+A verifier's reading must pass the same tests as an estimate (§3, after a note) before it verifies
+an octave, or a chord's reading would. `Selection::Fixed` runs no verifier: a range locked by hand
+leaves the octaves it cannot test ambiguous.
+
+Two more rules keep guesses off the display, and §3's rules after a note more. No estimate below 28.32 Hz is shown: it is a chord's
 common period (A2 over a bass E reads 27.5 Hz). An estimate whose octave its range cannot test is
 taken only from clarity 0.75 (`octave::UNVERIFIED_CLARITY`). Such a reading is a partial of a
 fundamental the range cannot see, and the other partials skew it: Mid's reading of a weak bass E at
@@ -188,7 +199,7 @@ From silence, a low E is in Mid within 25 ms and its octave is known about 140 m
 a G3 is known about 65 ms after (`tests/chain.rs`,
 `an_octave_the_range_cannot_test_is_ambiguous_until_a_lower_range_reads_the_note`, which bounds
 it by the verifier's span and two of its hops). In High this costs a Mid and a Low frame per hop
-(0.72 % of a host core in all). A no-gap leap sweep (sine, sawtooth, weak fundamental, pinch
+(0.78 % of a host core in all, `chain/analysis`). A no-gap leap sweep (sine, sawtooth, weak fundamental, pinch
 harmonic) asserts that no judged frame shows a wrong note and that each leap switches at most
 once.
 
@@ -239,14 +250,23 @@ defences, which work as one, over the selected range's frames:
   at 2τ, so the octave below a note is as clear as the note: measured, at least 0.999 of it. A weak
   fundamental's second partial reads 0.55–0.65 of it (`pitch::tests`). Preferring the old octave
   without a bound would hold a leap from E2 to E3 on E2 for good.
-- **The repeat test, against chords.** After a note shown with its octave known for a window, an
-  estimate that is barely clear (under 0.75) or an octave of that note must be a period. Its NSDF
-  peak at 2τ must reach 0.975 of its clarity (`REPEATS`), wherever the range can search 2τ; where it
-  cannot (Mid at 55 Hz), the estimate stays `ambiguous octave` until a verifier reads it. Two notes
-  sounding together read as neither, but near one of them, and do not repeat. Measured on filled
-  windows: single notes, plucks with inharmonicity to 10⁻³, and notes under a string 12 dB down
-  read at least 0.9895. The third notes of A2 over a bass E or a low B read at most 0.959. A melody
-  over a bass (0.72–0.82) is the held note, and is not tested.
+- **After a note, estimates must prove they are one note.** While a note shown with its octave
+  known for a window may still sound, two strings sound together and read as neither, near one of
+  them. An estimate that is barely clear (under 0.75) or an octave of that note must repeat at 2τ:
+  its peak there at least 0.975 of its clarity (`REPEATS`); where the range cannot search 2τ (Mid at
+  55 Hz), it stays `ambiguous octave` until a verifier reads it. Any other note needs clarity 0.85
+  (`NEW_NOTE_CLARITY`). Measured on filled windows: correct readings repeat at ≥ 0.9895 and are
+  ≥ 0.9 clear, the third notes of A2 over a bass E or a low B and of E4 over low E (each ±30 ¢)
+  repeat at ≤ 0.959 and are ≤ 0.833 clear. Held-out notes and detunings passed every gated case
+  with these values. A melody over a bass (repeats 0.72–0.82, clarity ≥ 0.775) is the held note.
+- **The octave above a held note.** A string plucked an octave above one still ringing, in a range
+  that sees both, reads as the lower one. Its τ/2 NSDF level (`Mpm::value_at`, a level and not a
+  peak, which comes and goes where barely formed) rising by `RISE` (0.5) over its floor since the
+  lock makes the held note ambiguous. And the note the estimate left by moving up an octave stays
+  ambiguous until it has been read for a window without the upper one in between (G3 under G4,
+  read by a range that sees both).
+- **Not handled:** loud chords other than those families, consonant intervals above all, which
+  are periodic at their common period (`T-014-consonant-chords`, §1).
 
 Tests: `octave::tests` covers both cases of (b), the hysteresis holding and giving way, the
 threshold at its edge and in absolute terms, and which estimates must repeat. `tests/chain.rs` holds the leap sweep to zero wrong
