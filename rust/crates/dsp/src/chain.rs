@@ -20,7 +20,7 @@ use crate::convert::{index_from_f64, index_to_f64};
 use crate::filter::{DcBlock, Decimator, FilterError};
 use crate::frame::{FrameAssembler, FrameError};
 use crate::gate::{GateConfig, GateError, NoiseGate};
-use crate::octave::{Guarded, Octave, OctaveGuard, REPEAT_REACH, REPEATS, UNVERIFIED_CLARITY};
+use crate::octave::{Guarded, Octave, OctaveGuard, REPEATS, UNVERIFIED_CLARITY};
 use crate::pitch::{Mpm, MpmConfig, MpmError, PitchEstimate};
 use crate::range::{LOWEST_FUNDAMENTAL_HZ, Observation, Path, Range, RangeSelector, RangeTable};
 
@@ -346,11 +346,7 @@ impl Analysis {
             });
         } else if matches!(self.selection, Selection::Auto(_)) && self.gate_open && range < current
         {
-            // After a note, a verifier's reading must be a period too, or a chord's would verify.
-            let reading = self
-                .analyse(range)
-                .filter(|e| !self.guard.must_repeat(e) || self.repeats(range, e))
-                .map(|e| e.frequency_hz);
+            let reading = self.analyse(range).map(|e| e.frequency_hz);
             self.selector
                 .observe_verifier(range, reading, self.position);
             if self.selector.current() != current {
@@ -431,7 +427,7 @@ impl Analysis {
         };
         let lag = 2.0 * pick.period_samples;
         detector
-            .peak_within(frames.window(), rate, lag, REPEAT_REACH)
+            .peak_near(frames.window(), rate, lag)
             .is_some_and(|double| double.clarity >= REPEATS * pick.clarity)
     }
 
