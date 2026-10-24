@@ -46,7 +46,9 @@ fixed-do, German), and pitch display (cents / frequency / both).
 **Edge cases with defined behaviour**
 Very low notes take longer to settle — show it as intent (a slower, deliberate settle), not as lag.
 Harmonics and pinch harmonics may read an octave up: the octave guard handles it, and the display
-never flickers between octaves. Ambient noise raises the gate rather than producing wrong readings.
+never flickers between octaves. Where the octave is not yet decided, `ambiguous octave` shows the
+letter and the cents without the octave number (`adr/0029`). Ambient noise raises the gate rather
+than producing wrong readings.
 Two strings ringing at once: hold the last confident estimate rather than alternating.
 
 ## 3. Metronome

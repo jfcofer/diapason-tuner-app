@@ -51,27 +51,43 @@ the old 60 ms target before any analysis. Tuner snapshots now publish at the dis
 each target sits just above its range's worst case. Under low-power mode the tuner trades latency
 for battery, and the snapshot line of this ledger does not apply.
 
-**The ledger, and the tests behind it, measure from silence.** A note that follows another can
-cost more. Moving *down* a range is the costly case: the range playing cannot see the new note's
-fundamental, and reads its second partial until the Low range, analysed alongside, moves the chain
-(§2). Measured with a weak fundamental (partials 0.3, 1, 0.4) by `tests/chain.rs`,
-`a_downward_change_into_a_weak_fundamental_settles_within_a_second`. Each total adds the target
-range's other ledger lines (58.3 ms for Mid, 63.3 ms for Low) to the chain's time.
+**The ledger measures from silence; a note that follows another is gated on its own**
+(`tests/chain.rs`, `a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave`,
+`adr/0029`). Moving *down* a range is the costly case: the range playing cannot see the new note's
+fundamental and reads a partial, until a range below, analysed alongside, moves the chain (§2). Two
+times are measured from the new note's onset, each to the first frame from which every frame holds:
+- **the needle moves:** the right pitch class within ±5 ¢. A frame flagged `ambiguous octave`
+  counts (owner, 2026-10-23), because an octave error keeps the letter and the cents;
+- **the octave is known:** the right note within ±5 ¢, not flagged.
 
-| Downward change, 48 / 44.1 kHz | Chain (ms) | Total (ms) | Target / fails at |
-|---|---|---|---|
-| E4 → low E, E4 stopped | 140 / 135 | 198 / 193 | 110 / 150 |
-| E4 → low E, after a 0.1 s gap | 27.5 / 27.3 | 86 / 86 | 110 / 150 |
-| E4 → low E, E4 ringing on (τ 0.6–3 s) | 120 / 120 | 178 / 178 | 110 / 150 |
-| A2 → bass E, A2 stopped | 160 / 159 | 223 / 222 | 190 / 260 |
-| A2 → bass E, after a 0.1 s gap | 50 / 54 | 113 / 117 | 190 / 260 |
-| A2 → bass E, A2 ringing on, τ 0.6 s | 1015 / 1051 | 1078 / 1115 | 190 / 260 |
-| A2 → bass E, A2 ringing on, τ ≥ 1.5 s | > 1500 | — | 190 / 260 |
+A total adds the target range's other ledger lines (58.3 ms for Mid, 63.3 ms for Low) to the
+needle's time. The new notes have a weak fundamental (`synth::WEAK_FUNDAMENTAL`, `WEAK_LOW_B`). In
+every case below, no frame shows a wrong note once judged by the leap rule (§2).
 
-So downward changes miss §1's targets, and some miss the fail lines; a ringing A2 under a bass E
-is a chord, whose common period Low reads. This is owed by `T-003c-octave-guard`, which gates
-downward note changes inside §1's fail lines, 150 ms and 260 ms. `T-003b` only bounds them (1 s,
-except chords) and records them under ceilings. The budget rows above are unchanged.
+| Downward change, 48 / 44.1 kHz | Needle (ms) | Total (ms) | Octave known (ms) | Target / fails at |
+|---|---|---|---|---|
+| E4 → low E, E4 stopped | 62.5 / 61.3 | 120.8 / 119.7 | 170 / 170.5 | 110 / 150 |
+| E4 → low E, after a 0.1 s gap | 32.5 / 32.4 | 90.8 / 90.8 | 140 / 139.0 | 110 / 150 |
+| E4 → low E, E4 rings 12 dB under (τ 0.6–3 s) | 55 / 53.7 | 113.3 / 112.1 | 165 / 165.4 | 110 / 150 |
+| A2 → bass E, A2 stopped | 115 / 118.6 | 178.3 / 181.9 | as the needle | 190 / 260 |
+| A2 → bass E, after a 0.1 s gap | 50 / 53.5 | 113.3 / 116.8 | as the needle | 190 / 260 |
+| A2 → bass E, A2 rings 12 dB under, τ 0.6 / 1.5 s | 110, 185 / 148.5 | 173.3, 248.3 / 211.8 | as the needle | 190 / 260 |
+| A2 → low B, A2 stopped | 115 / 113.6 | 178.3 / 176.9 | as the needle | 190 / 260 |
+| **Not met:** A2 → bass E, 12 dB under, τ 3 s | 330 / 402.9 | 393.3 / 466.3 | as the needle | 190 / 260 |
+| **Not met:** A2 → low B, 12 dB under, τ 1.5 s | 585 / 358.0 | 648.3 / 421.4 | as the needle | 190 / 260 |
+
+Every gated change meets its fail line but the last two, and they miss on cents, not octave. The
+right note, octave known, is shown from 95–114 ms (totals 158–177 ms). Low's estimate under a
+string ringing 12 dB down then wanders past ±5 ¢ in single frames, by up to 6.1 ¢ under a bass E
+and 8 ¢ under a low B, for as long as that string lasts: a three-period window's limit. `T-003f`'s
+median of five, which the smoothing line reserves, removes single frames. The test records both as
+`Gate::Shortfall`, held to what they meet. A low E's octave is known only once Low, which can see
+41.2 Hz, reads it (§2), so 105–110 ms after the needle.
+
+Two louder cases are recorded only. E4 ringing at the new note's level is a harmonic of it: the
+needle moves in 12.5 / 11.3 ms, and the octave is known in 175 ms. A2 ringing over a bass E or a low
+B is a chord. It never shows the notes' common period or an ambiguous third note. Mid can read the
+A2's octave below, 55 Hz, as the mixture's period, though, and that shows as a third note (§3).
 
 ## 2. Signal chain (tuner)
 
@@ -85,9 +101,9 @@ input ──▶ │ DC block ──▶ gate                              │ ─
           │      ▼                                                                         │
           │ frames per range ──▶ NSDF via FFT ──▶ peak pick ──▶ parabolic interpolation    │
           │                                                     (common overlap, §3)       │
-          │ Low reference frame ──▶ range selector (hysteresis, scan, octave guard)        │
+          │ octave guard (§3) ──▶ range selector (hysteresis, scan; verifier frames below) │
           └──────▼─────────────────────────────────────────────────────────────────────────┘
-   clarity ──▶ octave guard ──▶ median(5) ──▶ one-euro filter ──▶ snapshot (60 Hz)
+   estimate + octave flag ──▶ median(5) ──▶ one-euro filter ──▶ snapshot (60 Hz)
 ```
 
 **Pre-processing.** A one-pole high-pass at 20 Hz removes DC and handling rumble
@@ -142,19 +158,38 @@ from Low is in the decimator's stopband) is found by scanning after a window and
 frames. The scan runs downward (High → Mid → Low → High), since a range that hears nothing is most
 often above the note. Every range's history is kept full, so a switch costs one hop.
 
-A range cannot see below 1.5 periods of its floor, since `Mpm` searches lags up to half the
-window: High is blind below 107 Hz, Mid below 50 Hz. A low E with a weak fundamental, heard by
-High, would read as its second partial, which High holds. So while another range is selected,
-each Low frame is analysed too. A Low pitch below the current band moves the chain to the Low
-pitch's range under three conditions:
+**Verifiers decide the octave a range cannot test** (`adr/0029`). A range cannot see below 1.5
+periods of its floor, since `Mpm` searches lags up to half the window (`RangeTable::sees`): High is
+blind below 106.9 Hz, Mid below 50.2 Hz (107.0 and 50.3 at 44.1 kHz). So a range cannot test the
+octave below an estimate under twice that: High's below 213.8 Hz, Mid's from 56.6 to 100.4 Hz
+(`RangeTable::tests_octave`; under 56.6 Hz the octave below is under `LOWEST_FUNDAMENTAL_HZ`,
+28.32 Hz, and no note). A low E with a weak fundamental, heard by High, reads as its second
+partial, which High holds. So each frame of a range below the selected one is analysed too, as a
+**verifier**: Mid and Low under High, Low under Mid. An estimate whose range cannot test its octave
+is flagged `ambiguous octave` until a verifier that sees the octave below reads the estimate itself
+in a window that started after the note did (`RangeSelector::octave`). A verifier's pitch below the
+current band moves the chain to that pitch's range under four conditions:
 - the current range's last clear pitch is 2, 3 or 4 times it, or there is none;
-- the Low window started after the last switch, pitch change or end of a held reading, since a Low
+- the verifier window started after the last switch, pitch change or end of a held reading, since a
   window spanning a note change reads the notes' common period;
-- two such Low frames agree.
+- two such frames of that verifier agree, or such frames have agreed for 250 ms (a bound on how
+  long a wrong reading can hold a range, `REFERENCE_PATIENCE_SECONDS`);
+- it is at least 28.32 Hz, and it is not the octave below a pitch the chain has just moved up to.
+  That would be the lower string still ringing under the one just plucked, which stays ambiguous.
 
-A low E after an E4 with no gap settles in Mid after 135–140 ms. This costs one Low frame per 5 ms.
-A no-gap leap sweep asserts that no range switched into shows a wrong note, and that each leap
-switches at most once (`tests/chain.rs`).
+Two more rules keep guesses off the display. No estimate below 28.32 Hz is shown: it is a chord's
+common period (A2 over a bass E reads 27.5 Hz). An estimate whose octave its range cannot test is
+taken only from clarity 0.75 (`octave::UNVERIFIED_CLARITY`). Such a reading is a partial of a
+fundamental the range cannot see, and the other partials skew it: Mid's reading of a weak bass E at
+clarity 0.6 is up to 32 ¢ off.
+
+From silence, a low E is in Mid within 25 ms and its octave is known about 140 ms after the onset;
+a G3 is known about 65 ms after (`tests/chain.rs`,
+`an_octave_the_range_cannot_test_is_ambiguous_until_a_lower_range_reads_the_note`, which bounds
+it by the verifier's span and two of its hops). In High this costs a Mid and a Low frame per hop
+(0.72 % of a host core in all). A no-gap leap sweep (sine, sawtooth, weak fundamental, pinch
+harmonic) asserts that no judged frame shows a wrong note and that each leap switches at most
+once.
 
 ## 3. Pitch detection: NSDF / McLeod (MPM)
 
@@ -187,10 +222,26 @@ Implementation contract:
    frame gives no estimate. Below 0.6 the estimate is discarded and the UI shows "listening"
    rather than a wrong note.
 
-**Octave guard.** The most visible failure mode of any tuner. Two defences: (a) before accepting a
-peak, test whether a peak of comparable clarity exists at τ/2 or 2τ and prefer the one consistent
-with the previous accepted estimate; (b) hysteresis — a jump of more than 600 cents from a
-currently-locked estimate requires three consecutive confirming frames.
+**Octave guard.** The most visible failure mode of any tuner (`dsp::octave`, `adr/0029`). Two
+defences, which work as one, over the selected range's frames:
+- **(b) Hysteresis.** A jump of more than 600 ¢ (`JUMP_CENTS`) from a *locked* estimate (accepted,
+  within 50 ¢ of itself, for a window of frames) needs three consecutive frames agreeing within
+  50 ¢ (`CONFIRM_FRAMES`). Until then the frame gives `None`, never the old note. From an estimate
+  not yet locked, a jump is taken at once, so an onset settles at its own pace.
+- **(a) The τ/2 and 2τ test.** While such a jump waits, `Mpm::peak_near` reads the NSDF's peaks at
+  half and twice the chosen lag, refined like the period (step 5, O(1)). If one has *comparable*
+  clarity, at least 0.9 of the chosen peak's (`COMPARABLE`, mirroring `k`), and it is the held note,
+  the frame shows it, flagged `ambiguous octave`. The held note is the one consistent with the
+  previous estimate; the frame alone cannot tell the octaves apart. While the pick keeps flipping
+  between octaves, the held note stays flagged for a window.
+- **Why a third frame wins even against a comparable peak.** Every periodic signal is also periodic
+  at 2τ, so the octave below a note is as clear as the note: measured, at least 0.999 of it. A weak
+  fundamental's second partial reads 0.55–0.65 of it (`pitch::tests`). Preferring the old octave
+  without a bound would hold a leap from E2 to E3 on E2 for good.
+
+Tests: `octave::tests` covers both cases of (b), the hysteresis holding and giving way, and the
+threshold at its edge and in absolute terms. `tests/chain.rs` holds the leap sweep to zero wrong
+frames. The octave of notes a range cannot test is the range selector's (§2).
 
 **Smoothing.** Two separate values leave the engine, and conflating them is a design error:
 - `frequency_raw` — unsmoothed, used for lock detection and the strobe phase.
