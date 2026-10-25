@@ -146,6 +146,17 @@ impl Range {
         }
     }
 
+    /// The range directly above, which [`RangeSelector::observe_watcher`] watches for a new note
+    /// entering over the one held: `None` for High.
+    #[must_use]
+    pub fn above(self) -> Option<Self> {
+        match self {
+            Self::Low => Some(Self::Mid),
+            Self::Mid => Some(Self::High),
+            Self::High => None,
+        }
+    }
+
     /// The next range in a scan: downward, wrapping from the lowest to the highest. A range that
     /// hears no pitch is most often below its reach (High is blind under 107 Hz, Mid under 50 Hz),
     /// while Low, which sees down to 20 Hz, misses only what is above its 1.5 kHz content. An
@@ -436,6 +447,15 @@ pub enum Observation {
     Pitch(f64),
     /// The gate is open but the frame had no clear pitch.
     Unclear,
+    /// The frame had a clear pitch, but the octave guard withheld it (`crate::octave`): not proven
+    /// one note yet, or a jump waiting for confirmation. Like [`Self::Unclear`], except that it is
+    /// no miss: a range that hears a pitch it may not show yet has no reason to scan away from it.
+    Withheld,
+    /// The frame had a pitch, shown but barely clear (`crate::octave::UNVERIFIED_CLARITY`): no
+    /// evidence of a change of note, nor that the note held goes on. After a held reading it is
+    /// the note dying away, and a miss, so that the scan to the next note is not delayed; while no
+    /// reading was held (a quiet note in noise, or under a louder one) it is [`Self::Withheld`].
+    Faint,
     /// The gate is closed.
     Silent,
 }
@@ -548,6 +568,15 @@ pub struct RangeSelector {
     verified_at: Option<u64>,
     /// The pitch the chain left when it last moved up an octave, while that move stands.
     came_from: Option<f64>,
+    /// The watcher's last candidate, for the agreement of two in a row.
+    watched: Option<f64>,
+    /// The first pitch read since the input last fell silent: while the current pitch is another
+    /// one, the first may still sound under it.
+    first: Option<f64>,
+    /// Whether a held reading ended in [`Observation::Faint`] frames, which then count as misses.
+    fading: bool,
+    /// Low's latest reading as a verifier, before any test.
+    low: Option<f64>,
     /// Per verifier (Low, Mid): its last eligible pitch, for the agreement of two in a row.
     reference: [Option<f64>; 2],
     /// Consecutive clear frames in the current range.
@@ -592,6 +621,10 @@ impl RangeSelector {
             settled_at: 0,
             verified_at: None,
             came_from: None,
+            watched: None,
+            first: None,
+            fading: false,
+            low: None,
             reference: [None; 2],
             clear_run: 0,
             streak: [None; 2],
@@ -625,6 +658,17 @@ impl RangeSelector {
         end.saturating_sub(span) >= self.settled_at
     }
 
+    /// Input samples a frame of `range` depends on, filter taps included.
+    #[must_use]
+    pub fn span(&self, range: Range) -> u64 {
+        let [low, mid, high] = self.spans;
+        match range {
+            Range::Low => low,
+            Range::Mid => mid,
+            Range::High => high,
+        }
+    }
+
     /// The range for the next frame.
     #[must_use]
     pub fn current(&self) -> Range {
@@ -654,6 +698,12 @@ impl RangeSelector {
                 .is_some_and(|pitch| cents(hz, pitch).abs() <= HARMONIC_TOLERANCE_CENTS)
     }
 
+    /// The current range's last clear pitch, while it stands: none after a switch or silence.
+    #[must_use]
+    pub fn pitch(&self) -> Option<f64> {
+        self.pitch
+    }
+
     /// Frames without a clear pitch, gate open, before `range` gives way to the next.
     #[must_use]
     pub fn miss_limit(&self, range: Range) -> usize {
@@ -669,6 +719,7 @@ impl RangeSelector {
             self.pitch = None;
             self.settled_at = at;
             self.came_from = None;
+            self.watched = None;
             self.reference = [None; 2];
             self.clear_run = 0;
             self.streak = [None; 2];
@@ -701,6 +752,8 @@ impl RangeSelector {
             Observation::Pitch(hz) if hz.is_finite() && hz > 0.0 => {
                 self.misses = self.misses.saturating_sub(1);
                 self.clear_run += 1;
+                self.fading = false;
+                self.first.get_or_insert(hz);
                 // The lower string still ringing under the octave the chain just moved up to, read
                 // by the current range itself: neither a change of note nor a reason to move down.
                 if self
@@ -733,20 +786,87 @@ impl RangeSelector {
                 self.misses = 0;
                 self.pitch = None;
                 self.current = self.home;
+                self.first = None;
                 self.changed(end);
                 self.clear_run = 0;
+            }
+            Observation::Withheld => {
+                if self.clear_run >= self.held_frames(self.current) {
+                    self.changed(end);
+                }
+                self.clear_run = 0;
+            }
+            Observation::Faint => {
+                if self.clear_run >= self.held_frames(self.current) {
+                    self.changed(end);
+                    self.fading = true;
+                }
+                self.clear_run = 0;
+                if self.fading {
+                    self.miss(end);
+                }
             }
             Observation::Pitch(_) | Observation::Unclear => {
                 if self.clear_run >= self.held_frames(self.current) {
                     self.changed(end);
                 }
                 self.clear_run = 0;
-                self.misses += 1;
-                if self.misses >= self.miss_limit(self.current) {
-                    self.switch(self.current.next(), end);
-                    self.misses = 0;
+                self.miss(end);
+            }
+        }
+        self.current
+    }
+
+    /// One more frame without a pitch the current range hears: past the miss limit, scan.
+    fn miss(&mut self, end: u64) {
+        self.misses += 1;
+        if self.misses >= self.miss_limit(self.current) {
+            // A scan is no change of note: a verifier window from before it holds nothing the new
+            // range's first frames do not, so it stays fresh. (After a gap, the scan leaves the
+            // range that would hear the next note; keeping freshness lets that range's verifier
+            // frames bring the chain back as soon as they are clear.)
+            let settled = self.settled_at;
+            self.switch(self.current.next(), end);
+            self.settled_at = settled;
+            self.misses = 0;
+        }
+    }
+
+    /// Take a frame of `range`, the range directly above the current one, that ended at stream
+    /// position `end`, analysed as a **watcher**: `reading` is its clear pitch and clarity, and
+    /// `current_clarity` that of the current range's latest estimate. A range that sees a held low
+    /// note keeps reading it when a louder, higher one enters (a melody over a held bass reads as
+    /// the bass dragged off its pitch), and no frame of its own moves the chain up. The watcher
+    /// does, when its reading is above the current band, is no harmonic (1 to 4 times) of the
+    /// current pitch, is clearer than the current range's estimate, comes from a window that
+    /// started after the current pitch did, and two such frames agree.
+    pub fn observe_watcher(
+        &mut self,
+        range: Range,
+        reading: Option<(f64, f32)>,
+        current_clarity: Option<f32>,
+        end: u64,
+    ) -> Range {
+        self.rewind(end);
+        let fresh = self.fresh(range, end);
+        let candidate = reading.filter(|&(hz, clarity)| {
+            let above = hz >= self.current.floor_hz() && !self.table.holds(self.current, hz);
+            let other = self.pitch.is_some_and(|pitch| !multiple(hz, pitch));
+            let clearer = current_clarity.is_none_or(|current| clarity > current);
+            range > self.current && fresh && hz.is_finite() && above && other && clearer
+        });
+        match candidate {
+            Some((hz, _)) => {
+                let agrees = self
+                    .watched
+                    .is_some_and(|previous| cents(hz, previous).abs() <= HARMONIC_TOLERANCE_CENTS);
+                if agrees {
+                    self.switch(self.table.range_for(hz), end);
+                } else {
+                    self.watched = Some(hz);
                 }
             }
+            None => self.watched = None,
         }
         self.current
     }
@@ -777,6 +897,23 @@ impl RangeSelector {
             let consistent = self.pitch.is_none_or(|current| harmonic(current, hz));
             below && hz >= LOWEST_FUNDAMENTAL_HZ && consistent && !ringing
         });
+        // After a note, which may still sound, Mid can read a period common to it and the next
+        // note: a melody at 4.76 times a held bass reads as a quarter of the melody, at clarity
+        // 0.8 to 0.9. Low, which sees lower, still reads the bass. A Mid reading above a pitch Low
+        // reads is no lowest note, so it moves nothing. (Only a lower one vetoes: Low's window
+        // still holding the note before, above, must not delay a change down.)
+        if index == 0 {
+            self.low = reading;
+        }
+        let after_a_note = self.first.is_some_and(|first| {
+            self.pitch
+                .is_none_or(|pitch| cents(pitch, first).abs() > HARMONIC_TOLERANCE_CENTS)
+        });
+        let under = |hz: f64| {
+            self.low
+                .is_some_and(|low| cents(hz, low) > HARMONIC_TOLERANCE_CENTS)
+        };
+        let candidate = candidate.filter(|&hz| index == 0 || !after_a_note || !under(hz));
         let (Some(hz), Some(reference), Some(streak)) = (
             candidate,
             self.reference.get_mut(index),
@@ -810,6 +947,13 @@ impl RangeSelector {
         }
         self.current
     }
+}
+
+/// Whether `hz` is within [`HARMONIC_TOLERANCE_CENTS`] of 1 to [`MAX_HARMONIC`] times `pitch`.
+fn multiple(hz: f64, pitch: f64) -> bool {
+    let ratio = hz / pitch;
+    let k = ratio.round();
+    (1.0..=MAX_HARMONIC).contains(&k) && cents(ratio, k).abs() <= HARMONIC_TOLERANCE_CENTS
 }
 
 /// Whether `a` is within [`HARMONIC_TOLERANCE_CENTS`] of twice `b`.

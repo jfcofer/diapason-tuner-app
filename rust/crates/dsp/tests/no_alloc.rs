@@ -243,10 +243,9 @@ fn no_stage_allocates() {
                     .judge(at(2.0), None, Some(pick), 0.0, 16)
                     .is_some_and(|g| g.ambiguous);
                 for _ in 0..16 {
-                    guard.shown(Some(pick.frequency_hz), true, 16);
+                    guard.shown(Some(pick.frequency_hz), true, 16, 40);
                 }
-                reached[4] =
-                    guard.must_repeat(&at(2.0)) && guard.is_new_note(1.5 * pick.frequency_hz);
+                reached[4] = guard.must_repeat(&at(2.0)) && !guard.must_repeat(&at(1.5));
                 guard.reset();
                 for _ in 0..4 {
                     guard.judge(pick, None, None, 0.0, 16);

@@ -1014,6 +1014,10 @@ enum Gate {
     /// measured in `T-003c` at 48 and 44.1 kHz plus [`SHORTFALL_MARGIN_MS`]. `T-003f`'s criteria
     /// turn these ceilings into the fail line.
     Shortfall(f64, f64),
+    /// **A chord `T-014-consonant-chords` owns** (owner, 2026-10-25: single notes win over chord
+    /// rejection): measured and reported, not gated. Holding it cost single notes (a new note's
+    /// clarity bar after a locked one slowed notes after a gap and dropped noisy ones).
+    Recorded,
 }
 
 /// The margin over a [`Gate::Shortfall`] case's measured needle total, in ms: four Low hops.
@@ -1075,7 +1079,13 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
             Ending::Under(1.5, 12.0),
             Gate::Shortfall(648.3, 421.4),
         ),
-        case("A2 → low B", a2, low_b, Ending::Ringing(1.5), Gate::Chord),
+        case(
+            "A2 → low B",
+            a2,
+            low_b,
+            Ending::Ringing(1.5),
+            Gate::Recorded,
+        ),
     ];
     let ringing = [0.6, 1.5, 3.0].into_iter().flat_map(|tau| {
         // Low reads the bass E under an A2 ringing 12 dB down with single frames up to 6.1 ¢ off
@@ -1134,6 +1144,9 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
                         trap.known_ms,
                     ));
                     let what = Named(case, rate, &trap);
+                    if case.gate == Gate::Recorded {
+                        return;
+                    }
                     if case.gate == Gate::Chord {
                         let third = trap.third_known + trap.third_ambiguous;
                         assert!(trap.common_period == 0 && third == 0, "{what}");
@@ -1151,7 +1164,7 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
                             assert!(arrived <= fail, "{what}: {arrived:.1} ms, fails at {fail} ms");
                             assert!(total <= ceiling, "{what}: {total:.1} ms, ceiling {ceiling} ms");
                         }
-                        Gate::NoWrongFrame | Gate::Chord => {}
+                        Gate::NoWrongFrame | Gate::Chord | Gate::Recorded => {}
                     }
                 });
             }
@@ -1164,14 +1177,15 @@ fn detune(hz: f64, cents: f64) -> f64 {
     hz * 2_f64.powf(cents / 1_200.0)
 }
 
-/// **Detuned strings, gated** (`T-003c` round 3): the downward changes and chords of
+/// **Detuned strings** (`T-003c` round 3): the downward changes and chords of
 /// [`a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave`] with both strings
 /// detuned, as strings being tuned are: ±30 ¢ either way, and the offsets the review found
 /// (A2 +30 ¢ over low B −30 ¢, A2 +15 ¢ or in tune over bass E −30 ¢, and so on). With the old
 /// note 12 dB under, no judged frame shows a wrong note and the new note, octave known, arrives
-/// within 1 s. Ringing loud, it is a chord (E4 only once it is more than 50 ¢ off the fourth
-/// harmonic): no frame shows a third note, known or ambiguous, nor the notes' common period. E4
-/// ringing loud within 50 ¢ of the harmonic shows no wrong note, and may hold the octave ambiguous.
+/// within 1 s. E4 ringing loud within 50 ¢ of the fourth harmonic shows no wrong note, and may
+/// hold the octave ambiguous. Ringing loud otherwise, it is a chord: recorded only, as
+/// `T-014-consonant-chords`'s (owner, 2026-10-25: single notes win over chord rejection; the
+/// clarity bar that held these cost new notes after a gap and noisy notes).
 #[test]
 fn a_detuned_downward_change_or_chord_never_shows_a_wrong_or_third_note() {
     let a2 = synth::sawtooth as Generator;
@@ -1218,10 +1232,8 @@ fn a_detuned_downward_change_or_chord_never_shows_a_wrong_or_third_note() {
                                 trap.note_ms,
                             ));
                             let what = format_args!("{name} {d1:+}/{d2:+} {ending:?} at {rate} Hz");
-                            if chord {
-                                let third = trap.third_known + trap.third_ambiguous;
-                                assert_eq!((third, trap.common_period), (0, 0), "{what}: {trap:?}");
-                            } else {
+                            // Detuned chords are `T-014`'s (`Gate::Recorded`): reported above only.
+                            if !chord {
                                 assert_eq!(trap.wrong, 0, "{what}: {trap:?}");
                                 // A loud, nearly harmonic string may hold the octave ambiguous.
                                 assert!(
