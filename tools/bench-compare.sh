@@ -2,7 +2,8 @@
 # Compare Criterion results against the committed baseline; fail on a >10% regression.
 #
 #   tools/bench-compare.sh          compare the latest results against the baseline
-#   tools/bench-compare.sh --save   run every benchmark afresh and record the run as the baseline
+#   tools/bench-compare.sh --save [N]   run every benchmark N times (default 5) and record, per
+#                                       benchmark, the median of the runs as the baseline
 #
 # `just bench` runs `cargo bench -p diapason_dsp`, then this. Criterion leaves each benchmark's
 # latest estimates in <target>/criterion/<group>/<id>/new/estimates.json; the figure compared is
@@ -16,9 +17,12 @@
 # it. A run on another host, or with another rustc, is still compared under a warning, because a
 # regression that large is worth a look anywhere.
 #
-# `--save` (`just bench-baseline`) runs the full `cargo bench -p diapason_dsp` itself and adopts only
-# results that run wrote. Results left in <target>/criterion by a renamed or removed benchmark, or
-# by an earlier filtered run, are listed and ignored, so they can never enter a baseline.
+# `--save` (`just bench-baseline`) runs the full `cargo bench -p diapason_dsp` itself, N times, and
+# adopts only results those runs wrote. Results left in <target>/criterion by a renamed or removed
+# benchmark, or by an earlier filtered run, are listed and ignored, so they can never enter a
+# baseline. One run's median moves by more than the 10% threshold between runs on a laptop that
+# boosts and throttles; the median of five does not (T-003c measured both), so a baseline is
+# never one run. The host must be quiet: nothing else running for the whole of it.
 #
 # Every benchmark in the baseline must have a result; one without is an error (renamed or not
 # run). A result with no baseline entry is reported and does not fail: `--save` adopts it. After
@@ -32,6 +36,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 2
 
 BASELINE="rust/crates/dsp/benches/baseline.json"
 THRESHOLD_PERCENT=10
+BASELINE_RUNS=5
 
 cannot() {
     echo "✗ $1" >&2
@@ -82,21 +87,43 @@ host_description() {
 }
 
 if [[ "${1:-}" == "--save" ]]; then
+    runs="${2:-$BASELINE_RUNS}"
+    [[ "$runs" =~ ^[1-9][0-9]*$ ]] || cannot "--save takes a number of runs, not '$runs'"
     mkdir -p "$target" || cannot "cannot create $target"
     # Script-level, not local: the EXIT trap runs after everything else.
     marker="$(mktemp "$target/bench-baseline.XXXXXX")" || cannot "cannot create a marker in $target"
     trap 'rm -f "${marker:-}"' EXIT
-    cargo bench -p diapason_dsp || cannot "cargo bench failed; no baseline saved"
-    results="$(current_results "$marker")" || exit 2
-    [[ "$results" != "{}" ]] || cannot "the bench run wrote no results; no baseline saved"
+    all="[]"
+    for ((run = 1; run <= runs; run++)); do
+        echo "── bench run $run of $runs"
+        touch "$marker" || cannot "cannot touch $marker"
+        cargo bench -p diapason_dsp || cannot "cargo bench failed; no baseline saved"
+        results="$(current_results "$marker")" || exit 2
+        [[ "$results" != "{}" ]] || cannot "bench run $run wrote no results; no baseline saved"
+        all="$(jq -n --argjson all "$all" --argjson run "$results" '$all + [$run]')" ||
+            cannot "could not collect bench run $run"
+    done
+    # Every run must report the same benchmarks; each one's figure is the median of its runs'
+    # medians (the middle run, or the mean of the two middle ones for an even count). One run on a
+    # host that throttles, or a benchmark that lands in another code layout, then moves it less.
+    medians="$(jq -n --argjson all "$all" '
+        if ($all | map(keys) | unique | length) != 1 then error("the runs report different benchmarks")
+        else ($all[0] | keys) as $keys
+            | reduce $keys[] as $k ({};
+                .[$k] = ($all | map(.[$k]) | sort
+                    | if length % 2 == 1 then .[length / 2 | floor]
+                      else (.[length / 2 - 1] + .[length / 2]) / 2 end))
+        end')" || cannot "the bench runs do not agree on their benchmarks; no baseline saved"
     jq -n \
         --arg host "$(host_description)" \
         --arg rustc "$(rustc --version)" \
         --arg date "$(date -u +%Y-%m-%d)" \
-        --argjson medians "$results" \
-        '{host: $host, rustc: $rustc, date: $date, unit: "ns (median)", benches: $medians}' \
+        --argjson runs "$runs" \
+        --argjson medians "$medians" \
+        '{host: $host, rustc: $rustc, date: $date, runs: $runs,
+          unit: "ns (median of each run'"'"'s median)", benches: $medians}' \
         >"$BASELINE" || cannot "could not write $BASELINE"
-    echo "✓ baseline saved to $BASELINE ($(jq '.benches | length' "$BASELINE") benches)"
+    echo "✓ baseline saved to $BASELINE ($(jq '.benches | length' "$BASELINE") benches, $runs runs)"
     exit 0
 fi
 
