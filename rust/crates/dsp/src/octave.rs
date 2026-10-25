@@ -16,7 +16,7 @@
 //!   taken at once (an onset settling).
 //! - **After a note.** While a locked note may still sound, two strings sound together, and
 //!   read as neither: the guard says which estimates must prove they are one note
-//!   ([`OctaveGuard::must_repeat`], [`OctaveGuard::is_new_note`]), when the octave above a held
+//!   ([`OctaveGuard::must_repeat`]), when the octave above a held
 //!   note has entered ([`RISE`]), and when a reading is the lower string the estimate just left
 //!   by moving up an octave ([`OctaveGuard::is_ringing_below`]).
 //!
@@ -43,6 +43,10 @@ pub enum Octave {
     /// letter and the cents, not the octave number (`docs/PRODUCT_SPEC.md` §2, `ambiguous octave`).
     Ambiguous,
 }
+
+/// A semitone, in cents: a reading within it of the locked note is that note dragged off its pitch
+/// by another, not a new note ([`OctaveGuard::must_repeat`]).
+pub const SEMITONE_CENTS: f64 = 100.0;
 
 /// Larger jumps than this, in cents, from a locked estimate need [`CONFIRM_FRAMES`] frames: half an
 /// octave, so every octave error and every fifth below or above counts, and no glide does.
@@ -86,9 +90,22 @@ pub const REPEATS: f32 = 0.975;
 /// read since the note locked for the octave above to count as entering ([`OctaveGuard::judge`]).
 pub const RISE: f32 = 0.5;
 
-/// After a locked note, a note other than it is taken only from this clarity. Two notes sounding
-/// together read as neither, and their mixture is less periodic than either.
-pub const NEW_NOTE_CLARITY: f32 = 0.85;
+/// The octave above a note is *present* in a frame reading the note when the NSDF's level at half
+/// its period has at least this fraction of its clarity. A note's own level there is
+/// `(E_even − E_odd) / E`: a sawtooth −0.5, a weak fundamental (`synth::WEAK_FUNDAMENTAL`) 0.6, the
+/// highest of the fixture spectra. A string an octave above sounding with it raises the level
+/// toward 1 (G3 under G4 at 12 dB: 0.9). The threshold sits between.
+pub const OCTAVE_ABOVE_PRESENT: f32 = 0.75;
+
+/// While a locked note may still sound, an estimate whose range cannot test its octave is taken
+/// only from this clarity, above [`UNVERIFIED_CLARITY`]. Such an estimate is a partial of a
+/// fundamental the range cannot see, and a second note sounding skews it further: a bass E's
+/// second partial read by Mid under an A2 ringing 12 dB down came out 52 ¢ off its pitch class at
+/// clarity 0.753 (review round 4). Measured on filled windows, those blind readings sit at
+/// ≤ 0.80 and correct blind readings at ≥ 0.9 (`T-003c` round 3; the threshold was checked on
+/// held-out notes and detunings there). Only blind estimates pay it, only for the window the
+/// locked note is remembered, and a withheld frame is no miss.
+pub const AFTER_NOTE_CLARITY: f32 = 0.85;
 
 /// What the guard made of one frame's estimate.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -137,10 +154,16 @@ pub struct OctaveGuard {
     locked: Option<f64>,
     /// The note of the current run of frames shown known, and the run's length.
     known_run: Option<(f64, usize)>,
-    /// The lowest τ/2 ratio the held note has read since it locked ([`RISE`]).
+    /// Consecutive frames, since the last one that showed it, without the locked note: a window
+    /// of them and it is no longer taken to be sounding ([`OctaveGuard::shown`]).
+    without_locked: usize,
+    /// The floor of the held note's τ/2 level ([`RISE`]).
     up_floor: Option<f32>,
+    /// Since the octave above a held note entered: the level it rose from, and frames in a row
+    /// without it ([`RISE`]).
+    above: Option<(f32, usize)>,
     /// The note the estimate left by moving up an octave, and for how many frames in a row it has
-    /// been read since the upper one last was ([`OctaveGuard::is_ringing_below`]).
+    /// been read with the octave above absent from the frame ([`OctaveGuard::is_ringing_below`]).
     below: Option<(f64, usize)>,
 }
 
@@ -173,23 +196,23 @@ impl OctaveGuard {
         self.held
     }
 
-    /// Whether `hz` is the note the estimate left by moving up an octave, read again before it has
-    /// held for a window without the upper one in between: the lower string still ringing under the
-    /// one plucked an octave above it (G3 under G4, read by the range that sees both). Its octave
-    /// is not the note's: show it ambiguous (`docs/adr/0029`).
+    /// Whether `hz` is the note the estimate left by moving up an octave, read again while the
+    /// octave above still shows in the frames that read it (the τ/2 level at least
+    /// [`OCTAVE_ABOVE_PRESENT`] of the clarity, within the last window): the lower string still
+    /// ringing under the one plucked an octave above it (G3 under G4, read by the range that sees
+    /// both). Its octave is not the note's: show it ambiguous (`docs/adr/0029`).
     #[must_use]
     pub fn is_ringing_below(&self, hz: f64) -> bool {
         self.below
             .is_some_and(|(low, _)| cents(hz, low).abs() <= SAME_NOTE_CENTS)
     }
 
-    /// Whether `hz` is a note other than the last one locked since the last silence, which may
-    /// still be sounding: more than [`SAME_NOTE_CENTS`] from it. Such a note must be clear,
-    /// [`NEW_NOTE_CLARITY`].
+    /// Whether `hz` is the locked note itself, within [`SAME_NOTE_CENTS`]: a held note, however
+    /// noisy, pays nothing for being the note before.
     #[must_use]
-    pub fn is_new_note(&self, hz: f64) -> bool {
+    pub fn is_locked_note(&self, hz: f64) -> bool {
         self.locked
-            .is_some_and(|locked| cents(hz, locked).abs() > SAME_NOTE_CENTS)
+            .is_some_and(|locked| cents(hz, locked).abs() <= SAME_NOTE_CENTS)
     }
 
     /// Whether a note has been locked since the last silence, and so may still be sounding under
@@ -200,8 +223,9 @@ impl OctaveGuard {
     }
 
     /// Whether `pick` must repeat at twice its period ([`REPEATS`]) to be taken: after a locked
-    /// note, if it is barely clear (under [`UNVERIFIED_CLARITY`]) or an octave of that note (its
-    /// pitch class within [`SAME_NOTE_CENTS`], another octave). Two notes sounding together read
+    /// note, if it is barely clear (under [`UNVERIFIED_CLARITY`]) and dragged off that note (more
+    /// than [`SAME_NOTE_CENTS`] from it, within a semitone), or an octave of it (its pitch class within [`SAME_NOTE_CENTS`], another octave). A new
+    /// note further away is not tested, so a note after a short gap costs nothing (review round 5). Two notes sounding together read
     /// as neither, but near one of them: the last note dragged flat at the clarity floor, or its
     /// octave below, the mixture's quasi-period (A2 over a low B reads A1). A real new note is a
     /// period, and passes; a held melody over a bass, which does not repeat cleanly (0.72–0.82),
@@ -211,14 +235,46 @@ impl OctaveGuard {
         self.locked.is_some_and(|locked| {
             let off = cents(pick.frequency_hz, locked);
             let class = off - 1_200.0 * (off / 1_200.0).round();
-            pick.clarity < UNVERIFIED_CLARITY
+            (pick.clarity < UNVERIFIED_CLARITY
+                && off.abs() > SAME_NOTE_CENTS
+                && off.abs() <= SEMITONE_CENTS)
                 || (class.abs() <= SAME_NOTE_CENTS && off.abs() > JUMP_CENTS)
         })
     }
 
+    /// A reading of `hz` by any range, before any test, shown or not: if it is the locked note,
+    /// that note is still sounding, and [`Self::shown`] does not forget it yet.
+    pub fn heard(&mut self, hz: f64) {
+        if self.is_locked_note(hz) {
+            self.without_locked = 0;
+        }
+    }
+
     /// What the frame finally showed: `hz`, and whether its octave was known. A run of
-    /// `lock_frames` known frames of one note locks it.
-    pub fn shown(&mut self, hz: Option<f64>, known: bool, lock_frames: usize) {
+    /// `lock_frames` known frames of one note locks it; `forget_frames` frames in a row that
+    /// neither show nor hear it ([`Self::heard`]) forget it.
+    pub fn shown(
+        &mut self,
+        hz: Option<f64>,
+        known: bool,
+        lock_frames: usize,
+        forget_frames: usize,
+    ) {
+        // The locked note is taken to be sounding only while some range still reads it. After the
+        // longest window of any range (Low's, 100 ms: the chain passes it as `forget_frames`)
+        // without a frame showing or hearing it (`Self::heard`), no window holds it any more, and
+        // it is forgotten. A gap, a new string after a muted one, a melody over the old note's
+        // silence: none of them pays for the note before any longer than that (`docs/adr/0029`,
+        // review round 5). One window of the current range would be too short: an A2 ringing
+        // 12 dB under a bass E is read by no range at all from 5 ms on, yet the frames that Mid
+        // reads at 72 ms are its blend with the bass E, 40 ¢ off.
+        let showing = self
+            .locked
+            .is_some_and(|locked| hz.is_some_and(|hz| cents(hz, locked).abs() <= SAME_NOTE_CENTS));
+        self.without_locked = if showing { 0 } else { self.without_locked + 1 };
+        if self.without_locked >= forget_frames {
+            self.locked = None;
+        }
         let Some(hz) = hz.filter(|_| known) else {
             self.known_run = None;
             return;
@@ -230,6 +286,7 @@ impl OctaveGuard {
         self.known_run = Some((hz, run));
         if run >= lock_frames {
             self.locked = Some(hz);
+            self.without_locked = 0;
         }
     }
 
@@ -260,7 +317,7 @@ impl OctaveGuard {
         let hz = pick.frequency_hz;
         let Some(held) = self.held.filter(|&held| cents(hz, held).abs() > JUMP_CENTS) else {
             let rose = self.octave_above_rose(&pick, half, lock_frames);
-            let mut guarded = self.accept(pick, lock_frames);
+            let mut guarded = self.accept(pick, half, lock_frames);
             if rose {
                 self.doubt = lock_frames;
                 guarded.ambiguous = true;
@@ -272,7 +329,7 @@ impl OctaveGuard {
             _ => 1,
         };
         if agreeing >= CONFIRM_FRAMES {
-            return Some(self.accept(pick, lock_frames));
+            return Some(self.accept(pick, half, lock_frames));
         }
         // (a): the held note's octave, if the frame has a comparable peak there.
         let comparable = |candidate: &PitchEstimate| {
@@ -290,14 +347,15 @@ impl OctaveGuard {
         // (b): from an estimate not yet locked, a jump without a bridge is taken at once (an onset
         // settling); one with a bridge waited above, as from a locked one.
         if self.run < lock_frames {
-            return Some(self.accept(pick, lock_frames));
+            return Some(self.accept(pick, half, lock_frames));
         }
         self.pending = Some((hz, agreeing));
         None
     }
 
     /// Whether the octave above a locked, held note has just entered: its peak at τ/2 has risen by
-    /// [`RISE`] over the lowest it read since the note locked. The level is the NSDF's value at
+    /// [`RISE`] over a floor that follows its lowest reading since the note locked, relaxing upward
+    /// by a quarter of `RISE` per window. The level is the NSDF's value at
     /// τ/2, not a peak there: a peak barely formed comes and goes, and a weak fundamental's steady
     /// 0.6 would then read as a rise. A string plucked an octave above one
     /// still ringing, in a range that sees both, reads as the lower one; only this rise tells.
@@ -309,21 +367,45 @@ impl OctaveGuard {
             return false;
         }
         let ratio = half / pick.clarity;
-        let floor = self.up_floor.map_or(ratio, |floor| floor.min(ratio));
+        // The floor relaxes upward by a quarter of RISE per window, so a level that drifts up as a
+        // string decays (its fundamental faster than its second partial: 0.02 per Low window in
+        // the fastest-drifting fixture) never adds up to a rise, while a string entering, which
+        // raises the level by more than RISE within the window that fills with it, still does.
+        let relax =
+            RISE / (4.0 * crate::convert::to_f32(crate::convert::index_to_f64(lock_frames)));
+        let floor = self
+            .up_floor
+            .map_or(ratio, |floor| (floor + relax).min(ratio));
         self.up_floor = Some(floor);
-        ratio - floor >= RISE
+        // The rise is the onset; the level staying up is the octave above still sounding. Armed by
+        // a rise, the doubt holds while the level stays at least half a RISE over the floor it rose
+        // from, and lapses after a window without that.
+        self.above = if ratio - floor >= RISE {
+            Some((floor, 0))
+        } else {
+            self.above
+                .map(|(base, absent)| {
+                    let present = ratio >= base + 0.5 * RISE;
+                    (base, if present { 0 } else { absent + 1 })
+                })
+                .filter(|&(_, absent)| absent < lock_frames)
+        };
+        self.above.is_some()
     }
 
-    fn accept(&mut self, pick: PitchEstimate, lock_frames: usize) -> Guarded {
+    fn accept(&mut self, pick: PitchEstimate, half: f32, lock_frames: usize) -> Guarded {
         let hz = pick.frequency_hz;
         let previous = self.held;
         let same = previous.is_some_and(|held| cents(hz, held).abs() <= SAME_NOTE_CENTS);
-        // The note the estimate left by moving up an octave: until it has been read for a window
-        // without the upper one in between, it is the lower string still ringing.
+        // The note the estimate left by moving up an octave: while the octave above still shows in
+        // the frames that read it, it is the lower string still ringing; a window of frames
+        // without the octave above, and it is a note again.
         let near = |a: f64, b: f64| cents(a, b).abs() <= SAME_NOTE_CENTS;
+        let present = half >= OCTAVE_ABOVE_PRESENT * pick.clarity;
         self.below = match self.below {
-            Some((low, read)) if near(hz, low) => {
-                (read + 1 < lock_frames).then_some((low, read + 1))
+            Some((low, absent)) if near(hz, low) => {
+                let absent = if present { 0 } else { absent + 1 };
+                (absent < lock_frames).then_some((low, absent))
             }
             Some((low, _)) if near(hz, 2.0 * low) => Some((low, 0)),
             _ => previous
@@ -333,6 +415,7 @@ impl OctaveGuard {
         self.run = if same { self.run.saturating_add(1) } else { 1 };
         if !same {
             self.up_floor = None;
+            self.above = None;
         }
         let doubted = same && self.doubt > 0;
         self.doubt = if doubted { self.doubt - 1 } else { 0 };
@@ -488,30 +571,43 @@ mod tests {
         // From silence nothing must repeat; nor after a run too short to lock, or not known.
         assert!(!guard.must_repeat(&at(55.0, 0.61)));
         for _ in 0..15 {
-            guard.shown(Some(110.0), true, 16);
+            guard.shown(Some(110.0), true, 16, 16);
         }
         assert!(!guard.after_a_note());
-        guard.shown(Some(110.0), false, 16);
-        guard.shown(Some(110.0), true, 16);
+        guard.shown(Some(110.0), false, 16, 16);
+        guard.shown(Some(110.0), true, 16, 16);
         assert!(!guard.after_a_note());
         for _ in 0..16 {
-            guard.shown(Some(110.0), true, 16);
+            guard.shown(Some(110.0), true, 16, 16);
         }
         assert!(guard.after_a_note());
-        // Locked on A2: its octaves and anything barely clear must repeat; a clear other note,
-        // or the A2 itself, need not.
+        // Locked on A2: its octaves, and a barely clear reading within a semitone of it, must
+        // repeat; another note, however barely clear, or the A2 itself, need not.
         assert!(guard.must_repeat(&at(55.0, 0.9)) && guard.must_repeat(&at(220.4, 0.9)));
-        assert!(guard.must_repeat(&at(106.6, 0.6)) && guard.must_repeat(&at(587.3, 0.74)));
+        assert!(guard.must_repeat(&at(106.6, 0.6)) && !guard.must_repeat(&at(587.3, 0.74)));
         assert!(!guard.must_repeat(&at(587.3, 0.78)) && !guard.must_repeat(&at(108.0, 0.9)));
         assert!(!guard.must_repeat(&at(82.41, UNVERIFIED_CLARITY)));
-        // Any note other than the locked one is new; the locked one, within half a semitone, is not.
-        assert!(guard.is_new_note(82.41) && guard.is_new_note(220.0));
-        assert!(!guard.is_new_note(110.0) && !guard.is_new_note(112.5));
+        // A barely clear reading further than a semitone from the locked note is a new note: free.
+        assert!(!guard.must_repeat(&at(98.0, 0.6)) && guard.must_repeat(&at(104.0, 0.6)));
         // A switch keeps the lock; silence forgets it.
         guard.switched();
         assert!(guard.must_repeat(&at(55.0, 0.9)));
         guard.reset();
         assert!(!guard.must_repeat(&at(55.0, 0.61)));
+        // And so does a window of frames that do not show the locked note: a gap, another note.
+        for _ in 0..16 {
+            guard.shown(Some(110.0), true, 16, 16);
+        }
+        for frame in 0..16 {
+            assert!(guard.after_a_note(), "{frame}");
+            guard.shown(
+                if frame % 2 == 0 { None } else { Some(82.41) },
+                true,
+                16,
+                16,
+            );
+        }
+        assert!(!guard.after_a_note());
     }
 
     #[test]

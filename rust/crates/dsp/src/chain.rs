@@ -20,9 +20,13 @@ use crate::convert::{index_from_f64, index_to_f64, to_f32};
 use crate::filter::{DcBlock, Decimator, FilterError};
 use crate::frame::{FrameAssembler, FrameError};
 use crate::gate::{GateConfig, GateError, NoiseGate};
-use crate::octave::{Guarded, NEW_NOTE_CLARITY, Octave, OctaveGuard, REPEATS, UNVERIFIED_CLARITY};
+use crate::octave::{
+    AFTER_NOTE_CLARITY, Guarded, Octave, OctaveGuard, REPEATS, SAME_NOTE_CENTS, UNVERIFIED_CLARITY,
+};
 use crate::pitch::{Mpm, MpmConfig, MpmError, PitchEstimate};
-use crate::range::{LOWEST_FUNDAMENTAL_HZ, Observation, Path, Range, RangeSelector, RangeTable};
+use crate::range::{
+    DECIMATION, LOWEST_FUNDAMENTAL_HZ, Observation, Path, Range, RangeSelector, RangeTable,
+};
 
 /// Seconds the gate may stay open without a clear pitch before the analysis calls it noise and
 /// the gate's floor learns from it ([`NoiseGate::set_unpitched`]). Long enough that a note's
@@ -190,6 +194,13 @@ pub struct Analysis {
     frames: [FrameAssembler; 3],
     detectors: [Mpm; 3],
     guard: OctaveGuard,
+    /// The latest clear reading of each range below the selected one (Low, Mid), in hertz, and
+    /// the stream position of its frame: what corroborates a blind estimate
+    /// ([`Self::corroborated`]).
+    below: [Option<(f64, u64)>; 2],
+    /// The clarity of the current range's latest estimate, before any test: what a watcher's
+    /// reading must exceed ([`RangeSelector::observe_watcher`]).
+    current_clarity: Option<f32>,
     position: u64,
     gate_open: bool,
     /// The position of the latest clear estimate, or of the latest closed-gate block.
@@ -247,6 +258,8 @@ impl Analysis {
             frames,
             detectors,
             guard: OctaveGuard::new(),
+            below: [None; 2],
+            current_clarity: None,
             table,
             selection,
             position: 0,
@@ -350,12 +363,32 @@ impl Analysis {
         } else if matches!(self.selection, Selection::Auto(_)) && self.gate_open && range < current
         {
             // A verifier's reading must pass the same tests, or a chord's would verify an octave.
-            let reading = self
-                .analyse(range)
-                .filter(|e| self.acceptable(range, e))
+            let analysed = self.analyse(range);
+            if let Some(e) = analysed {
+                self.guard.heard(e.frequency_hz);
+            }
+            let raw = analysed.filter(|e| self.within_range(range, e));
+            if let (Some(below), Some(e)) = (self.below.get_mut(slot(range)), raw) {
+                *below = Some((e.frequency_hz, self.position));
+            }
+            let reading = raw
+                .filter(|e| self.proven(range, e))
                 .map(|e| e.frequency_hz);
             self.selector
                 .observe_verifier(range, reading, self.position);
+            if self.selector.current() != current {
+                self.guard.switched();
+            }
+        } else if matches!(self.selection, Selection::Auto(_))
+            && self.gate_open
+            && current.above() == Some(range)
+        {
+            let reading = self
+                .analyse(range)
+                .filter(|e| self.within_range(range, e))
+                .map(|e| (e.frequency_hz, e.clarity));
+            self.selector
+                .observe_watcher(range, reading, self.current_clarity, self.position);
             if self.selector.current() != current {
                 self.guard.switched();
             }
@@ -370,9 +403,13 @@ impl Analysis {
         // estimate the range cannot test the octave of is taken only from `UNVERIFIED_CLARITY`; and
         // after a note, which may still sound, an estimate near it must be a period, which a
         // chord's is not (`OctaveGuard::must_repeat`).
-        let pick = self
-            .analyse(range)
-            .filter(|pick| self.acceptable(range, pick));
+        let analysed = self.analyse(range);
+        self.current_clarity = analysed.map(|e| e.clarity);
+        if let Some(e) = analysed {
+            self.guard.heard(e.frequency_hz);
+        }
+        let raw = analysed.filter(|pick| self.within_range(range, pick));
+        let pick = raw.filter(|pick| self.proven(range, pick));
         let guarded = if let Some(pick) = pick {
             let up = self.peak_near(range, pick.period_samples / 2.0);
             let down = self.peak_near(range, pick.period_samples * 2.0);
@@ -383,7 +420,25 @@ impl Analysis {
             None
         };
         let hz = guarded.map(|g| g.estimate.frequency_hz);
-        self.observe(hz.map_or(Observation::Unclear, Observation::Pitch));
+        // An estimate under `UNVERIFIED_CLARITY` is shown (the locked note in noise, or a blind
+        // one a lower range reads too, `Self::corroborated`), but once the selector has a pitch it
+        // is no evidence of a change of note within the range's band, nor that a held note goes on:
+        // `Observation::Faint`. (Out of the band it moves the chain as any pitch does: a quiet
+        // melody note entering over a bass is first read faint, by the bass's range.)
+        // Taken as a pitch, it restarts or delays the verifiers' freshness and the scan: High's
+        // 0.6-clear E3 after an E4 delayed Mid by 25 ms; A2's last faint frames (0.73, 0.62 ...)
+        // delayed Low by 10 ms.
+        let faint = raw.is_some_and(|pick| {
+            pick.clarity < UNVERIFIED_CLARITY && self.table.holds(range, pick.frequency_hz)
+        }) && self.selector.pitch().is_some();
+        // A pitch the range hears but may not show yet is not a miss (`Observation::Withheld`).
+        let observation = match (hz, raw) {
+            (Some(_), _) if faint => Observation::Faint,
+            (Some(hz), _) => Observation::Pitch(hz),
+            (None, Some(_)) => Observation::Withheld,
+            (None, None) => Observation::Unclear,
+        };
+        self.observe(observation);
         if self.current() != range {
             self.guard.switched();
         }
@@ -409,22 +464,66 @@ impl Analysis {
             None => Octave::Known,
         };
         let shown = guarded.map(|g| g.estimate.frequency_hz);
-        self.guard.shown(shown, octave == Octave::Known, lock);
+        self.guard.shown(
+            shown,
+            octave == Octave::Known,
+            lock,
+            self.forget_frames(range),
+        );
         (guarded.map(|g| g.estimate), octave)
     }
 
-    /// Whether an estimate of `range` may be taken at all (`docs/adr/0029`):
-    /// - a period longer than the lowest note's is a chord's common period, not a string;
-    /// - an estimate whose octave below the range cannot see needs [`UNVERIFIED_CLARITY`];
-    /// - after a locked note, which may still sound, an estimate near it (an octave of it, or
-    ///   barely clear) must be a period ([`REPEATS`]), and any other note must be clearly one
-    ///   ([`NEW_NOTE_CLARITY`]): two notes sounding together read as neither.
-    fn acceptable(&self, range: Range, pick: &PitchEstimate) -> bool {
+    /// Frames of `range` that span Low's window, the longest: how long a locked note no range
+    /// reads may still sound in some range's window ([`OctaveGuard::shown`]).
+    fn forget_frames(&self, range: Range) -> usize {
+        let spec = self.table.spec(range);
+        let hop = match spec.path {
+            Path::Decimated => spec.hop * DECIMATION,
+            Path::Full => spec.hop,
+        };
+        (self.table.spec(Range::Low).window * DECIMATION).div_ceil(hop.max(1))
+    }
+
+    /// Whether `range` can show `pick` at all: no lower than the lowest note, and clear enough if
+    /// the range cannot test its octave. A frame failing this is a miss, like an unclear one: the
+    /// range does not hear the note, and the selector should scan for one that does.
+    fn within_range(&self, range: Range, pick: &PitchEstimate) -> bool {
         let hz = pick.frequency_hz;
         hz >= LOWEST_FUNDAMENTAL_HZ
-            && (pick.clarity >= UNVERIFIED_CLARITY || self.table.tests_octave(range, hz))
-            && (!self.guard.must_repeat(pick) || self.repeats(range, pick))
-            && (!self.guard.is_new_note(hz) || pick.clarity >= NEW_NOTE_CLARITY)
+            && (pick.clarity >= UNVERIFIED_CLARITY
+                || self.table.tests_octave(range, hz)
+                || (self.corroborated(range, hz)
+                    && (!self.guard.after_a_note() || self.guard.is_locked_note(hz))))
+    }
+
+    /// Whether a range below `range`, analysed alongside, read the same note in a frame of the
+    /// last window of its own (its span: the same sound, not a note before it).
+    /// A blind estimate is either the note itself, which a lower range that sees its octave below
+    /// reads too, or a partial of a lower fundamental, which it reads as that fundamental: so a
+    /// noisy note is told from a partial frame by frame, where clarity cannot tell them apart
+    /// (a G2 at −12 dB SNR reads 0.6–0.75, like a weak bass E's second partial).
+    fn corroborated(&self, range: Range, hz: f64) -> bool {
+        Range::ALL
+            .into_iter()
+            .filter(|&below| below < range)
+            .filter_map(|below| {
+                let (reading, end) = self.below.get(slot(below)).copied().flatten()?;
+                let span = self.selector.span(below);
+                (self.position.saturating_sub(end) <= span).then_some(reading)
+            })
+            .any(|reading| (1_200.0 * (reading / hz).log2()).abs() <= SAME_NOTE_CENTS)
+    }
+
+    /// Whether `pick` has proved it is one note while the last one may still sound. A frame
+    /// failing only this is withheld, not missed: the range hears a pitch it may not show yet.
+    fn proven(&self, range: Range, pick: &PitchEstimate) -> bool {
+        let blind = !self.table.tests_octave(range, pick.frequency_hz);
+        (!self.guard.must_repeat(pick) || self.repeats(range, pick))
+            && !(blind
+                && !self.corroborated(range, pick.frequency_hz)
+                && self.guard.after_a_note()
+                && !self.guard.is_locked_note(pick.frequency_hz)
+                && pick.clarity < AFTER_NOTE_CLARITY)
     }
 
     /// Whether `range` can search twice `pick`'s period.
