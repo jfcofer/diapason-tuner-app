@@ -164,8 +164,10 @@ bench group="":
     cargo bench -p diapason_dsp {{group}}
     @tools/bench-compare.sh                # [T-001] fails on >10% regression vs baseline
 
-bench-baseline:
-    @tools/bench-compare.sh --save         # runs every bench afresh; adopts only that run's results
+# Runs every bench `runs` times on a quiet host and records each one's median of the runs; adopts
+# only those runs' results.
+bench-baseline runs="5":
+    @tools/bench-compare.sh --save {{runs}}
 
 size-report:
     cargo xtask size-report
