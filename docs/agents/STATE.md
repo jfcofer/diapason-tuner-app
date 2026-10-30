@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-30 (T-003c round 6 fixed and reviewed; PR not yet opened)
+# STATE — updated 2026-10-30 (T-003c merged as #34; T-015 rebased onto it; T-019 and T-003e next)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > Agents: run `just session-start`, read this, then the active task file. PR and merge state
@@ -9,18 +9,19 @@
 **Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
-- **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`, `T-003b` (PRs #6–#9,
-  #11–#16, #24, #27–#31), Dependabot #2, #10, #21, #22, #25, #26. #20 closed. **Open:** Dependabot
-  #32 (actions) and #33 (dart-minor), green, for the owner to merge.
+- **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`–`T-003c`, and `T-015`
+  with this snapshot (PRs #6–#9, #11–#16, #24, #27–#31, #34), Dependabot #2, #10, #21, #22, #25,
+  #26. #20 closed; #35 closed, superseded by T-015's rebased PR. **Open:** Dependabot #32 (actions)
+  and #33 (dart-minor), green, for the owner to merge.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-003c-octave-guard.md`** (in progress; branch unpushed, **PR-ready** once
-pushed). Owner: ambiguous octaves move the needle; two 260 ms gates to `T-003f`; chords other than A2
-over a bass E to `T-014`; **single notes win over chord rejection** (2026-10-25). Round 6 found a gap
-under the gate's hold scanning away (A3 → A2 155 ms, fails 150): fixed with `GateState::Holding`.
-Next: push, PR, six checks. **This shell has no SSH agent** (`git fetch` fails on `publickey`).
+**`docs/agents/tasks/T-019-process-drift-5.md`** (todo, planned 2026-10-30): check the session
+protocol on every PR's diff in CI, so it binds every agent, not only one that runs `session-end`.
+Then **`T-003e`** part 1, recorded fixtures: the owner chose published CC0 libraries over recording
+(2026-10-30). Archives sit **outside the repo** in `~/.cache/diapason/sound-sources/`; the plan, the
+licence audit and the curated selection go in its task file and `adr/0030`.
 **Waiting on the Redmi:** `T-002d` (blocked; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## Hardware this project actually has
@@ -100,7 +101,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 | Question | Needed by | Notes |
 |---|---|---|
-| Who records the instrument fixtures | `T-003e` | Guitar, bass, ukulele, violin at known pitches, under a licence `adr/0009` permits |
+| Recorded budgets for bass, ukulele, violin, electric guitar | `T-003e` | §1 budgets only acoustic guitar. Owner, 2026-10-30: measure under ceilings first, then set budgets by ADR |
 | Monetisation model | M6 | Must not introduce ads, analytics or network calls (`PRODUCT_SPEC.md` §6) |
 | Reference devices beyond the Redmi | M1+ | No iPhone, Pixel or tablet available. `T-002` criteria were amended to "every device available" |
 | Font licences confirmed for bundling | M3 | `DESIGN_SYSTEM.md` §1 assumes OFL faces |
@@ -110,8 +111,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **`T-003c-octave-guard`**: push, PR. Then `T-015` (process drift 4, planned 2026-10-30: session-end
-   check for every agent, stale code names in docs, owners for orphan gaps), `T-003f`, `T-014`, `T-003d`.
+1. **`T-019`** (the PR-diff gate), then **`T-003e`** part 1 (fixtures, `adr/0030`, the independent
+   reference), then `T-003f`, `T-014`, `T-003d`.
 2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then L10 (the silenced microphone).
    Also owed: `T-003a`'s 4096 frame cost on the phone (≤ 1.5 ms).
 3. **`T-002e`** (overlay in Settings → Diagnostics; first golden), then **`T-002f`** (latency, FAST).
