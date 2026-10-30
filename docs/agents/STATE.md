@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-30 (T-019 #38 and T-003e merged: recorded fixtures gate the detector; T-020 next)
+# STATE — updated 2026-10-30 (T-020 merged: no wrong note shown as certain on recordings; T-003f next)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > Agents: run `just session-start`, read this, then the active task file. PR and merge state
@@ -10,16 +10,15 @@
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
 - **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`–`T-003c`, T-015,
-  T-019, and `T-003e` with this snapshot (PRs #6–#9, #11–#16, #24, #27–#31, #34, #36, #38),
-  Dependabot #2, #10, #21, #22, #25, #26. #20 closed; #35 closed, superseded by #36. **Open:** Dependabot #32 (actions)
-  and #33 (dart-minor), green, for the owner to merge.
+  T-019, `T-003e` and `T-020` with this snapshot (PRs #6–#9, #11–#16, #24, #27–#31, #34, #36,
+  #38, #39, #40), Dependabot #2, #10, #21, #22, #25, #26. #20, #33 closed; #35 closed, superseded
+  by #36. **Open:** Dependabot #32 (actions) and #37 (rust-minor), green, for the owner to merge.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-020-ukulele-g4-tritave.md`** (todo): `ukulele_g4` shows 20 frames of G4/3
-marked `Known` from Mid. Found by `T-003e`: 24 CC0 recordings gate the detector against the
-**harmonic consensus** (owner, 2026-10-30; `adr/0030`). Archives: `~/.cache/diapason/sound-sources/`.
+**`docs/agents/tasks/T-003f-smoothing.md`** (todo): median of five, one-euro, lock, the 260 ms
+gate. `T-020` (`adr/0031`) owes one `just bench` on a quiet host; none was possible (its file).
 **Waiting on the Redmi:** `T-002d` (blocked; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## Hardware this project actually has
@@ -42,9 +41,9 @@ marked `Known` from Mid. Found by `T-003e`: 24 CC0 recordings gate the detector 
 - **Tuner lifecycle** (`T-002d`): `engineTarget` policy, `AppLifecycle` seam; rows L1–L11 checked.
 - **Engine core** (`T-002a`): `Engine::prepare` → `(Engine, Processor)` over `rtrb`/`triple_buffer`.
 - **Pitch** (`T-003a`–`c`): `Mpm`, `synth` (`adr/0027`), `chain::Front` (RT) and `chain::Analysis`
-  split at the ring (`adr/0028`); octave guard and verifiers (`adr/0029`). ±0.09 ¢, 30–1400 Hz.
+  split at the ring (`adr/0028`); octave guard, verifiers (`adr/0029`, `0031`). ±0.09 ¢.
 - **Recorded fixtures** (`T-003e`, `adr/0030`): `fixtures/audio/`, `cargo xtask fixtures
-  import|reference|check` (`check` in `verify`), `dsp/tests/recorded.rs`.
+  import|reference|check` (`check` in `verify`), `recorded.rs`: no gross frame on gold or ceiling.
 
 ## Decisions already made (do not re-litigate without an ADR)
 
@@ -62,6 +61,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
   budgets ≥ 160 Hz ≤ 85 ms, 80–160 Hz ≤ 110 ms, low B ≤ 190 ms (owner, 2026-10-23).
 - `0026` patrol runs device tests, never in a release; it applies KGP: check before Flutter bumps.
 - `0027` synthetic audio fixtures are generated in code; only recordings are checked in.
+- `0031` a verifier moves the chain down only to a pitch the current range cannot see.
 
 ## Traps a later session will otherwise re-discover
 
@@ -111,8 +111,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **`T-020`** (no wrong note shown as certain), then `T-003f`, `T-014`, `T-003d`, `T-003g`. The
-   owner may add the `SessionStart` hook `T-019` left out (its notes).
+1. **`T-003f`** (smoothing and lock), then `T-014` (chords; `T-020` added the G4-over-G4/3 case),
+   `T-003d`, `T-003g`. The owner may add the `SessionStart` hook `T-019` left out (its notes).
 2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then L10 (the silenced microphone).
    Also owed: `T-003a`'s 4096 frame cost on the phone (≤ 1.5 ms).
 3. **`T-002e`** (overlay in Settings → Diagnostics; first golden), then **`T-002f`** (latency, FAST).

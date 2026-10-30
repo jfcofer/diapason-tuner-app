@@ -32,6 +32,12 @@ Measured in `T-003c`'s review, from home Mid, the first note ringing loud under 
   + 100 ¢ over a bass E reads 38–39 Hz, at clarity up to 0.97;
 - E3 ringing loud over a low E: High shows the louder E3, octave known, before the chain moves.
 
+Found in `T-020` (`adr/0031`): a high note over a second sound at a third of it (a ukulele's G4
+over its body at 134.8 Hz and a sympathetic C4) reads that common period in Mid. `T-020` stopped
+the verifier from moving the chain there. From silence, with the tone loud (6 dB down, or 11 dB
+under a G4 that is a bare sine), High itself reads G4/3 and the chain still moves down.
+`tests/chain.rs`'s `over_a_third` builds that signal.
+
 The likely tool is time, not a single frame: detecting the onset of the plucked string (an energy
 or spectral-flux rise), so the estimate of the string just plucked is held and a reading that
 appears without an onset is not taken for a new note; or holding the last confident estimate
