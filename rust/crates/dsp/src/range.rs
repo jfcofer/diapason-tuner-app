@@ -68,9 +68,12 @@ pub const SNAPSHOT_SECONDS: f64 = 1.0 / 60.0;
 /// One display frame at 60 Hz, in seconds: the snapshot reaches the needle on the next vsync.
 pub const DISPLAY_SECONDS: f64 = 1.0 / 60.0;
 
-/// Hops reserved for `T-003f`'s smoothing. A median of five follows a step once three of its
-/// five inputs are new: the first new estimate, then two more hops. The one-euro filter adds
-/// nothing to the *first* movement, because its output moves on its first new input.
+/// Hops the needle's smoothing costs (`crate::smooth`, `docs/adr/0032`). A median of five follows
+/// a step once three of its five inputs are new, and a converging onset two of its frames behind:
+/// the first new estimate, then two more hops. The one-euro filter is held within
+/// `smooth::MAX_LAG_CENTS` of the median, so the needle is within ±5 ¢ once the median is within
+/// 2 ¢. The line holds worst case against worst case, as every line here does, not run by run: an
+/// onset whose estimate settles early may see the needle up to 30 ms after it (`docs/adr/0032`).
 pub const SMOOTHING_HOPS: usize = 2;
 
 /// An analysis range.
@@ -223,7 +226,7 @@ pub struct Ledger {
     pub settling: f64,
     /// Waiting for the next frame: one hop.
     pub hop: f64,
-    /// `T-003f`'s smoothing ([`SMOOTHING_HOPS`]).
+    /// The needle's smoothing ([`SMOOTHING_HOPS`]).
     pub smoothing: f64,
     /// Waiting for the next snapshot ([`SNAPSHOT_SECONDS`]).
     pub snapshot: f64,
@@ -1563,7 +1566,7 @@ mod tests {
             ("Settling", |l| l.settling),
             ("One hop", |l| l.hop),
             ("**Chain line", Ledger::chain_seconds),
-            ("Smoothing reserve", |l| l.smoothing),
+            ("Smoothing", |l| l.smoothing),
             ("Snapshot period", |l| l.snapshot),
             ("One display frame", |l| l.display),
             ("**Total**", Ledger::total_seconds),
