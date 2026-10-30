@@ -30,7 +30,8 @@ Flutter owns the UI; **Rust owns all audio and DSP**. Offline-first, zero teleme
 3. Append one entry to `docs/agents/journal/` (`YYYY-MM-DD-slug.md`, template in that folder).
 4. Any decision that closes off an alternative → new ADR in `docs/adr/` (never edit a decided ADR;
    supersede it).
-5. Run `just verify`. Do not end a session on red without saying so in STATE.md.
+5. Run `just session-end`: it fails if 1–3 were skipped, then runs `just verify`. Do not end a
+   session on red without saying so in STATE.md.
 
 Rationale and the full memory model → `docs/agents/CONTEXT_SYSTEM.md`.
 
