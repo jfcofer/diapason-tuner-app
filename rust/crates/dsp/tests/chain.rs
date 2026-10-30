@@ -21,7 +21,6 @@
 
 use std::f64::consts::TAU;
 use std::fmt;
-use std::io::Write;
 
 use diapason_dsp::chain::{Frame, Selection, UNPITCHED_SECONDS};
 use diapason_dsp::convert::{index_from_f64, index_to_f64, to_f32};
@@ -36,7 +35,7 @@ use diapason_dsp::range::{
 use diapason_dsp::synth::{self, Noise};
 
 pub mod common;
-use common::{Tuner, cents, span};
+use common::{Tuner, cents, report, span};
 
 /// `docs/AUDIO_ENGINE.md` §1: synthetic steady tones, 30–1400 Hz.
 const BUDGET_CENTS: f64 = 0.5;
@@ -57,16 +56,6 @@ const SPIKE_HALF_WIDTH_HZ: f64 = 0.3;
 type Generator = fn(&mut [f32], f64, u32, f64, f64);
 
 const SIGNALS: [(&str, Generator); 2] = [("sine", synth::sine), ("sawtooth", synth::sawtooth)];
-
-/// Writes a line of the summary, only under `--nocapture` (see `tests/accuracy.rs`: `println!` is
-/// on the crate's real-time deny list, which covers tests too).
-fn report(line: fmt::Arguments<'_>) {
-    let asked = std::env::args().any(|arg| arg == "--nocapture" || arg == "--show-output")
-        || std::env::var_os("RUST_TEST_NOCAPTURE").is_some();
-    if asked {
-        writeln!(std::io::stdout().lock(), "{line}").unwrap();
-    }
-}
 
 /// `LOWEST_HZ · 2^(i/24)` up to `HIGHEST_HZ`, which is always included.
 fn sweep(points_per_octave: u32) -> Vec<f64> {

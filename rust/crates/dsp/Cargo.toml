@@ -12,7 +12,9 @@ realfft.workspace = true
 [dev-dependencies]
 assert_no_alloc.workspace = true
 criterion.workspace = true
+hound.workspace = true
 proptest.workspace = true
+serde_json.workspace = true
 
 [[bench]]
 name = "nsdf"

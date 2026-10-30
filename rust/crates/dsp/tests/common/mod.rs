@@ -6,6 +6,9 @@
 //! It allocates only in [`Tuner::new`]; `tests/no_alloc.rs` drives [`Tuner::push`] with the trap
 //! armed.
 
+use std::fmt;
+use std::io::Write;
+
 use diapason_dsp::chain::{Analysis, Frame, Front, Selection};
 use diapason_dsp::gate::GateConfig;
 use diapason_dsp::range::{DECIMATION, Path, Range, RangeTable};
@@ -64,4 +67,17 @@ pub fn span(table: &RangeTable, range: Range) -> u64 {
 /// `1200 · log₂(measured / true)`.
 pub fn cents(measured_hz: f64, true_hz: f64) -> f64 {
     1_200.0 * (measured_hz / true_hz).log2()
+}
+
+/// Writes a line of a test's summary, only under `--nocapture` (or `RUST_TEST_NOCAPTURE`).
+///
+/// `println!` is on the crate's real-time deny list (`dsp/clippy.toml`), which covers tests too.
+/// A direct write to stdout is not, but libtest does not capture it either, so without this check
+/// every summary would print on every `just verify`.
+pub fn report(line: fmt::Arguments<'_>) {
+    let asked = std::env::args().any(|arg| arg == "--nocapture" || arg == "--show-output")
+        || std::env::var_os("RUST_TEST_NOCAPTURE").is_some();
+    if asked {
+        writeln!(std::io::stdout().lock(), "{line}").unwrap();
+    }
 }
