@@ -7,9 +7,12 @@ agent from "improving" a deliberate choice.
 ## Rules
 
 - One decision per file, `NNNN-kebab-title.md`, numbered sequentially and never reused.
-- Status: `Proposed` → `Accepted` → `Superseded by NNNN` (or `Rejected`).
-- **Accepted ADRs are immutable.** To change a decision, write a new ADR that supersedes it and
-  update the old one's status line only.
+- Status: `Proposed` → `Accepted` → `Superseded by NNNN` (or `Rejected`). The line reads
+  `**Status:** <status> · YYYY-MM-DD`, then optionally ` · in part superseded by NNNN` (the rest of
+  the body stands) or a short note; `docs-check` holds it to that.
+- **Accepted ADRs are immutable once on `main`.** To change a decision, write a new ADR that
+  supersedes it and update the old one's status line only. Before its PR merges, an ADR may still
+  be revised on its branch; its status line says so, and the decision date stands.
 - Budget: 120 lines. If it needs more, the decision is not yet clear enough to record.
 - Write one when: choosing between libraries or architectures, accepting a constraint that will be
   expensive to reverse, or deliberately doing something that looks wrong.

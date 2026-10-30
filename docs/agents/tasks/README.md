@@ -6,7 +6,8 @@ than arguable.
 
 - IDs are sequential and permanent: `T-001`, `T-002`, … Never reuse one.
 - File name: `T-###-kebab-summary.md`. Status lives in the front matter, not the file name.
-- One task is active at a time; `STATE.md` names it. Parallel work needs parallel branches.
+- One task is active per agent; `STATE.md` names it. Parallel work needs parallel branches. A task
+  waiting on something outside the repo (a device, the owner) is `blocked` and names what unblocks it.
 - Budget: 150 lines. If a task needs more, it is two tasks.
 - Statuses: `todo` → `in-progress` → `blocked` → `done` (or `abandoned`, with a reason).
 - A task that turned out to be wrong is closed as `abandoned` with an explanation. It is not deleted
