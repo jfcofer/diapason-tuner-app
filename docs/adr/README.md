@@ -49,5 +49,6 @@ agent from "improving" a deliberate choice.
 | [0026](0026-patrol-device-tests.md) | Device tests run through patrol, pinned with its CLI, never shipped | Accepted |
 | [0027](0027-synthetic-fixtures-in-code.md) | Synthetic audio fixtures are generated in code; only recordings are checked in | Accepted |
 | [0028](0028-windows-hops-from-the-latency-ledger.md) | Analysis windows, hops and the decimation crossover come from the latency ledger | Accepted, in part superseded by 0029 |
-| [0029](0029-octave-guard.md) | Octave guard: provisional octaves, verified by the ranges below; supersedes part of 0028 | Accepted |
+| [0029](0029-octave-guard.md) | Octave guard: provisional octaves, verified by the ranges below; supersedes part of 0028 | Accepted, in part superseded by 0031 |
 | [0030](0030-recorded-fixtures.md) | Recorded fixtures: CC0 libraries, cut exactly, held to an independent harmonic consensus | Accepted |
+| [0031](0031-verifiers-move-only-to-a-hidden-fundamental.md) | A verifier moves the chain down only to a fundamental the current range cannot see; supersedes part of 0029 | Accepted |
