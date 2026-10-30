@@ -522,12 +522,13 @@ pub const REFERENCE_PATIENCE_SECONDS: f64 = 0.25;
 ///   - its pitch is below the current band, at least [`LOWEST_FUNDAMENTAL_HZ`], and the current
 ///     range's latest clear pitch since the last switch is absent, or 2, 3 or 4 times it
 ///     ([`MAX_HARMONIC`]);
-///   - **the current range cannot see its pitch** ([`RangeTable::sees`]; `docs/adr/0031`). A
-///     range that sees the period and still read one 2 to 4 times shorter found the shorter one
-///     about as periodic (`Mpm` takes the first peak within 0.9 of the highest), which a hidden
-///     fundamental is not: the longer period is a second sound's, such as a body or a sympathetic
-///     string under a G4, whose common period Mid reads at G4/3 (`T-020`). A low note the current
-///     range sees is its own reading, and moves the chain through [`Self::observe`];
+///   - **if the current pitch is 3 or 4 times it, the current range cannot see it**
+///     ([`RangeTable::sees`]; `docs/adr/0031`). A range that sees the period and still read one 3
+///     or 4 times shorter found the shorter one about as periodic (`Mpm` takes the first peak
+///     within 0.9 of the highest), and a string is not: that needs nearly all its energy in every
+///     third or fourth partial. Two sounds are: a G4 over its body and a sympathetic C4, whose
+///     common period Mid reads at G4/3 (`T-020`). Twice it stays a hidden fundamental even where
+///     seen: a string with weak odd partials is about as periodic at half its period;
 ///   - **the verifier frame's whole window, filter taps included, started after the last switch,
 ///     the last change of the current pitch ([`CHANGE_CENTS`]) and the last end of a reading held
 ///     for a window ([`Self::held_frames`])**. A window that spans a note change holds both notes,
@@ -891,8 +892,12 @@ impl RangeSelector {
                 .came_from
                 .is_some_and(|from| cents(hz, from).abs() <= HARMONIC_TOLERANCE_CENTS);
             let consistent = self.pitch.is_none_or(|current| harmonic(current, hz));
-            // A fundamental the current range sees is no hidden one: it would have read it.
-            let hidden = !self.table.sees(self.current, hz);
+            // A third or a quarter of a pitch the current range read though it sees it is no
+            // hidden fundamental; half may be, under a string with weak odd partials.
+            let hidden = !self.table.sees(self.current, hz)
+                || self
+                    .pitch
+                    .is_none_or(|current| (current / hz).round() < 3.0);
             below && hz >= LOWEST_FUNDAMENTAL_HZ && consistent && hidden && !ringing
         });
         // After a note, which may still sound, Mid can read a period common to it and the next
@@ -1394,7 +1399,7 @@ mod tests {
     }
 
     #[test]
-    fn a_verifier_reading_a_pitch_the_current_range_sees_moves_nothing() {
+    fn a_verifier_reading_a_third_of_a_pitch_the_current_range_sees_moves_nothing() {
         // A G4 over a tone at a third of it (`T-020`): Mid reads 130.7 Hz, G4/3, fresh and
         // agreeing, past the patience. High sees 130.7 Hz and read G4: no hidden fundamental.
         let table = RangeTable::new(48_000).unwrap();
@@ -1407,12 +1412,17 @@ mod tests {
             })
         };
         assert!(!moves(Range::High, 392.0, Range::Mid, 130.67));
-        // At the edge of what High sees, 106.9 Hz at 48 kHz: below it, a hidden fundamental.
+        assert!(!moves(Range::High, 523.2, Range::Mid, 130.8));
+        // Half of it still moves: a string with weak odd partials, read at 2f₀ though seen.
+        assert!(moves(Range::High, 220.0, Range::Mid, 110.0));
+        // At the edge of what High sees, 106.9 Hz at 48 kHz (107.04 at 44.1): below it, hidden.
         assert!(table.sees(Range::High, 107.0) && !table.sees(Range::High, 106.0));
+        let cd = RangeTable::new(44_100).unwrap();
+        assert!(cd.sees(Range::High, 107.1) && !cd.sees(Range::High, 107.0));
         assert!(!moves(Range::High, 321.0, Range::Mid, 107.0));
         assert!(moves(Range::High, 318.0, Range::Mid, 106.0));
-        // Low under Mid alike: Mid sees 55 Hz, not 41.2 Hz.
-        assert!(!moves(Range::Mid, 110.0, Range::Low, 55.0));
+        // Low under Mid alike: Mid sees 52.5 Hz, not 41.2 Hz.
+        assert!(!moves(Range::Mid, 157.5, Range::Low, 52.5));
         assert!(moves(Range::Mid, 123.6, Range::Low, 41.2));
     }
 
