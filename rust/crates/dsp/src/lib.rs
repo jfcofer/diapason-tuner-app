@@ -8,6 +8,9 @@
 //! - [`frame`] and [`range`]: frames of the window and hop each range needs, the range table
 //!   derived from the sample rate, the selector that moves between ranges, and the latency
 //!   ledger they are sized from (`docs/adr/0028`).
+//! - [`smooth`]: what the needle shows, the guarded estimate through a median of five and a
+//!   one-euro filter (`docs/adr/0032`).
+//! - [`lock`]: the "held in tune" indicator, from the estimate's cents on the audio clock.
 //! - [`chain`]: all of it composed, split at the ring buffer into the callback's [`chain::Front`]
 //!   and the analysis thread's [`chain::Analysis`], so the engine only owns the threads.
 //! - [`synth`]: deterministic, seeded fixture signals that test and bench it.
@@ -40,10 +43,12 @@ pub mod filter;
 pub mod frame;
 pub mod gate;
 pub mod level;
+pub mod lock;
 pub mod octave;
 pub mod osc;
 pub mod pitch;
 pub mod range;
+pub mod smooth;
 pub mod synth;
 
 /// Identifies the DSP build, so the value crossing the FFI boundary in `T-001` originates from the

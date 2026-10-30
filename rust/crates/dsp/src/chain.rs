@@ -7,6 +7,7 @@
 //!   - the frames of every range, and `Mpm` on the selected range's;
 //!   - the [`OctaveGuard`] on each estimate, and the [`RangeSelector`], with the frames of the
 //!     ranges below the selected one that verify its octave (`docs/adr/0029`);
+//!   - the [`Needle`] on the guarded estimate: what the needle shows (`docs/adr/0032`);
 //!   - the report, back to the gate, that the open gate has heard no pitch for a while
 //!     ([`Analysis::unpitched`], [`Front::set_unpitched`]).
 //!
@@ -27,6 +28,7 @@ use crate::pitch::{Mpm, MpmConfig, MpmError, PitchEstimate};
 use crate::range::{
     DECIMATION, LOWEST_FUNDAMENTAL_HZ, Observation, Path, Range, RangeSelector, RangeTable,
 };
+use crate::smooth::Needle;
 
 /// Seconds the gate may stay open without a clear pitch before the analysis calls it noise and
 /// the gate's floor learns from it ([`NoiseGate::set_unpitched`]). Long enough that a note's
@@ -156,8 +158,11 @@ pub struct Frame {
     /// The range it was analysed in.
     pub range: Range,
     /// What `Mpm` found, through the octave guard: `None` also while a jump waits for confirmation
-    /// (`crate::octave`).
+    /// (`crate::octave`). Its frequency is `frequency_raw` (`docs/AUDIO_ENGINE.md` §3).
     pub estimate: Option<PitchEstimate>,
+    /// `frequency_display`, in hertz: the estimate through the [`Needle`]'s median and one-euro
+    /// filter. `None` with no estimate, and while a new note's first frames come in.
+    pub display: Option<f64>,
     /// Whether the estimate's octave is known, or only its pitch class and cents
     /// (`docs/PRODUCT_SPEC.md` §2, `ambiguous octave`). [`Octave::Known`] when there is no estimate.
     pub octave: Octave,
@@ -195,6 +200,7 @@ pub struct Analysis {
     frames: [FrameAssembler; 3],
     detectors: [Mpm; 3],
     guard: OctaveGuard,
+    display: Needle,
     /// The latest clear reading of each range below the selected one (Low, Mid), in hertz, and
     /// the stream position of its frame: what corroborates a blind estimate
     /// ([`Self::corroborated`]).
@@ -259,6 +265,7 @@ impl Analysis {
             frames,
             detectors,
             guard: OctaveGuard::new(),
+            display: Needle::new(sample_rate),
             below: [None; 2],
             current_clarity: None,
             table,
@@ -351,14 +358,19 @@ impl Analysis {
         if range == current {
             if !self.gate.is_open() {
                 self.guard.reset();
+                self.display.reset();
                 self.observe(Observation::Silent);
                 return;
             }
             let (estimate, octave) = self.judge(range);
+            let display = self
+                .display
+                .update(estimate.map(|e| e.frequency_hz), self.position);
             on_frame(&Frame {
                 end: self.position,
                 range,
                 estimate,
+                display,
                 octave,
             });
         } else if matches!(self.selection, Selection::Auto(_))
