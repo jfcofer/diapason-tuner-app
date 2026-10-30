@@ -4,8 +4,9 @@
 **/frb_generated*.dart linguist-generated=true
 **/frb_generated*.rs   linguist-generated=true
 
-# Binary fixtures
-fixtures/audio/** binary
+# Binary fixtures. fixtures/audio/ also holds text (manifest.json, README.md, LICENSES/), which diffs.
 *.flac binary
 *.wav binary
+# Licence evidence is kept byte for byte, CRLF included; its SHA-256 is in the manifest (adr/0030).
+fixtures/audio/LICENSES/** -text
 *.png binary

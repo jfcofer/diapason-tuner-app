@@ -1,0 +1,738 @@
+{
+  "sources": {
+    "freepats-ukulele": {
+      "library": "FreePats Ukulele",
+      "version": "2026-08-11",
+      "url": "https://github.com/freepats/ukulele1/releases/download/2026-08-11/Ukulele-SFZ+WAV-20260811.7z",
+      "archive": "Ukulele-SFZ+WAV-20260811.7z",
+      "archive_sha256": "cb857464cc847c261d954a4bfe3610380f96ff4d2603d94573ab3529aa574775",
+      "licence": "CC0-1.0",
+      "evidence": "LICENSES/freepats-ukulele.txt",
+      "evidence_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+    },
+    "karoryfer-black-and-blue-basses": {
+      "library": "Karoryfer Black And Blue Basses",
+      "version": "v1.002",
+      "url": "https://github.com/sfzinstruments/karoryfer.black-and-blue-basses/releases/download/v1.002/Black_And_Blue_Basses_1002.zip",
+      "archive": "Black_And_Blue_Basses_1002.zip",
+      "archive_sha256": "cf77fc782abf996826fe75cfd948d356968de7c8b967c471c6a433835d2b4f55",
+      "licence": "CC0-1.0",
+      "evidence": "LICENSES/karoryfer-black-and-blue-basses.txt",
+      "evidence_sha256": "a19d58aaab15c4d0019e569d1c073d1b5286fdd37dbeee7a58a7d1ae76045ae1"
+    },
+    "karoryfer-emilyguitar": {
+      "library": "Karoryfer Emilyguitar",
+      "version": "v1.001",
+      "url": "https://github.com/sfzinstruments/karoryfer.emilyguitar/releases/download/v1.001/Karoryfer.Emilyguitar.v1.001.zip",
+      "archive": "Karoryfer.Emilyguitar.v1.001.zip",
+      "archive_sha256": "ffef3b28972763820bee73660a25cf47ea6e13b184342fd5d325a5631598cacb",
+      "licence": "CC0-1.0",
+      "evidence": "LICENSES/karoryfer-emilyguitar.txt",
+      "evidence_sha256": "a19d58aaab15c4d0019e569d1c073d1b5286fdd37dbeee7a58a7d1ae76045ae1"
+    },
+    "meta-nylon-guitar": {
+      "library": "Meta Nylon Guitar (Meta Open Sound)",
+      "version": "meta-nylon-guitar-v1.0.0",
+      "url": "https://github.com/facebookincubator/Meta-open-sound/releases/download/meta-nylon-guitar-v1.0.0/meta-open-sound-meta-nylon-guitar-wav.zip",
+      "archive": "meta-open-sound-meta-nylon-guitar-wav.zip",
+      "archive_sha256": "e7fa168b97a72ecc1257917f85cb524fe7c2e1f098dfdcaf8f5c0e29cabe768e",
+      "licence": "CC0-1.0",
+      "evidence": "LICENSES/meta-nylon-guitar.txt",
+      "evidence_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+    },
+    "meta-steel-guitar": {
+      "library": "Meta Steel Guitar (Meta Open Sound)",
+      "version": "meta-steel-guitar-v1.0.0",
+      "url": "https://github.com/facebookincubator/Meta-open-sound/releases/download/meta-steel-guitar-v1.0.0/meta-open-sound-meta-steel-guitar-wav.zip",
+      "archive": "meta-open-sound-meta-steel-guitar-wav.zip",
+      "archive_sha256": "caaa8a9c07217f4a82d1dfd9f5657c286155464b66bf4dd27797811c2558a909",
+      "licence": "CC0-1.0",
+      "evidence": "LICENSES/meta-steel-guitar.txt",
+      "evidence_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+    },
+    "vsco-2-ce": {
+      "library": "Versilian Studios VSCO 2 Community Edition",
+      "version": "commit 440300901dfe9275fd84e0b7763af1f8443ae62e",
+      "url": "https://github.com/sgossner/VSCO-2-CE/archive/440300901dfe9275fd84e0b7763af1f8443ae62e.zip",
+      "archive": "VSCO-2-CE-master.zip",
+      "archive_sha256": "aa94aaf77fadd5f893654eab905ac3df218c3037a6a2ab6f1b587d4d573bea38",
+      "licence": "CC0-1.0",
+      "evidence": "LICENSES/vsco-2-ce.txt",
+      "evidence_sha256": "36ffd9dc085d529a7e60e1276d73ae5a030b020313e6c5408593a6ae2af39673"
+    }
+  },
+  "fixtures": [
+    {
+      "id": "bass_a1",
+      "file": "bass_a1.wav",
+      "source": "karoryfer-black-and-blue-basses",
+      "member": "Samples/darkblack/reg/darkblack_a2_mf_rr1.wav",
+      "member_sha256": "6e19252339d62894add7e3881ce0952588d4b8d7ba3927e6371caf08ae15f56f",
+      "channel": "mono",
+      "start_frame": 0,
+      "frames": 110250,
+      "instrument": "electric-bass",
+      "variant": "five-string-fingered",
+      "set": "ceiling",
+      "note": "A1",
+      "sample_rate": 44100,
+      "bits": 24,
+      "sha256": "212842d48252c0e724f793c4a54aabd47fdad20a41d670de5ebc13934d88751c",
+      "reference": {
+        "hz": 54.8755,
+        "first_partial_hz": 54.8988,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,5, each by phase advance; Hann 9621 samples (12 periods), hop 1202, median",
+        "uncertainty_cents": 0.032,
+        "glide_cents": -1.62
+      }
+    },
+    {
+      "id": "bass_b0",
+      "file": "bass_b0.wav",
+      "source": "karoryfer-black-and-blue-basses",
+      "member": "Samples/darkblack/reg/darkblack_b1_mf_rr1.wav",
+      "member_sha256": "35d2ee0ed0197d2c9f96d54b59bded11e69946bef5ac45b00957cb1d4248e73f",
+      "channel": "mono",
+      "start_frame": 0,
+      "frames": 132300,
+      "instrument": "electric-bass",
+      "variant": "five-string-fingered",
+      "set": "ceiling",
+      "note": "B0",
+      "sample_rate": 44100,
+      "bits": 24,
+      "sha256": "3724c7af4111c1f21c0945f69fa59c53a76d09f3f1835ca0a5572c87a111f1a1",
+      "reference": {
+        "hz": 30.8663,
+        "first_partial_hz": 30.8998,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 17144 samples (12 periods), hop 2143, median",
+        "uncertainty_cents": 0.021,
+        "glide_cents": -0.76
+      }
+    },
+    {
+      "id": "bass_d2",
+      "file": "bass_d2.wav",
+      "source": "karoryfer-black-and-blue-basses",
+      "member": "Samples/darkblack/reg/darkblack_d3_mf_rr1.wav",
+      "member_sha256": "fa80713090e86abdcecb854cc6013c5582cdce9608811417decc901d713d40bc",
+      "channel": "mono",
+      "start_frame": 0,
+      "frames": 110250,
+      "instrument": "electric-bass",
+      "variant": "five-string-fingered",
+      "set": "ceiling",
+      "note": "D2",
+      "sample_rate": 44100,
+      "bits": 24,
+      "sha256": "9a181bcc4f703926b05c982b0e0c0bda3b408dcda6cae45413eab50f71567fc5",
+      "reference": {
+        "hz": 73.2828,
+        "first_partial_hz": 73.2302,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 7208 samples (12 periods), hop 901, median",
+        "uncertainty_cents": 0.018,
+        "glide_cents": -0.32
+      }
+    },
+    {
+      "id": "bass_e1",
+      "file": "bass_e1.wav",
+      "source": "karoryfer-black-and-blue-basses",
+      "member": "Samples/darkblack/reg/darkblack_e2_mf_rr1.wav",
+      "member_sha256": "1bf43757891f6eb68aa11b6d3e38f01712bd534af1b06a34c87fc314958ebc0f",
+      "channel": "mono",
+      "start_frame": 0,
+      "frames": 132300,
+      "instrument": "electric-bass",
+      "variant": "five-string-fingered",
+      "set": "ceiling",
+      "note": "E1",
+      "sample_rate": 44100,
+      "bits": 24,
+      "sha256": "a8495502c790ffa0bb3fda5ca0c943a78ead25899fd01a82f5398ff15407e2d5",
+      "reference": {
+        "hz": 41.2478,
+        "first_partial_hz": 41.355,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 12843 samples (12 periods), hop 1605, median",
+        "uncertainty_cents": 0.214,
+        "glide_cents": -1.51
+      }
+    },
+    {
+      "id": "electric_a2",
+      "file": "electric_a2.wav",
+      "source": "karoryfer-emilyguitar",
+      "member": "Emilyguitar/notes/a2_mf_rr1.wav",
+      "member_sha256": "b0031818b989d576cdc189154c90162e1b545b7ee9c56a6640ce0e7e658079c4",
+      "channel": "mono",
+      "start_frame": 0,
+      "frames": 110250,
+      "instrument": "electric-guitar",
+      "variant": "clean-di",
+      "set": "ceiling",
+      "note": "A2",
+      "sample_rate": 44100,
+      "bits": 24,
+      "sha256": "97614718e77c8aa3e36f3a11cd20727722aa0746807abbbc983aa5a69de1c05f",
+      "reference": {
+        "hz": 110.1652,
+        "first_partial_hz": 110.0307,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4, each by phase advance; Hann 4810 samples (12 periods), hop 601, median",
+        "uncertainty_cents": 0.492,
+        "glide_cents": -1.49
+      }
+    },
+    {
+      "id": "electric_a4",
+      "file": "electric_a4.wav",
+      "source": "karoryfer-emilyguitar",
+      "member": "Emilyguitar/notes/a4_mf_rr1.wav",
+      "member_sha256": "4df039e1d517e727149ba4ef8e1616ead6761ab485fa541f522611a9388471b8",
+      "channel": "mono",
+      "start_frame": 0,
+      "frames": 110250,
+      "instrument": "electric-guitar",
+      "variant": "clean-di",
+      "set": "ceiling",
+      "note": "A4",
+      "sample_rate": 44100,
+      "bits": 24,
+      "sha256": "fe24d2edfef94cf0b34e2806a2baec117b49b0c46617ddd5f95deb7a6d5e726e",
+      "reference": {
+        "hz": 440.4864,
+        "first_partial_hz": 440.3869,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3, each by phase advance; Hann 1202 samples (12 periods), hop 150, median",
+        "uncertainty_cents": 0.115,
+        "glide_cents": -2.73
+      }
+    },
+    {
+      "id": "electric_e2",
+      "file": "electric_e2.wav",
+      "source": "karoryfer-emilyguitar",
+      "member": "Emilyguitar/notes/e2_mf_rr1.wav",
+      "member_sha256": "e1a2c4443e754a40afed733430ef52fa35490e110f2bacee429ccffd61e9d201",
+      "channel": "mono",
+      "start_frame": 0,
+      "frames": 110250,
+      "instrument": "electric-guitar",
+      "variant": "clean-di",
+      "set": "ceiling",
+      "note": "E2",
+      "sample_rate": 44100,
+      "bits": 24,
+      "sha256": "101a9d6b05dc220d3ffcd67129db9ef52b6d823545fac4fc2f6d2745a469bb61",
+      "reference": {
+        "hz": 82.5145,
+        "first_partial_hz": 82.398,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 6421 samples (12 periods), hop 802, median",
+        "uncertainty_cents": 0.177,
+        "glide_cents": -1.88
+      }
+    },
+    {
+      "id": "nylon_b3",
+      "file": "nylon_b3.wav",
+      "source": "meta-nylon-guitar",
+      "member": "INSGuitarNylon_StringB_Vel01Finger_B3_01.wav",
+      "member_sha256": "f322079c449fa0f4b931f615e04b43f595ed86c890af9b9b80063e555a691307",
+      "channel": "left",
+      "start_frame": 0,
+      "frames": 120000,
+      "instrument": "acoustic-guitar",
+      "variant": "nylon",
+      "set": "gold",
+      "note": "B3",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "a3b3eb9403aa21803ffe5963489b54837f3e0dd9eeaa7f7712b9cf2cc07f6bcd",
+      "reference": {
+        "hz": 245.8574,
+        "first_partial_hz": 245.7361,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3, each by phase advance; Hann 2332 samples (12 periods), hop 291, median",
+        "uncertainty_cents": 0.059,
+        "glide_cents": -2.49
+      }
+    },
+    {
+      "id": "nylon_d3",
+      "file": "nylon_d3.wav",
+      "source": "meta-nylon-guitar",
+      "member": "INSGuitarNylon_StringD_Vel01Finger_D3_01.wav",
+      "member_sha256": "894312b8a37d78e6e3d18cc2e0dd1ed59e615fa07999a2794a93ca34d7ea0d48",
+      "channel": "left",
+      "start_frame": 0,
+      "frames": 120000,
+      "instrument": "acoustic-guitar",
+      "variant": "nylon",
+      "set": "gold",
+      "note": "D3",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "e41fe1d9613ffdc32e82605c79a0ce1dcde9973dab8e44347c2ad04111070103",
+      "reference": {
+        "hz": 146.6693,
+        "first_partial_hz": 146.4975,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3, each by phase advance; Hann 3922 samples (12 periods), hop 490, median",
+        "uncertainty_cents": 0.023,
+        "glide_cents": -0.67
+      }
+    },
+    {
+      "id": "nylon_e2",
+      "file": "nylon_e2.wav",
+      "source": "meta-nylon-guitar",
+      "member": "INSGuitarNylon_StringLowE_Vel01Finger_E2_01.wav",
+      "member_sha256": "f82ba8fa6b2c193b4f2ecc8b78e192d78a037734e9e5210e7033e256d61d6596",
+      "channel": "left",
+      "start_frame": 0,
+      "frames": 120000,
+      "instrument": "acoustic-guitar",
+      "variant": "nylon",
+      "set": "gold",
+      "note": "E2",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "1462194347e70ba8a62e0fb6582a19fea4c71975c3b3f446e255b1f57604dd2f",
+      "reference": {
+        "hz": 82.0792,
+        "first_partial_hz": 81.973,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 6989 samples (12 periods), hop 873, median",
+        "uncertainty_cents": 0.041,
+        "glide_cents": -0.94
+      }
+    },
+    {
+      "id": "nylon_e4",
+      "file": "nylon_e4.wav",
+      "source": "meta-nylon-guitar",
+      "member": "INSGuitarNylon_StringHighE_Vel01Finger_E4_01.wav",
+      "member_sha256": "c4d25d2b5b03e48ad0b30d3ad3d7579bc77f16deb124c2ee6a0f343473a6ab3d",
+      "channel": "left",
+      "start_frame": 0,
+      "frames": 120000,
+      "instrument": "acoustic-guitar",
+      "variant": "nylon",
+      "set": "gold",
+      "note": "E4",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "28d5c1e75de0cee358268d9db35a766e2d3d762068a55dca30fab71ebb9e419a",
+      "reference": {
+        "hz": 328.2766,
+        "first_partial_hz": 328.7162,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3, each by phase advance; Hann 1747 samples (12 periods), hop 218, median",
+        "uncertainty_cents": 0.045,
+        "glide_cents": -0.28
+      }
+    },
+    {
+      "id": "steel_a2",
+      "file": "steel_a2.wav",
+      "source": "meta-steel-guitar",
+      "member": "INSGuitarSteel_StringA_Vel02_A2_01.wav",
+      "member_sha256": "275e3f7738d5cfe28b44d4e648d2cd50514a2aa8ea8a45284ffaea3e2d0535fc",
+      "channel": "left",
+      "start_frame": 0,
+      "frames": 120000,
+      "instrument": "acoustic-guitar",
+      "variant": "steel",
+      "set": "gold",
+      "note": "A2",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "56e2a3c2572b6c7645275117ba64b86c2becf8a5431328c4401dd0f268e5b21d",
+      "reference": {
+        "hz": 110.1308,
+        "first_partial_hz": 110.2762,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 5236 samples (12 periods), hop 654, median",
+        "uncertainty_cents": 0.034,
+        "glide_cents": -1.82
+      }
+    },
+    {
+      "id": "steel_b3",
+      "file": "steel_b3.wav",
+      "source": "meta-steel-guitar",
+      "member": "INSGuitarSteel_StringB_Vel02_B3_01.wav",
+      "member_sha256": "30a02c88db3b6dad6dda228cda50c4492668baf7bb4710476ea9ec1542f44789",
+      "channel": "left",
+      "start_frame": 0,
+      "frames": 120000,
+      "instrument": "acoustic-guitar",
+      "variant": "steel",
+      "set": "gold",
+      "note": "B3",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "cf7d51444a7fc8855fe98356400c6aafc87e787fb34359d3e466f3d463b2b03e",
+      "reference": {
+        "hz": 247.489,
+        "first_partial_hz": 247.6462,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 2332 samples (12 periods), hop 291, median",
+        "uncertainty_cents": 0.11,
+        "glide_cents": -1.52
+      }
+    },
+    {
+      "id": "steel_e2",
+      "file": "steel_e2.wav",
+      "source": "meta-steel-guitar",
+      "member": "INSGuitarSteel_StringLowE_Vel02_E2_01.wav",
+      "member_sha256": "31be9f8e68f541dca017ad0ef3ed3476112b9266f9db4e356c02d9d96a2f312d",
+      "channel": "left",
+      "start_frame": 0,
+      "frames": 120000,
+      "instrument": "acoustic-guitar",
+      "variant": "steel",
+      "set": "gold",
+      "note": "E2",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "cee313836e969e7cec7df832a86ff59aa262b43fd449e9d0f3c4733a67125978",
+      "reference": {
+        "hz": 82.3909,
+        "first_partial_hz": 82.2205,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5, each by phase advance; Hann 6989 samples (12 periods), hop 873, median",
+        "uncertainty_cents": 0.053,
+        "glide_cents": 1.35
+      }
+    },
+    {
+      "id": "steel_e4",
+      "file": "steel_e4.wav",
+      "source": "meta-steel-guitar",
+      "member": "INSGuitarSteel_StringHighE_Vel02_E4_01.wav",
+      "member_sha256": "1a2411d8014c231be61d1b651e7e1416d069ec62426fa6398af29db824fbd143",
+      "channel": "left",
+      "start_frame": 0,
+      "frames": 120000,
+      "instrument": "acoustic-guitar",
+      "variant": "steel",
+      "set": "gold",
+      "note": "E4",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "45c68dbab1651e1f72a1fcc7aea4daca8bf19d70be51b4d8372621f50581eab9",
+      "reference": {
+        "hz": 330.2604,
+        "first_partial_hz": 330.2617,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 1747 samples (12 periods), hop 218, median",
+        "uncertainty_cents": 0.067,
+        "glide_cents": 0.48
+      }
+    },
+    {
+      "id": "steel_g3",
+      "file": "steel_g3.wav",
+      "source": "meta-steel-guitar",
+      "member": "INSGuitarSteel_StringG_Vel02_G3_01.wav",
+      "member_sha256": "57542b61014c441cd5d19ae1c4b650a249d058d0eeb7464ecc30ac9b3e8888c7",
+      "channel": "left",
+      "start_frame": 0,
+      "frames": 120000,
+      "instrument": "acoustic-guitar",
+      "variant": "steel",
+      "set": "gold",
+      "note": "G3",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "7f0f2ef670f30e83358fc24fdf5463861cdec7df5114bd4a0f34a065050ac520",
+      "reference": {
+        "hz": 196.2473,
+        "first_partial_hz": 196.4122,
+        "window_ms": [
+          700,
+          1700
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 2938 samples (12 periods), hop 367, median",
+        "uncertainty_cents": 0.081,
+        "glide_cents": -0.22
+      }
+    },
+    {
+      "id": "ukulele_a4",
+      "file": "ukulele_a4.wav",
+      "source": "freepats-ukulele",
+      "member": "Ukulele SFZ+WAV-20260811/samples/A4.wav",
+      "member_sha256": "429f53c747c1ef547f7d5b802bb3ada653105f41504fd7192eb4912d772e3cd6",
+      "channel": "mono",
+      "start_frame": 0,
+      "frames": 120000,
+      "instrument": "ukulele",
+      "variant": "tenor",
+      "set": "ceiling",
+      "note": "A4",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "87c5f2ab0ef10266c5d234428e6d5b35e3e4e3bcdd1a021e2e68da890bb81e12",
+      "reference": {
+        "hz": 439.8102,
+        "first_partial_hz": 439.7786,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3, each by phase advance; Hann 1309 samples (12 periods), hop 163, median",
+        "uncertainty_cents": 0.152,
+        "glide_cents": 0.44
+      }
+    },
+    {
+      "id": "ukulele_c4",
+      "file": "ukulele_c4.wav",
+      "source": "freepats-ukulele",
+      "member": "Ukulele SFZ+WAV-20260811/samples/C4.wav",
+      "member_sha256": "8e3417d3ce2e9cb9848f6d887669f5b259a4a261ade531bf5d437a6d510323f2",
+      "channel": "mono",
+      "start_frame": 0,
+      "frames": 120000,
+      "instrument": "ukulele",
+      "variant": "tenor",
+      "set": "ceiling",
+      "note": "C4",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "e612d1c7739af47c4f6ebbed8847f3b9a6670fd25f12e32d4620b6f84680e49c",
+      "reference": {
+        "hz": 261.6899,
+        "first_partial_hz": 261.6281,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 2201 samples (12 periods), hop 275, median",
+        "uncertainty_cents": 0.065,
+        "glide_cents": -1.42
+      }
+    },
+    {
+      "id": "ukulele_e4",
+      "file": "ukulele_e4.wav",
+      "source": "freepats-ukulele",
+      "member": "Ukulele SFZ+WAV-20260811/samples/E4.wav",
+      "member_sha256": "0be6e08e7ff3ac9e16c5df9015f84007a981730bd4d1c13bb03ed36461bff608",
+      "channel": "mono",
+      "start_frame": 0,
+      "frames": 120000,
+      "instrument": "ukulele",
+      "variant": "tenor",
+      "set": "ceiling",
+      "note": "E4",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "94ed854e6417a8eb0f1f453ccc7b39543c3efc653b1a196fc31e691408b9f9c7",
+      "reference": {
+        "hz": 329.4748,
+        "first_partial_hz": 329.0319,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 1747 samples (12 periods), hop 218, median",
+        "uncertainty_cents": 0.22,
+        "glide_cents": 4.3
+      }
+    },
+    {
+      "id": "ukulele_g4",
+      "file": "ukulele_g4.wav",
+      "source": "freepats-ukulele",
+      "member": "Ukulele SFZ+WAV-20260811/samples/G4.wav",
+      "member_sha256": "24879ab753503f06d76785620f2a5927543c455d521200aadc1e82646660003f",
+      "channel": "mono",
+      "start_frame": 0,
+      "frames": 84000,
+      "instrument": "ukulele",
+      "variant": "tenor",
+      "set": "ceiling",
+      "note": "G4",
+      "sample_rate": 48000,
+      "bits": 24,
+      "sha256": "57c2dd1bdfb6145711d65c70b45493d6a09e93aafbcddb9f106d25d5adc973d5",
+      "reference": {
+        "hz": 391.9128,
+        "first_partial_hz": 392.6894,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 1469 samples (12 periods), hop 183, median",
+        "uncertainty_cents": 0.45,
+        "glide_cents": 0.74
+      }
+    },
+    {
+      "id": "violin_arco_vib_a4",
+      "file": "violin_arco_vib_a4.wav",
+      "source": "vsco-2-ce",
+      "member": "VSCO-2-CE-master/Strings/Solo Violin/Arco Vib/LLVln_ArcoVib_A4_f.wav",
+      "member_sha256": "19e5374658351508a9e2c929e871a43caff41e62d5e3363ead6f88428a9ab863",
+      "channel": "right",
+      "start_frame": 0,
+      "frames": 110250,
+      "instrument": "violin",
+      "variant": "arco-vibrato",
+      "set": "stress",
+      "note": "A4",
+      "sample_rate": 44100,
+      "bits": 16,
+      "sha256": "4724221ef1925dce4ad305335c5923181e46a702715695982e982b8b1ca20dd2",
+      "reference": {
+        "hz": 441.8536,
+        "first_partial_hz": 441.1203,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5,6, each by phase advance; Hann 1202 samples (12 periods), hop 150, median",
+        "uncertainty_cents": 3.188,
+        "glide_cents": 4.54
+      }
+    },
+    {
+      "id": "violin_pizz_a4",
+      "file": "violin_pizz_a4.wav",
+      "source": "vsco-2-ce",
+      "member": "VSCO-2-CE-master/Strings/Solo Violin/Pizz/LLVln_Pizz_A4_f_RR1.wav",
+      "member_sha256": "bf68ed22022538e70f6b04098a03a224dc0acb7b35334bce3af0b3196bc24455",
+      "channel": "right",
+      "start_frame": 0,
+      "frames": 101430,
+      "instrument": "violin",
+      "variant": "pizzicato",
+      "set": "ceiling",
+      "note": "A4",
+      "sample_rate": 44100,
+      "bits": 16,
+      "sha256": "719ceab7aa360fa7d1e92a64f2e4d9b3ad150111f53c6f520bd62741d3d50219",
+      "reference": {
+        "hz": 439.4083,
+        "first_partial_hz": 439.1768,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4, each by phase advance; Hann 1202 samples (12 periods), hop 150, median",
+        "uncertainty_cents": 0.164,
+        "glide_cents": 1.66
+      }
+    },
+    {
+      "id": "violin_pizz_e5",
+      "file": "violin_pizz_e5.wav",
+      "source": "vsco-2-ce",
+      "member": "VSCO-2-CE-master/Strings/Solo Violin/Pizz/LLVln_Pizz_E5_f_RR1.wav",
+      "member_sha256": "5704be5d372702464b44fecf10669c8181001ffc9ad29f63397f3634405d2f07",
+      "channel": "right",
+      "start_frame": 0,
+      "frames": 110250,
+      "instrument": "violin",
+      "variant": "pizzicato",
+      "set": "ceiling",
+      "note": "E5",
+      "sample_rate": 44100,
+      "bits": 16,
+      "sha256": "ff2df2a0d719f31fba63a522f973195e880fc56b1fdde7ad30b35dfbcfb27e1d",
+      "reference": {
+        "hz": 661.1571,
+        "first_partial_hz": 660.9648,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2, each by phase advance; Hann 802 samples (12 periods), hop 100, median",
+        "uncertainty_cents": 0.056,
+        "glide_cents": -0.43
+      }
+    },
+    {
+      "id": "violin_pizz_g3",
+      "file": "violin_pizz_g3.wav",
+      "source": "vsco-2-ce",
+      "member": "VSCO-2-CE-master/Strings/Solo Violin/Pizz/LLVln_Pizz_G3_f_RR1.wav",
+      "member_sha256": "dc56b8193aaa29d9a0704aeee8672437a00bd12ec5e964e9a02765ead48fcdf6",
+      "channel": "right",
+      "start_frame": 0,
+      "frames": 110250,
+      "instrument": "violin",
+      "variant": "pizzicato",
+      "set": "ceiling",
+      "note": "G3",
+      "sample_rate": 44100,
+      "bits": 16,
+      "sha256": "7400f162586003ff7f88b152fa25ecf4ffcf358bedca07a53c6821bccb9beae4",
+      "reference": {
+        "hz": 194.7994,
+        "first_partial_hz": 194.7826,
+        "window_ms": [
+          300,
+          1300
+        ],
+        "method": "harmonic consensus: amplitude-weighted f_k/k over partials 1,2,3,4,5, each by phase advance; Hann 2700 samples (12 periods), hop 337, median",
+        "uncertainty_cents": 0.953,
+        "glide_cents": 1.69
+      }
+    }
+  ]
+}
