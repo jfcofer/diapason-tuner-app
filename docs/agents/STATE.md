@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-30 (T-003c merged as #34; T-015 rebased onto it; T-019 and T-003e next)
+# STATE — updated 2026-10-30 (T-015 #36 and T-019 merged: protocol checked on every PR; T-003e next)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > Agents: run `just session-start`, read this, then the active task file. PR and merge state
@@ -9,19 +9,19 @@
 **Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
-- **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`–`T-003c`, and `T-015`
-  with this snapshot (PRs #6–#9, #11–#16, #24, #27–#31, #34), Dependabot #2, #10, #21, #22, #25,
-  #26. #20 closed; #35 closed, superseded by T-015's rebased PR. **Open:** Dependabot #32 (actions)
+- **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`–`T-003c`, T-015, and
+  `T-019` with this snapshot (PRs #6–#9, #11–#16, #24, #27–#31, #34, #36), Dependabot #2, #10, #21,
+  #22, #25, #26. #20 closed; #35 closed, superseded by #36. **Open:** Dependabot #32 (actions)
   and #33 (dart-minor), green, for the owner to merge.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-019-process-drift-5.md`** (todo, planned 2026-10-30): check the session
-protocol on every PR's diff in CI, so it binds every agent, not only one that runs `session-end`.
-Then **`T-003e`** part 1, recorded fixtures: the owner chose published CC0 libraries over recording
-(2026-10-30). Archives sit **outside the repo** in `~/.cache/diapason/sound-sources/`; the plan, the
-licence audit and the curated selection go in its task file and `adr/0030`.
+**`docs/agents/tasks/T-003e-recorded-fixtures.md`** (todo, planned 2026-10-30): recorded fixtures
+from CC0 libraries the owner chose over recording. The archives sit **outside the repo** in
+`~/.cache/diapason/sound-sources/`; the task file has the licence audit and the traps (Karoryfer bass
+names an octave high). Since `T-019`, **CI's `pr-check` fails a PR** whose task file, STATE or
+journal is not written as of after the merge.
 **Waiting on the Redmi:** `T-002d` (blocked; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## Hardware this project actually has
@@ -111,8 +111,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **`T-019`** (the PR-diff gate), then **`T-003e`** part 1 (fixtures, `adr/0030`, the independent
-   reference), then `T-003f`, `T-014`, `T-003d`.
+1. **`T-003e`** part 1 (fixtures, `adr/0030`, the independent reference), then `T-003f`, `T-014`,
+   `T-003d`, `T-003g`. The owner may add the `SessionStart` hook `T-019` left out (its notes).
 2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then L10 (the silenced microphone).
    Also owed: `T-003a`'s 4096 frame cost on the phone (≤ 1.5 ms).
 3. **`T-002e`** (overlay in Settings → Diagnostics; first golden), then **`T-002f`** (latency, FAST).

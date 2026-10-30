@@ -30,7 +30,8 @@ third-party crates only from the list in `tools/check-deps.sh` (`AGENTS.md` §5)
 | `T-003c` | Octave guard at the estimate (τ/2, 2τ, three-frame hysteresis) and across ranges, designed together; pinch-harmonic, low-B, ringing-string and gapless-leap tests; downward note changes inside §1's fail lines (owner, 2026-10-23) | done (#34) |
 | `T-003f` | Median-of-5 and one-euro filter, `frequency_raw` and `frequency_display`, lock detection, §1's display stability, inside the ledger's smoothing reserve. Split from `T-003c` on 2026-10-23; also gates the two 12 dB-under downward changes `T-003c` moved to it | todo (`T-003f-smoothing.md`) |
 | `T-003d` | `fixtures/note_table.json`; `dsp` and `core_domain` both assert against it (A4, temperaments, transposition) | todo, no file |
-| `T-003e` | Recorded fixtures (guitar, bass, ukulele, violin), ±2 ¢. Needs someone to record them, under a licence `adr/0009` permits | blocked on the owner |
+| `T-003e` | Recorded fixtures (guitar, bass, ukulele, violin) from CC0 libraries the owner chose over recording (2026-10-30), an independent reference pitch, §1's ±2 ¢ on acoustic guitar | todo (`T-003e-recorded-fixtures.md`) |
+| `T-003g` | Budgets for recorded bass, electric guitar, ukulele and violin, set by ADR from `T-003e`'s measurements (owner, 2026-10-30) | todo, no file |
 
 Wiring the detector into `engine` and the snapshot is M3, not this task.
 
