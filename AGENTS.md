@@ -33,6 +33,9 @@ Flutter owns the UI; **Rust owns all audio and DSP**. Offline-first, zero teleme
 5. Run `just session-end`: it fails if 1–3 were skipped, then runs `just verify`. Do not end a
    session on red without saying so in STATE.md.
 
+On a PR, write the task file and STATE as they will be **after the merge**: nothing can update
+them once it lands. CI's `just pr-check` holds every PR to this and to 1–3, whoever wrote it.
+
 Rationale and the full memory model → `docs/agents/CONTEXT_SYSTEM.md`.
 
 ## 3. Golden rules
