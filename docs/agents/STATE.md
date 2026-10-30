@@ -1,9 +1,8 @@
-# STATE — updated 2026-10-25 (T-003c in review round 5; not pushed)
+# STATE — updated 2026-10-30 (T-003c round 6 fixed and reviewed; PR not yet opened)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
-> If you are an agent starting a session: run `just session-start`, read this, then the active task
-> file, then begin. **PR and merge state changes between sessions**: this file records PRs by
-> number only, and you reconcile it against what `session-start` prints before trusting it.
+> Agents: run `just session-start`, read this, then the active task file. PR and merge state
+> changes between sessions: reconcile the PR numbers here against what `session-start` prints.
 
 ## Where we are
 
@@ -11,15 +10,17 @@
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
 - **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`, `T-003b` (PRs #6–#9,
-  #11–#16, #24, #27–#31), Dependabot #2, #10, #21, #22, #25, #26. #20 closed. **Open:** none.
+  #11–#16, #24, #27–#31), Dependabot #2, #10, #21, #22, #25, #26. #20 closed. **Open:** Dependabot
+  #32 (actions) and #33 (dart-minor), green, for the owner to merge.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-003c-octave-guard.md`** (in progress, unpushed branch, verify green, **not
-PR-ready**). Owner: ambiguous octaves move the needle; two 260 ms gates to `T-003f`; consonant chords
-to `T-014`; **single notes win over chord rejection** (2026-10-25). Round 4: the 0.85 new-note bar
-breaks fail lines after short gaps; octave-above fails at τ 3 s. Round 5 fixes, re-review, PR.
+**`docs/agents/tasks/T-003c-octave-guard.md`** (in progress; branch unpushed, **PR-ready** once
+pushed). Owner: ambiguous octaves move the needle; two 260 ms gates to `T-003f`; chords other than A2
+over a bass E to `T-014`; **single notes win over chord rejection** (2026-10-25). Round 6 found a gap
+under the gate's hold scanning away (A3 → A2 155 ms, fails 150): fixed with `GateState::Holding`.
+Next: push, PR, six checks. **This shell has no SSH agent** (`git fetch` fails on `publickey`).
 **Waiting on the Redmi:** `T-002d` (in progress; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## Hardware this project actually has
@@ -32,9 +33,8 @@ breaks fail lines after short gaps; octave-above fails at τ 3 s. Round 5 fixes,
 - **Pub workspace:** 8 members. **Cargo:** `dsp`, `engine`, `audio_io`, `session`, `xtask`, `ffi`.
 - **CI** (`docs/CI_RELEASE.md` §1): six jobs, every step a `just` recipe, toolchain from
   `tools/versions.env` via `.github/actions/toolchain`, SHA-pinned actions, weekly Dependabot.
-- **The gate:** `just verify` = doctor-selftest, fmt (Dart, Rust, Kotlin), analyze, clippy, tests
-  and doctests, `deny`, `doc-rust`, codegen drift, `ios-project-check`, deps, docs, `lint-ci`.
-  **iOS project** from `just ios-project`; never edit `project.pbxproj` by hand.
+- **The gate:** `just verify` (its recipe lists the steps). **iOS project** from `just ios-project`;
+  never edit `project.pbxproj` by hand.
 - **`AAudioBackend`** (`T-002b`): duplex as two AAudio streams on one clock, device-tested with
   `just test-android-device`, linted by `lint-rust-android`. Shared, never MMAP, on the Redmi.
 - **Session** (`T-002b` 2a, `adr/0022`): a sans-IO `Supervisor` on virtual time plus one thread;
@@ -42,9 +42,8 @@ breaks fail lines after short gaps; octave-above fails at τ 3 s. Round 5 fixes,
   binds fake and real engine; `just test-integration-android` runs it on a device, via patrol.
 - **Tuner lifecycle** (`T-002d`): `engineTarget` policy, `AppLifecycle` seam; rows L1–L11 checked.
 - **Engine core** (`T-002a`): `Engine::prepare` → `(Engine, Processor)` over `rtrb`/`triple_buffer`.
-- **Pitch** (`T-003a`/`b`): `dsp::pitch::Mpm`, `dsp::synth` (`adr/0027`), `dsp::chain::Front` (DC
-  block, gate; RT side) and `chain::Analysis` (band-limit or ×4 decimation, frames per range,
-  `RangeSelector`), split at the ring (`adr/0028`). ±0.09 ¢, 30–1400 Hz, 44.1/48 kHz. `just bench`.
+- **Pitch** (`T-003a`–`c`): `Mpm`, `synth` (`adr/0027`), `chain::Front` (RT) and `chain::Analysis`
+  split at the ring (`adr/0028`); octave guard and verifiers (`adr/0029`). ±0.09 ¢, 30–1400 Hz.
 
 ## Decisions already made (do not re-litigate without an ADR)
 
@@ -90,14 +89,13 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 ## Known gaps (not blocking)
 
 - **CI reproducibility leftovers** (`T-004`): unpinned cargo-ndk, Xcode; AAB manifest; `Podfile.lock`.
-- **`audio_engine` lacks SwiftPM support**, which Flutter 3.47 warns will become an error: own task.
-- **Rust crate licences are not in the in-app licence page** (`triple_buffer` MPL-2.0, realfft; M6).
+- **`audio_engine` lacks SwiftPM support** (Flutter 3.47 warns it will be an error); Rust crate
+  licences are not on the in-app licence page (`triple_buffer` MPL-2.0, realfft; M6). Owners: `T-015`.
 - **`permission_handler` held at 12** (Dependabot too): 13 needs compileSdk 37, its own task.
 - **`appLifecycleProvider` is in `feature_tuner`**; it moves down when the metronome needs it (M4).
 - **A stall's input stays queued as latency** until a rebuild (`adr/0025`); none seen yet.
 - **The Redmi now refuses the output the FAST path** (on `main` too), unlike part 1: `T-002f`.
 - **`router.dart` uses plain `GoRoute`s**, not the typed routes `AGENTS.md` §7 requires.
-- **Chords:** consonant and loud chords can show a phantom note (`T-014`); `T-003c` gates the rest.
 
 ## Open questions
 
@@ -113,7 +111,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **`T-003c-octave-guard`**, then `T-003f`, `T-003d`.
+1. **`T-003c-octave-guard`**: push, PR. Then `T-015` (process drift 4, planned 2026-10-30: session-end
+   check for every agent, stale code names in docs, owners for orphan gaps), `T-003f`, `T-014`, `T-003d`.
 2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then L10 (the silenced microphone).
    Also owed: `T-003a`'s 4096 frame cost on the phone (≤ 1.5 ms).
 3. **`T-002e`** (overlay in Settings → Diagnostics; first golden), then **`T-002f`** (latency, FAST).

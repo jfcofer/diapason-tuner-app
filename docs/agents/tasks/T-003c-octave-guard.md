@@ -68,10 +68,10 @@ estimate, and multi-frame confirmation.
   - a pinch harmonic (strong 2nd and 3rd partials) and low B (30.87 Hz, weak fundamental).
   *Holds.* Chords (A2 over a bass E or a low B) show `None`, ambiguity, or the old note still
   ringing (two frames, τ 3 s), and no third note, known or ambiguous (Deviation 2).
-- [ ] **Downward note changes inside §1's fail lines**, measured from note onset with the
+- [x] **Downward note changes inside §1's fail lines**, measured from note onset with the
   previous note stopped, and with it ringing at least 12 dB below the new note at onset (the
   string being tuned is plucked; the louder chord case is only recorded):
-  - 80–160 Hz ≤ 150 ms; *holds, stopped, after a gap and 12 dB under (≤ 120.8 ms);*
+  - 80–160 Hz ≤ 150 ms; *holds, stopped, after a gap and 12 dB under (≤ 118.3 ms);*
   - low B ≤ 260 ms. *Holds, except two 12 dB-under ringing cases (Deviation 1).*
   
   The figure against the targets (110 and 190 ms) is recorded. §1 and ADR 0028 state it, and the
@@ -98,52 +98,53 @@ estimate, and multi-frame confirmation.
 
 ## Implementation notes
 
-**Baseline**, before any change (`tests/chain.rs` at the baseline commit; 48 / 44.1 kHz, home
-Mid, new note weak, partials 0.3/1/0.4). Wrong: judged clear frames off the new note, under the
-leap rule. Needle: right pitch class within ±5 ¢ and stays; total adds the target's other ledger
-lines (Mid 58.3, Low 63.3 ms). Before `T-003c` every frame's octave counts as known.
-
-| Case | Wrong | Needle (ms) | Total (ms) | Octave known (ms) |
-|---|---|---|---|---|
-| E4 → low E, stopped | 19 / 21 | 140 / 134.9 | 198.3 / 193.3 | 140 / 134.9 |
-| E4 → low E, 0.1 s gap | 0 / 0 | 27.5 / 27.3 | 85.8 / 85.7 | same |
-| E4 → low E, rings (τ 0.6–3 s) | 41 / 40 | 7.5 / 1.4 | 65.8 / 59.8 | 120 / 119.7 |
-| E4 → low E, 12 dB under (τ 0.6, 1.5, 3) | 44 / 46 | 125, 107.5, 107.5 / 113.6 | 183.3, 165.8 / 172.0 | 130 / 134.9 |
-| A2 → bass E, stopped | 24 / 26 | 160 / 158.5 | 223.3 / 221.8 | same |
-| A2 → bass E, 0.1 s gap | 0 / 0 | 50 / 53.5 | 113.3 / 116.8 | same |
-| A2 → bass E, 12 dB under (τ 0.6, 1.5, 3) | 18, 19, 18 / 25, 22, 22 | 165, 185, 330 / 203.4, 163.5, 402.9 | 228.3, 248.3, 393.3 / 266.7, 226.8, 466.3 | same |
-| A2 → bass E, rings (chord, τ 0.6, 1.5, 3) | 72, 199, 282 / 70, 197, 283 | 1015 / 1051; never | — | same |
-| A2 → low B, stopped | 10 / 12 | 100 / 94.3 | 163.3 / 157.6 | 100 / 98.6 |
-
-Chords show a third note in 65–270 frames (A0). Weak octave leaps down: 18–26 wrong; others 0.
+**Baseline**, before any change: the table is in `journal/2026-10-30-t-003c-octave-guard.md`;
+its headline numbers are in `adr/0029`'s Context.
 
 **Design** (`adr/0029`, `AUDIO_ENGINE.md` §1–§3), by `dsp-engineer`: `dsp::octave::OctaveGuard`,
 `Mpm::peak_near`/`value_at`, verifiers (Mid and Low under High) replacing the Low-only reference,
-`RangeTable::tests_octave`, `chain::Frame::octave`, fixtures in `synth::partials`. Each rule
-beyond the plan measured: the lowest note, clarity bars, sticky doubt, the repeat test.
-**Review round 3** (2026-10-24): the ringing-string rule binds the selected range too, the guard
-tracks the string left below and the octave above entering (`RISE`), and after a note a new note
-needs 0.85 and verifier readings pass the same tests. Margins set on the review's fixtures,
-checked on held-out ones (other notes, ±7/22/45 ¢): every gated case passes.
+`RangeTable::tests_octave`, `chain::Frame::octave`, fixtures in `synth::partials`. Rules beyond the
+plan, each measured: the lowest note, clarity bars, sticky doubt, the repeat test.
+- **Round 3** (2026-10-24): the ringing-string rule binds the selected range too; the guard tracks
+  the string left below and the octave above entering (`RISE`); verifier readings pass the tests.
+- **Round 4** (2026-10-25, d009555): owner, **single notes win over chord rejection**. The 0.85 bar
+  binds only blind estimates (`AFTER_NOTE_CLARITY`); the locked note is forgotten after Low's
+  window unheard (`OctaveGuard::heard`); guard-rejected frames are `Withheld`, not misses; a
+  watcher range moves the chain up to a clearer note entering over a held one.
+- **Round 5** (2026-10-25): faint in-band frames are `Withheld`; `Observation::Faint` and its
+  `fading` state removed. Since round 6, no gated test needs the faint rule (mutation to a miss or
+  to a pitch: all pass); kept, as it costs nothing, and noted for `T-003f`.
+- **Round 6** (2026-10-30): the reviewer's ~50 scratch probes were run at both rates (outcome
+  matrix in the journal), then deleted. They found one gated miss: **a gap shorter than the gate's
+  250 ms hold** scanned the chain away from the next note's range (A3 → A2 after 0.15 s: 150.5–
+  155.4 ms, fails at 150; low B up to 271 ms). Fix: `gate::GateState` crosses the ring instead of
+  a `bool`, and frames with the gate open only by its hold are `Observation::Holding`, no miss.
+  Gated: `a_downward_change_after_a_gap_the_hold_spans_meets_the_fail_line`.
 
 **Deviation 1 — gate moved to `T-003f`** (owner, 2026-10-23): A2 → bass E, 12 dB under, τ 3 s
 (393.3 / 466.3 ms) and A2 → low B, 12 dB under, τ 1.5 s (648.3 / 421.4 ms) miss 260 ms on cents;
-ceilings: those + 20 ms. **Deviation 2 — chords are gated for the families tested only**: A2 over a
-bass E or low B and E4 over low E, ±30 ¢. Consonant intervals (A2 + D3 → D1, D3 + G3 → G1, B3 + E4
-→ E2) and other loud pairs (G2/low B, C3/bass E, A2 + 60–100 ¢ over bass E) still show third
-notes: `T-014-consonant-chords`. **Deviation 3:** the rules after a note cost onsets after a gap
-(A2 → bass E 85 / 83.4 ms, was 50 / 53.5) and E4 ringing loud (needle 60 ms, was 12.5).
+ceilings: those + 20 ms. **Deviation 2 — only A2 over a bass E is a gated chord** (owner,
+2026-10-25): A2 over a low B, detuned chords, consonant intervals and other loud pairs are recorded
+(`Gate::Recorded`), `T-014-consonant-chords`. **Deviation 3:** onsets after a short gap wait for
+their own scan: A2 → bass E after 0.1 s 85 / 88.4 ms (was 50 / 53.5); E4 ringing loud over low E,
+recorded only, needle 115 ms (was 12.5).
+
+**Recorded, not gated (round 6 probes):** a 200 ¢ bend in 0.1 s lags 19–20 frames past 50 ¢ (the
+window, not an octave); a note at −50 dBFS from home Mid reaches Low ~20 ms later than before the
+hold fix (low B 123 ms, inside 260), and while the hold runs a quiet note cannot be scanned to
+(two ranges up, only by the scan); the octave above a string 6–8 dB under (a chord) shows the
+lower note; dense no-gap fifths down into a weak fundamental (73.96 → 49.31 Hz) show 1–3 wrong
+frames, outside the gated sweep's notes: `T-003f`'s median of five is the next line of defence.
 
 ## Verification performed
 
-2026-10-24, Ryzen 7 8840HS, rustc 1.98.0, host only. `just verify` passed (169 tests, 31 doctests).
-- **Gates** (both rates): leap sweep 0 wrong; downward changes per §1; detuned (8 offset pairs, 3
-  families) and octave above a ringing string (6 pairs, 10–12 dB) 0 wrong, chords 0 third notes.
-- **Held-out probes** (other notes, ±7/22/45 ¢, 4 octave pairs): every gated case passes; their
-  loud chords are `T-014`. Ambiguity: G3 known 65.0 / 63.7 ms, low E 140–145. From silence: low B
-  needle 75 / 68.7 ms from home Low, unchanged; boundaries ≤ 80.1 ms.
-- **Benches** (baseline: median of five runs): analysis 77.7 µs per 10 ms in High, so 0.78 % of a
-  core; octave 35 ns; frames low 12.0, mid 2.79 (bimodal 2.7 / 3.3), high 5.90 µs.
-- **Mutations**, each failing a test: rounds 1–2 as before; round 3: no ringing check in
-  `observe` or the verifier, no rise, no string-below, new-note bar 0, unfiltered verifiers.
-  Two that failed nothing (delayed rise floor, presence threshold) were removed.
+2026-10-30, Ryzen 7 8840HS, rustc 1.98.0, host only.
+- **Gates** (both rates): leap sweep 0 wrong; downward changes per §1, including gaps under the
+  hold (A3 → A2 78–101 ms, A1 → low B 129–180 ms in all); octave above a ringing string (10–12 dB)
+  0 wrong; the gated chord no third note.
+- **Held-out probes** (round 6, release, both rates): after-gap sweep over 10 note pairs, 4 signals,
+  4 gaps and 48 phase/offset pairs: 0 fail-line misses (10 rows before the fix). Octave above a
+  ringing string, 12 notes × 3 signals at 10–12 dB: 0 wrong.
+- **Mutations**, each failing a test: rounds 1–3 as before; round 6: holding frames as misses.
+- **Benches** (`just bench`, quiet host): no entry over 10 %; analysis 74.7 µs per 10 ms in High.
+  `just verify` passed: 171 tests and the doctests. (A run beside the reviewer read +5–10 % everywhere.)
