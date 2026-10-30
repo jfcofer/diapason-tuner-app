@@ -74,7 +74,7 @@ gen-dart:
 
 # Everything CI checks. Must be green before any work is called done. Each CI job runs a subset of
 # these recipes, never a command of its own (docs/CI_RELEASE.md §1).
-verify: doctor-selftest fmt-check lint test deny doc-rust check-drift check-deps docs-check lint-ci ios-project-check
+verify: doctor-selftest fmt-check lint test deny doc-rust check-drift check-deps docs-check pr-check-selftest lint-ci ios-project-check
 
 fmt-check: fmt-check-dart fmt-check-rust fmt-check-kotlin
 
@@ -146,6 +146,15 @@ check-deps:
 # Link check, line budgets, ADR index consistency.
 docs-check:
     @tools/docs-check.sh                   # [T-001]
+
+# The session protocol (AGENTS.md §2) on a branch's diff. CI runs it on every pull request; `base`
+# is a revision, `branch` the PR's head (CI checks out a merge commit, so it cannot be inferred).
+pr-check base="origin/main" branch="":
+    @tools/pr-check.sh {{base}} {{branch}}   # [T-019]
+
+# Proves each pr-check rule still fails on a planted branch.
+pr-check-selftest:
+    @tools/pr-check.sh --self-test         # [T-019]
 
 # ── Running ───────────────────────────────────────────────────────────────────
 
