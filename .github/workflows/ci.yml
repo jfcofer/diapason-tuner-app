@@ -77,6 +77,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # pr-check diffs the branch against its base
       - uses: ./.github/actions/toolchain
         with:
           flutter: "true"
@@ -95,6 +97,13 @@ jobs:
       - run: just ios-project-check                   # regenerating the Xcode project, likewise
       - run: just check-deps                          # one-way dependency rule, AGENTS.md §5
       - run: just docs-check                          # links, line budgets, ADR index
+      - run: just pr-check-selftest                   # each protocol rule still fails when it should
+      - name: just pr-check                           # the session protocol on this PR's diff (T-019)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: just pr-check "origin/$BASE_REF" "$HEAD_REF"
       - run: just lint-ci                             # actionlint + shellcheck
 
   build-android:

@@ -11,7 +11,7 @@ This document owns **everything between a commit and a user**.
 | `rust` | ubuntu-24.04 | `fmt-check-rust`, `lint-rust` (clippy `-D warnings`), `test-rust` (nextest + doctests), `deny`, `doc-rust` | Yes |
 | `dart` | ubuntu-24.04 | `fmt-check-dart`, `lint-dart` (analyze incl. riverpod_lint, `adr/0014`), `test-dart` | Yes |
 | `goldens` | ubuntu-24.04 | `goldens` (`adr/0016`) | Yes |
-| `checks` | ubuntu-24.04 | `doctor-selftest`, `fmt-check-kotlin`, `check-drift`, `ios-project-check`, `check-deps`, `docs-check`, `lint-ci` | Yes |
+| `checks` | ubuntu-24.04 | `doctor-selftest`, `fmt-check-kotlin`, `check-drift`, `ios-project-check`, `check-deps`, `docs-check`, `pr-check-selftest`, `pr-check` (pull requests), `lint-ci` | Yes |
 | `build-android` | ubuntu-24.04 | `build-android prod`, `check-android-release` (targetSdk, 16 KB alignment, size, no patrol code or INTERNET), `build-android-tests` (`adr/0026`) | Yes |
 | `build-ios` | macos-26 | `build-ios-unsigned prod`, `check-ios-release` (privacy manifest *in the .app*, mic string, MinimumOSVersion, Rust linked) | Yes |
 | `bench` | — | Criterion vs. the committed baseline, > 10 % regression fails | Local only (`just bench`): the baseline belongs to one host, so a CI job needs a dedicated runner first (`T-003a`) |
