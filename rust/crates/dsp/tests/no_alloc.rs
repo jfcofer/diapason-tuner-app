@@ -2,11 +2,12 @@
 //! silence and malformed frames, with allocation trapping armed (`docs/AUDIO_ENGINE.md` §7,
 //! `docs/TESTING.md` §2). Nor does the pre-processing chain in front of it: `DcBlock`,
 //! `NoiseGate`, both `Decimator`s, `FrameAssembler`, `RangeSelector`, `OctaveGuard`, `Mpm::peak_near`
-//! and `Mpm::value_at`. Each path of the octave guard is driven on its own and asserted reached:
-//! lock and the octave above rising, hysteresis, bridge, the tests after a note, the string left
-//! below. And all of it streamed together through the shipped `chain::Front` and `chain::Analysis`
-//! (`common::Tuner`), asserting that ambiguous frames and range switches occurred, which the verifier
-//! frames and the gate learning while open bring. Construction allocates, by design, and runs
+//! and `Mpm::value_at`, nor the needle's `smooth::Needle` and the `lock::Lock` after it. Each path
+//! of the octave guard is driven on its own and asserted reached: lock and the octave above rising,
+//! hysteresis, bridge, the tests after a note, the string left below. And all of it streamed
+//! together through the shipped `chain::Front` and `chain::Analysis` (`common::Tuner`), asserting
+//! that ambiguous frames, range switches and needle values occurred, which the verifier frames and
+//! the gate learning while open bring. Construction allocates, by design, and runs
 //! outside the trap.
 //!
 //! `assert_no_alloc` aborts the process on a trapped allocation; it cannot panic, because
@@ -23,9 +24,11 @@ use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use diapason_dsp::filter::DcBlock;
 use diapason_dsp::frame::FrameAssembler;
 use diapason_dsp::gate::{GateConfig, NoiseGate};
+use diapason_dsp::lock::Lock;
 use diapason_dsp::octave::{Octave, OctaveGuard};
 use diapason_dsp::pitch::{Mpm, MpmConfig, PitchEstimate};
 use diapason_dsp::range::{Observation, Range, RangeSelector, RangeTable, SUPPORTED_RATES};
+use diapason_dsp::smooth::Needle;
 use diapason_dsp::synth::{self, Noise, Pluck};
 
 pub mod common;
@@ -135,6 +138,7 @@ fn stream_armed(extra: impl Fn()) -> Streamed {
                 assert_no_alloc(|| {
                     chain.push(block, |frame| {
                         streamed.frames += 1;
+                        streamed.shown += usize::from(frame.display.is_some());
                         streamed.ambiguous += usize::from(frame.octave == Octave::Ambiguous);
                         streamed.switches +=
                             usize::from(previous.is_some_and(|range| range != frame.range));
@@ -148,10 +152,12 @@ fn stream_armed(extra: impl Fn()) -> Streamed {
     streamed
 }
 
-/// What [`stream_armed`] drove: frames, frames flagged `ambiguous octave`, range switches.
+/// What [`stream_armed`] drove: frames, frames the needle showed, frames flagged
+/// `ambiguous octave`, range switches.
 #[derive(Debug, Default)]
 struct Streamed {
     frames: usize,
+    shown: usize,
     ambiguous: usize,
     switches: usize,
 }
@@ -159,9 +165,13 @@ struct Streamed {
 #[test]
 fn the_chain_never_allocates() {
     let streamed = stream_armed(|| {});
-    // The paths the trap must cover were taken: ambiguity (verifiers pending) and switches.
+    // The paths the trap must cover were taken: the needle, ambiguity (verifiers pending) and
+    // switches.
     assert!(
-        streamed.frames > 1_000 && streamed.ambiguous > 10 && streamed.switches >= 8,
+        streamed.frames > 1_000
+            && streamed.shown > 1_000
+            && streamed.ambiguous > 10
+            && streamed.switches >= 8,
         "{streamed:?}"
     );
 }
@@ -262,6 +272,38 @@ fn no_stage_allocates() {
         reached.iter().all(|&r| r),
         "octave guard paths reached: {reached:?}"
     );
+}
+
+/// The needle and the lock on their own, every path with the trap armed and asserted reached: a
+/// note warming up and shown, the bound on a ramp, a frame without an estimate, a new note, a
+/// reset; a lock, a hold inside the wider band, an unlock.
+#[test]
+fn the_needle_and_the_lock_never_allocate() {
+    let mut display = Needle::new(RATE);
+    let mut lock = Lock::new(RATE, 3.0);
+    let mut reached = [false; 6];
+    assert_no_alloc(|| {
+        let mut end = 0;
+        let mut next = || {
+            end += 120;
+            end
+        };
+        for k in 0..10 {
+            let shown = display.update(Some(110.0 + f64::from(k)), next());
+            reached[0] |= shown.is_some();
+        }
+        reached[1] = display.update(None, next()).is_none();
+        reached[2] = display.update(Some(220.0), next()).is_none();
+        display.reset();
+        reached[3] = display.update(Some(220.0), next()).is_none();
+        for _ in 0..101 {
+            lock.observe(Some(1.0), 0.95, next());
+        }
+        reached[4] = lock.is_locked() && lock.observe(Some(4.0), 0.95, next());
+        reached[5] = !lock.observe(None, 0.0, next());
+        lock.reset();
+    });
+    assert!(reached.iter().all(|&r| r), "paths reached: {reached:?}");
 }
 
 #[test]

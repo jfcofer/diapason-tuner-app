@@ -24,13 +24,19 @@
 //!   as the reference takes its own);
 //! - *gross* frames: an estimate more than [`GROSS_CENTS`] from the reference, by frequency, so an
 //!   octave error counts even when the frame is flagged `ambiguous octave`;
-//! - *unvoiced* frames: no estimate at all (unclear, or withheld by the octave guard).
+//! - *unvoiced* frames: no estimate at all (unclear, or withheld by the octave guard);
+//! - on the needle (`Frame::display`, `T-003f`): gross needle frames, by the estimate's rule, and,
+//!   over the whole recording, *flicker*: the needle blank while the estimate shows the note it
+//!   showed last, in any octave, within a gap it outlives (`smooth::HELD_GAP_FRAMES`). A new
+//!   pitch class or a longer gap warms up, which is the rule, not flicker.
 //!
 //! **What is gated,** by the manifest's `set`:
-//! - `gold`, recorded acoustic guitar: |median| within §1's ±2 ¢, no gross and no unvoiced frame;
+//! - `gold`, recorded acoustic guitar: |median| within §1's ±2 ¢, no gross and no unvoiced frame,
+//!   on the estimate or the needle, and no blank one;
 //! - `ceiling`: |median| under its entry in [`CEILINGS`], a regression ceiling, not a budget
-//!   (`T-003g` owns budgets for the instruments §1 does not name), and no unvoiced and no gross
-//!   frame: a wrong note is no instrument's regression to allow. `bass_b0` is the octave guard on a
+//!   (`T-003g` owns budgets for the instruments §1 does not name), and no unvoiced, gross or
+//!   blank frame, on the estimate or the needle: a wrong note is no instrument's regression to
+//!   allow, nor a needle that flickers on a held one. `bass_b0` is the octave guard on a
 //!   real low B, M2's exit criterion; `ukulele_g4` a G4 over a tone at a third of it (`T-020`);
 //! - `stress`: reported only.
 //!
@@ -43,6 +49,7 @@ use diapason_dsp::chain::{Frame, Selection};
 use diapason_dsp::convert::to_f32;
 use diapason_dsp::octave::Octave;
 use diapason_dsp::range::Range;
+use diapason_dsp::smooth::HELD_GAP_FRAMES;
 use serde_json::Value;
 
 pub mod common;
@@ -135,6 +142,11 @@ struct Row {
     gross: usize,
     unvoiced: usize,
     ambiguous: usize,
+    /// Flicker, over the whole recording: frames whose needle shows nothing while the estimate
+    /// shows the needle's last note, in any octave, within a gap the needle outlives.
+    blank: usize,
+    /// Needle frames more than [`GROSS_CENTS`] from the reference, by frequency.
+    needle_gross: usize,
 }
 
 fn fixtures_dir() -> PathBuf {
@@ -240,11 +252,30 @@ fn measure(fixture: &Fixture) -> Row {
     let mut tuner = Tuner::new(fixture.sample_rate, Selection::Auto(home));
     let spans = Range::ALL.map(|range| (range, span(tuner.table(), range)));
     let [start, stop] = fixture.window_ms.map(|ms| at(ms, fixture.sample_rate));
-    // Frames after the window are not judged, so the audio after it is not analysed.
-    let fed = usize::try_from(stop).unwrap().min(audio.len());
+    // Frames after the window are judged for flicker only.
     let mut errors = Vec::new();
-    let (mut frames, mut unvoiced, mut ambiguous) = (0, 0, 0);
-    tuner.push(&audio[..fed], |frame: &Frame| {
+    let (mut frames, mut unvoiced, mut ambiguous, mut blank, mut needle_gross) = (0, 0, 0, 0, 0);
+    // The needle's last value, and the frames since it without an estimate.
+    let mut last: Option<(f64, usize)> = None;
+    tuner.push(&audio, |frame: &Frame| {
+        // Flicker, over the whole recording (`T-003f`'s review found 29 frames in a decay): the
+        // needle blank while the estimate shows the note it showed last, in any octave, after no
+        // longer a gap than the needle outlives.
+        match (frame.display, frame.estimate) {
+            (Some(hz), _) => last = Some((hz, 0)),
+            (None, Some(e)) => {
+                let same = last.is_some_and(|(hz, gap)| {
+                    gap <= HELD_GAP_FRAMES
+                        && pitch_class_cents(e.frequency_hz, hz).abs() <= GROSS_CENTS
+                });
+                blank += usize::from(same);
+            }
+            (None, None) => {
+                if let Some((_, gap)) = &mut last {
+                    *gap += 1;
+                }
+            }
+        }
         let span = spans
             .iter()
             .find_map(|&(range, span)| (range == frame.range).then_some(span))
@@ -261,6 +292,9 @@ fn measure(fixture: &Fixture) -> Row {
                 }
             }
             None => unvoiced += 1,
+        }
+        if let Some(hz) = frame.display {
+            needle_gross += usize::from(cents(hz, fixture.reference_hz).abs() > GROSS_CENTS);
         }
     });
     errors.sort_by(f64::total_cmp);
@@ -279,6 +313,8 @@ fn measure(fixture: &Fixture) -> Row {
         gross: errors.iter().filter(|e| e.abs() > GROSS_CENTS).count(),
         unvoiced,
         ambiguous,
+        blank,
+        needle_gross,
     }
 }
 
@@ -297,7 +333,7 @@ fn measure_set(set: Set) -> Vec<Row> {
             .collect()
     });
     report(format_args!(
-        "{:<20} {:<8} {:<5} {:>10} {:>7} {:>10} {:>10} {:>6} {:>9} {:>10}",
+        "{:<20} {:<8} {:<5} {:>10} {:>7} {:>10} {:>10} {:>6} {:>9} {:>10} {:>6} {:>12}",
         "fixture",
         "set",
         "home",
@@ -307,11 +343,13 @@ fn measure_set(set: Set) -> Vec<Row> {
         "worst ¢",
         "gross",
         "unvoiced",
-        "ambiguous"
+        "ambiguous",
+        "flicker",
+        "needle gross"
     ));
     for row in &rows {
         report(format_args!(
-            "{:<20} {:<8} {:<5} {:>10.4} {:>7} {:>+10.3} {:>+10.1} {:>6} {:>9} {:>10}",
+            "{:<20} {:<8} {:<5} {:>10.4} {:>7} {:>+10.3} {:>+10.1} {:>6} {:>9} {:>10} {:>6} {:>12}",
             row.id,
             row.set.name(),
             range_name(row.home),
@@ -321,10 +359,18 @@ fn measure_set(set: Set) -> Vec<Row> {
             row.worst_cents,
             row.gross,
             row.unvoiced,
-            row.ambiguous
+            row.ambiguous,
+            row.blank,
+            row.needle_gross
         ));
     }
     rows
+}
+
+/// Cents from `hz` to the nearest octave of `other`, in [−600, 600].
+fn pitch_class_cents(hz: f64, other: f64) -> f64 {
+    let off = cents(hz, other);
+    off - 1_200.0 * (off / 1_200.0).round()
 }
 
 /// Whether `cents` is within ±`limit`; a NaN (no estimate) never is.
@@ -361,7 +407,8 @@ fn every_ceiling_fixture_has_exactly_one_ceiling_and_the_octave_guards_are_there
 }
 
 /// §1's budget, gated: every recorded acoustic guitar note within ±2 ¢ over its window, with no
-/// frame on another note and none withheld: a guard that withholds every frame must not pass.
+/// frame on another note and none withheld: a guard that withholds every frame must not pass. The
+/// needle shows no other note either, and never flickers.
 #[test]
 fn recorded_acoustic_guitar_is_within_two_cents_and_never_on_another_note() {
     let rows = measure_set(Set::Gold);
@@ -371,12 +418,15 @@ fn recorded_acoustic_guitar_is_within_two_cents_and_never_on_another_note() {
             !within(row.median_cents, GOLD_BUDGET_CENTS)
                 || row.gross > 0
                 || row.unvoiced > 0
+                || row.needle_gross > 0
+                || row.blank > 0
                 || row.frames == 0
         })
         .collect();
     assert!(
         failing.is_empty(),
-        "over §1's ±{GOLD_BUDGET_CENTS} ¢, or with a gross or unvoiced frame: {failing:#?}"
+        "over §1's ±{GOLD_BUDGET_CENTS} ¢, or with a gross or unvoiced frame, or a flickering or \
+         gross needle: {failing:#?}"
     );
 }
 
@@ -393,11 +443,14 @@ fn other_instruments_stay_under_their_ceilings_and_never_show_another_note() {
                 || row.frames == 0
                 || row.unvoiced > 0
                 || row.gross > 0
+                || row.needle_gross > 0
+                || row.blank > 0
         })
         .collect();
     assert!(
         failing.is_empty(),
-        "over a ceiling, or with an unvoiced or a gross frame: {failing:#?}"
+        "over a ceiling, or with an unvoiced or a gross frame, or a flickering or gross needle: \
+         {failing:#?}"
     );
 }
 

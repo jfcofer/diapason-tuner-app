@@ -26,8 +26,9 @@ use diapason_dsp::chain::{Frame, Selection, UNPITCHED_SECONDS};
 use diapason_dsp::convert::{index_from_f64, index_to_f64, to_f32};
 use diapason_dsp::filter::{DcBlock, Decimator};
 use diapason_dsp::gate::GateState;
+use diapason_dsp::lock::{DEFAULT_TOLERANCE_CENTS, Lock};
 use diapason_dsp::octave::Octave;
-use diapason_dsp::pitch::{Mpm, MpmConfig};
+use diapason_dsp::pitch::{Mpm, MpmConfig, PitchEstimate};
 use diapason_dsp::range::{
     CROSSOVER_HZ, DECIMATION, HYSTERESIS, LOWEST_FUNDAMENTAL_HZ, Path, Range, RangeTable,
     SUPPORTED_RATES,
@@ -518,7 +519,15 @@ fn a_sawtooth_through_the_chain_is_within_half_a_cent_at_44_1_khz() {
 // ── Latency ─────────────────────────────────────────────────────────────────────────────────
 
 /// Input samples from the onset of a tone, after silence, to the end of the first frame from
-/// which every estimate is within ±5 ¢. `None` if the last frame is not.
+/// which every value is within ±5 ¢: on the estimate (`frequency_raw`) and on the needle
+/// (`frequency_display`). `None` where the last frame is not.
+#[derive(Debug, Clone, Copy)]
+struct Settled {
+    raw: Option<u64>,
+    display: Option<u64>,
+}
+
+/// [`Settled`] for a tone at `onset`, after silence.
 fn onset_latency(
     rate: u32,
     selection: Selection,
@@ -526,7 +535,7 @@ fn onset_latency(
     hz: f64,
     phase_index: usize,
     onset: usize,
-) -> Option<u64> {
+) -> Settled {
     let mut chain = Tuner::new(rate, selection);
     let range = match selection {
         Selection::Fixed(range) => range,
@@ -537,26 +546,31 @@ fn onset_latency(
     let mut signal = vec![0.0_f32; length];
     generate(&mut signal[onset..], hz, rate, 0.5, phase(phase_index));
     let onset = u64::try_from(onset).unwrap();
-    let mut settled: Option<u64> = None;
+    let mut settled = Settled {
+        raw: None,
+        display: None,
+    };
+    let settle = |slot: &mut Option<u64>, value: Option<f64>, end: u64| {
+        if !value.is_some_and(|value| cents(value, hz).abs() <= SETTLED_CENTS) {
+            *slot = None;
+        } else if slot.is_none() && end > onset {
+            *slot = Some(end - onset);
+        }
+    };
     for block in signal.chunks(192) {
         chain.push(block, |event| {
-            let good = event
-                .estimate
-                .is_some_and(|e| cents(e.frequency_hz, hz).abs() <= SETTLED_CENTS);
-            if !good {
-                settled = None;
-            } else if settled.is_none() && event.end > onset {
-                settled = Some(event.end - onset);
-            }
+            let raw = event.estimate.map(|e| e.frequency_hz);
+            settle(&mut settled.raw, raw, event.end);
+            settle(&mut settled.display, event.display, event.end);
         });
     }
     settled
 }
 
 /// Each range's onset latency, measured on the audio clock, within its line of the ledger
-/// (`docs/AUDIO_ENGINE.md` §1): group delay + window + settling + one hop. The worst case over
-/// four phases and four onsets spread across a hop; "stays" means for 100 ms past the ledger's
-/// line.
+/// (`docs/AUDIO_ENGINE.md` §1): group delay + window + settling + one hop on the estimate, and that
+/// plus the smoothing line on the needle (`T-003f`). The worst case over four phases and four
+/// onsets spread across a hop; "stays" means for 100 ms past the ledger's line.
 #[test]
 fn onset_latency_is_within_the_ledger() {
     // Each range's floor, where the window is shortest in periods, and its slowest notes; the
@@ -571,11 +585,14 @@ fn onset_latency_is_within_the_ledger() {
         let silence = samples(0.05, rate);
         for (range, frequencies) in notes {
             let ledger = table.ledger(range);
-            let limit = ledger.chain_seconds() * f64::from(rate);
+            let limits = [
+                ledger.chain_seconds() * f64::from(rate),
+                (ledger.chain_seconds() + ledger.smoothing) * f64::from(rate),
+            ];
             let hop = input_hop(&table, range);
             for &hz in frequencies {
                 for (name, generate) in SIGNALS {
-                    let worst = std::thread::scope(|scope| {
+                    let settled: Vec<Settled> = std::thread::scope(|scope| {
                         let handles: Vec<_> = (0..PHASES)
                             .step_by(2)
                             .flat_map(|p| (0..4).map(move |o| (p, silence + o * hop / 4)))
@@ -586,31 +603,43 @@ fn onset_latency_is_within_the_ledger() {
                                 })
                             })
                             .collect();
-                        handles
-                            .into_iter()
-                            .map(|handle| {
-                                handle.join().unwrap().unwrap_or_else(|| {
-                                    panic!("{name} {hz} Hz, {range:?}, {rate} Hz: never settles")
+                        handles.into_iter().map(|h| h.join().unwrap()).collect()
+                    });
+                    let worst = |value: fn(&Settled) -> Option<u64>, what: &str| {
+                        let samples = settled
+                            .iter()
+                            .map(|s| {
+                                value(s).unwrap_or_else(|| {
+                                    panic!(
+                                        "{name} {hz} Hz, {range:?}, {rate} Hz: {what} never settles"
+                                    )
                                 })
                             })
                             .max()
-                            .unwrap()
-                    });
-                    let worst = index_to_f64(usize::try_from(worst).unwrap());
+                            .unwrap();
+                        index_to_f64(usize::try_from(samples).unwrap())
+                    };
+                    let worst = [worst(|s| s.raw, "estimate"), worst(|s| s.display, "needle")];
+                    let ms = |samples: f64| samples * 1e3 / f64::from(rate);
                     report(format_args!(
-                        "latency, {range:?} at {rate} Hz, {name} {hz:7.2} Hz: {:6.2} ms (ledger \
-                         {:6.2} ms, total {:6.1} ms)",
-                        worst * 1e3 / f64::from(rate),
-                        ledger.chain_seconds() * 1e3,
+                        "latency, {range:?} at {rate} Hz, {name} {hz:7.2} Hz: {:6.2} ms, needle \
+                         {:6.2} ms (ledger {:6.2} ms and {:6.2} ms, total {:6.1} ms)",
+                        ms(worst[0]),
+                        ms(worst[1]),
+                        ms(limits[0]),
+                        ms(limits[1]),
                         ledger.total_seconds() * 1e3,
                     ));
-                    assert!(
-                        worst <= limit,
-                        "{name} {hz} Hz in {range:?} at {rate} Hz: {:.2} ms to settle, ledger \
-                         {:.2} ms",
-                        worst * 1e3 / f64::from(rate),
-                        limit * 1e3 / f64::from(rate)
-                    );
+                    for ((worst, limit), what) in worst.into_iter().zip(limits).zip(["", "needle "])
+                    {
+                        assert!(
+                            worst <= limit,
+                            "{name} {hz} Hz in {range:?} at {rate} Hz: {what}{:.2} ms to settle, \
+                             ledger {:.2} ms",
+                            ms(worst),
+                            ms(limit)
+                        );
+                    }
                 }
             }
         }
@@ -619,9 +648,10 @@ fn onset_latency_is_within_the_ledger() {
 
 /// `docs/AUDIO_ENGINE.md` §1's latency rows are fixed by frequency: ≤ 85 ms from 160 Hz up,
 /// ≤ 110 ms from 80 to 160 Hz. Under the selector, from silence and from either neighbouring home,
-/// a note at each boundary must settle within its row once the ledger's other lines (I/O,
-/// smoothing, snapshot, display) are added to what the chain takes. The bands are drawn so that
-/// every f₀ ≥ 160 Hz is High and every f₀ ≥ 80 Hz is out of Low (`RangeTable::holds`).
+/// a note's needle at each boundary must settle within its row once the ledger's lines after the
+/// smoothing (I/O, snapshot, display) are added to what the chain and the smoothing take. The
+/// bands are drawn so that every f₀ ≥ 160 Hz is High and every f₀ ≥ 80 Hz is out of Low
+/// (`RangeTable::holds`).
 #[test]
 fn notes_at_the_budget_boundaries_meet_their_rows_from_either_home() {
     let cases: [(f64, [Range; 2], f64); 4] = [
@@ -635,7 +665,7 @@ fn notes_at_the_budget_boundaries_meet_their_rows_from_either_home() {
         let silence = samples(0.05, rate);
         for (hz, homes, budget) in cases {
             let ledger = table.ledger(table.range_for(hz));
-            let others = ledger.total_seconds() - ledger.chain_seconds();
+            let others = ledger.total_seconds() - ledger.chain_seconds() - ledger.smoothing;
             let allowance = (budget - others) * f64::from(rate);
             for home in homes {
                 for (name, generate) in SIGNALS {
@@ -646,7 +676,7 @@ fn notes_at_the_budget_boundaries_meet_their_rows_from_either_home() {
                                 let onset = silence + o * 37;
                                 let auto = Selection::Auto(home);
                                 scope.spawn(move || {
-                                    onset_latency(rate, auto, generate, hz, p, onset)
+                                    onset_latency(rate, auto, generate, hz, p, onset).display
                                 })
                             })
                             .collect();
@@ -659,8 +689,8 @@ fn notes_at_the_budget_boundaries_meet_their_rows_from_either_home() {
                     let worst = index_to_f64(usize::try_from(worst).unwrap_or(usize::MAX));
                     let total = (worst / f64::from(rate) + others) * 1e3;
                     report(format_args!(
-                        "boundary at {rate} Hz, {name} {hz} Hz from home {home:?}: {:.2} ms in the \
-                         chain, {total:.1} ms in all (budget {:.0} ms)",
+                        "boundary at {rate} Hz, {name} {hz} Hz from home {home:?}: {:.2} ms to the \
+                         needle, {total:.1} ms in all (budget {:.0} ms)",
                         worst * 1e3 / f64::from(rate),
                         budget * 1e3
                     ));
@@ -771,6 +801,19 @@ fn octave_known(frame: &Frame) -> bool {
     frame.octave == Octave::Known
 }
 
+/// The frame as the needle shows it: its estimate at `frequency_display`, and no estimate while the
+/// display shows none (`diapason_dsp::smooth`). The octave flag is the frame's own.
+fn displayed(frame: &Frame) -> Frame {
+    let estimate = frame
+        .estimate
+        .zip(frame.display)
+        .map(|(e, hz)| PitchEstimate {
+            frequency_hz: hz,
+            ..e
+        });
+    Frame { estimate, ..*frame }
+}
+
 /// Whether a clear frame shows a note other than `hz`: more than `WRONG_NOTE_CENTS` off it, or,
 /// for a frame flagged `ambiguous octave`, off its pitch class by that much.
 fn shows_other_than(frame: &Frame, hz: f64) -> bool {
@@ -833,7 +876,7 @@ fn since(slot: &mut Option<f64>, holds: bool, ms: f64) {
 }
 
 /// What the chain showed after a note change, from the onset of the new note.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 struct Trap {
     /// Judged clear frames ([`Judge`]) that show a note other than the new one
     /// ([`shows_other_than`]).
@@ -908,6 +951,39 @@ fn trap_signal(
     (signal, onset)
 }
 
+/// What a trap showed, on the estimate (`frequency_raw`) and on the needle (`frequency_display`).
+#[derive(Debug, Clone, Copy)]
+struct Traps {
+    raw: Trap,
+    display: Trap,
+}
+
+impl Traps {
+    /// Judged frames showing a wrong note, on the estimate and on the needle: the smoothing must
+    /// not undo the guard (`docs/adr/0032`).
+    fn wrong(&self) -> (usize, usize) {
+        (self.raw.wrong, self.display.wrong)
+    }
+
+    /// Frames showing a third note or the chord's common period, on either.
+    fn third(&self) -> usize {
+        [self.raw, self.display]
+            .iter()
+            .map(|t| t.third_known + t.third_ambiguous + t.common_period)
+            .sum()
+    }
+
+    /// §1's total for the needle, in ms: the time the display took to move, which includes the
+    /// smoothing, plus the target range's ledger lines that follow the chain but the smoothing.
+    fn needle_total_ms(&self, table: &RangeTable, to: f64) -> f64 {
+        let ledger = table.ledger(table.range_for(to));
+        let others = (ledger.total_seconds() - ledger.chain_seconds() - ledger.smoothing) * 1e3;
+        self.display
+            .needle_ms
+            .map_or(f64::INFINITY, |ms| ms + others)
+    }
+}
+
 /// [`trap_signal`] through the chain under the selector from `home`, measured from the onset.
 fn octave_trap(
     rate: u32,
@@ -915,24 +991,14 @@ fn octave_trap(
     first: (Generator, f64),
     second: (Generator, f64),
     ending: Ending,
-) -> Trap {
+) -> Traps {
     let to = second.1;
     let (signal, onset) = trap_signal(rate, first, second, ending);
     let mut tuner = Tuner::new(rate, Selection::Auto(home));
     let onset = u64::try_from(onset).unwrap();
     let ms = |end: u64| index_to_f64(usize::try_from(end - onset).unwrap()) * 1e3 / f64::from(rate);
     let mut judge = Judge::new(tuner.table(), onset, to);
-    let mut trap = Trap {
-        wrong: 0,
-        first_wrong_ms: None,
-        third_known: 0,
-        third_ambiguous: 0,
-        common_period: 0,
-        needle_ms: None,
-        known_ms: None,
-        note_ms: None,
-        fell: 0,
-    };
+    let (mut raw, mut display) = (Trap::default(), Trap::default());
     let mut highest: Option<Range> = None;
     tuner.push(&signal, |frame| {
         let judged = judge.judged(frame);
@@ -940,20 +1006,32 @@ fn octave_trap(
             return;
         }
         let at = ms(frame.end);
-        trap.fell += usize::from(highest.is_some_and(|high| frame.range < high));
+        let fell = highest.is_some_and(|high| frame.range < high);
         highest = highest.max(Some(frame.range));
+        for (trap, frame) in [(&mut raw, *frame), (&mut display, displayed(frame))] {
+            trap.fell += usize::from(fell);
+            trap.observe(&frame, judged, at, first.1, to);
+        }
+    });
+    Traps { raw, display }
+}
+
+impl Trap {
+    /// Count one frame from the onset on, `at` ms after it, `judged` by the leap rule ([`Judge`]),
+    /// in a change from `from` to `to` hertz.
+    fn observe(&mut self, frame: &Frame, judged: bool, at: f64, from: f64, to: f64) {
         if judged && shows_other_than(frame, to) {
-            trap.wrong += 1;
-            trap.first_wrong_ms.get_or_insert(at);
-            if shows_other_than(frame, first.1) {
+            self.wrong += 1;
+            self.first_wrong_ms.get_or_insert(at);
+            if shows_other_than(frame, from) {
                 if octave_known(frame) {
-                    trap.third_known += 1;
+                    self.third_known += 1;
                 } else {
-                    trap.third_ambiguous += 1;
+                    self.third_ambiguous += 1;
                 }
             }
         }
-        trap.common_period += usize::from(
+        self.common_period += usize::from(
             frame
                 .estimate
                 .is_some_and(|e| e.frequency_hz < LOWEST_FUNDAMENTAL_HZ),
@@ -968,12 +1046,11 @@ fn octave_trap(
                 off.abs() <= SETTLED_CENTS
             })
         };
-        since(&mut trap.needle_ms, near(true), at);
-        since(&mut trap.known_ms, near(false) && octave_known(frame), at);
+        since(&mut self.needle_ms, near(true), at);
+        since(&mut self.known_ms, near(false) && octave_known(frame), at);
         let arrived = frame.estimate.is_some() && !shows_other_than(frame, to);
-        since(&mut trap.note_ms, arrived && octave_known(frame), at);
-    });
-    trap
+        since(&mut self.note_ms, arrived && octave_known(frame), at);
+    }
 }
 
 /// `docs/AUDIO_ENGINE.md` §1's fail lines, in ms, for the rows of the notes the traps move to:
@@ -989,8 +1066,8 @@ fn fail_line_ms(target: Range) -> f64 {
 /// What a trap case is held to.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Gate {
-    /// No judged wrong frame, and the needle's total (chain time plus the target range's other
-    /// ledger lines) within §1's fail line.
+    /// No judged wrong frame, on the estimate or on the needle, and the needle's total
+    /// ([`Traps::needle_total_ms`]) within §1's fail line.
     FailLine,
     /// No judged wrong frame; the latency is recorded only. The old note rings on, loud, as a
     /// harmonic of the new one (the louder case, `T-003c`'s criteria record only).
@@ -999,22 +1076,11 @@ enum Gate {
     /// not the notes' common period, and no frame, known or ambiguous, showing a note that is not
     /// sounding (`octave::REPEATS`). Showing the old note is allowed; the rest is recorded.
     Chord,
-    /// **The 260 ms needle gate of these cases is `T-003f`'s** (owner, 2026-10-23): Low's estimate
-    /// under an old note ringing 12 dB down wanders past ±5 ¢ in single frames (to 6.1 ¢ for a bass
-    /// E, 8 ¢ for low B: a three-period window's limit, not an octave error), and `T-003f`'s median
-    /// of five removes single frames. Here: no judged wrong frame, the octave known within 1 s, the
-    /// right note within the fail line, and a regression ceiling on the needle's total, the worst
-    /// measured in `T-003c` at 48 and 44.1 kHz plus [`SHORTFALL_MARGIN_MS`]. `T-003f`'s criteria
-    /// turn these ceilings into the fail line.
-    Shortfall(f64, f64),
     /// **A chord `T-014-consonant-chords` owns** (owner, 2026-10-25: single notes win over chord
     /// rejection): measured and reported, not gated. Holding it cost single notes (a new note's
     /// clarity bar after a locked one slowed notes after a gap and dropped noisy ones).
     Recorded,
 }
-
-/// The margin over a [`Gate::Shortfall`] case's measured needle total, in ms: four Low hops.
-const SHORTFALL_MARGIN_MS: f64 = 20.0;
 
 /// One downward note change into a low note whose fundamental a range playing cannot see.
 struct TrapCase {
@@ -1026,7 +1092,7 @@ struct TrapCase {
 }
 
 /// A trap case's result, for an assertion's message.
-struct Named<'a>(&'a TrapCase, u32, &'a Trap);
+struct Named<'a>(&'a TrapCase, u32, &'a Traps);
 
 impl fmt::Display for Named<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1038,11 +1104,14 @@ impl fmt::Display for Named<'_> {
 /// **Downward note changes, gated** (`T-003c`): from home Mid, a note is followed by a lower one
 /// whose fundamental the range playing cannot see, so it reads a partial. At both rates, with the
 /// previous note stopped, after a gap, ringing 12 dB under the new one, or ringing loud:
-/// - no judged frame shows a wrong note (an ambiguous one by its pitch class), except in chords;
+/// - no judged frame shows a wrong note (an ambiguous one by its pitch class), except in chords,
+///   on the estimate or on the needle (`frequency_display`, which must not undo the guard);
 /// - stopped, gap and 12 dB under: the needle within §1's fail line once the target range's other
 ///   ledger lines are added (150 ms for a low E, 260 ms for a bass's E or low B). The figure
-///   against the targets (110 and 190 ms) is reported. Two 12 dB-under cases are `T-003f`'s to
-///   gate, and held to regression ceilings here ([`Gate::Shortfall`]);
+///   against the targets (110 and 190 ms) is reported. Low's estimate under a string ringing 12 dB
+///   down wanders past ±5 ¢ in single frames (to 6.1 ¢ for a bass E, 8 ¢ for a low B: a
+///   three-period window's limit), which kept two cases past the fail line in `T-003c`; the
+///   needle's median of five removes them (`T-003f`);
 /// - chords never show a third note: not their common period, nor any other note not sounding;
 /// - the octave is known within 1 s, except in chords.
 #[test]
@@ -1070,7 +1139,7 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
             a2,
             low_b,
             Ending::Under(1.5, 12.0),
-            Gate::Shortfall(648.3, 421.4),
+            Gate::FailLine,
         ),
         case(
             "A2 → low B",
@@ -1081,13 +1150,6 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
         ),
     ];
     let ringing = [0.6, 1.5, 3.0].into_iter().flat_map(|tau| {
-        // Low reads the bass E under an A2 ringing 12 dB down with single frames up to 6.1 ¢ off
-        // for as long as the A2 lasts: with τ = 3 s, past the fail line (see `Gate::Shortfall`).
-        let under = if tau > 2.0 {
-            Gate::Shortfall(393.3, 466.3)
-        } else {
-            Gate::FailLine
-        };
         [
             case(
                 "E4 → low E",
@@ -1103,7 +1165,13 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
                 Ending::Ringing(tau),
                 Gate::NoWrongFrame,
             ),
-            case("A2 → bass E", a2, bass_e, Ending::Under(tau, 12.0), under),
+            case(
+                "A2 → bass E",
+                a2,
+                bass_e,
+                Ending::Under(tau, 12.0),
+                Gate::FailLine,
+            ),
             case("A2 → bass E", a2, bass_e, Ending::Ringing(tau), Gate::Chord),
         ]
     });
@@ -1112,52 +1180,41 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
         for case in &cases {
             for rate in SUPPORTED_RATES {
                 scope.spawn(move || {
-                    let trap = octave_trap(rate, Range::Mid, case.first, case.second, case.ending);
+                    let traps = octave_trap(rate, Range::Mid, case.first, case.second, case.ending);
+                    let (raw, shown) = (traps.raw, traps.display);
                     let table = RangeTable::new(rate).unwrap();
                     let target = table.range_for(case.second.1);
-                    let ledger = table.ledger(target);
-                    let others = (ledger.total_seconds() - ledger.chain_seconds()) * 1e3;
-                    let total = trap.needle_ms.map_or(f64::INFINITY, |ms| ms + others);
-                    let arrived = trap.note_ms.map_or(f64::INFINITY, |ms| ms + others);
-                    let (budget, fail) = (target.latency_budget_seconds() * 1e3, fail_line_ms(target));
+                    let total = traps.needle_total_ms(&table, case.second.1);
+                    let (budget, fail) =
+                        (target.latency_budget_seconds() * 1e3, fail_line_ms(target));
                     report(format_args!(
-                        "octave trap, {} {:?} ({:?}) at {rate} Hz: {} judged wrong (first at {:?} \
-                         ms), third note {} known / {} ambiguous, {} common-period; needle {:?} ms, \
-                         total {total:.1} ms (target {budget:.0}, fails at {fail:.0}); octave known \
-                         {:?} ms; the note arrives in all after {arrived:.1} ms",
+                        "octave trap, {} {:?} ({:?}) at {rate} Hz: {:?} judged wrong raw / shown \
+                         (first at {:?} ms), third note {} known / {} ambiguous, {} common-period; \
+                         needle {:?} ms (raw {:?} ms), total {total:.1} ms (target {budget:.0}, \
+                         fails at {fail:.0}); octave known {:?} ms",
                         case.name,
                         case.ending,
                         case.gate,
-                        trap.wrong,
-                        trap.first_wrong_ms,
-                        trap.third_known,
-                        trap.third_ambiguous,
-                        trap.common_period,
-                        trap.needle_ms,
-                        trap.known_ms,
+                        traps.wrong(),
+                        shown.first_wrong_ms,
+                        shown.third_known,
+                        shown.third_ambiguous,
+                        shown.common_period,
+                        shown.needle_ms,
+                        raw.needle_ms,
+                        shown.known_ms,
                     ));
-                    let what = Named(case, rate, &trap);
-                    if case.gate == Gate::Recorded {
-                        return;
-                    }
-                    if case.gate == Gate::Chord {
-                        let third = trap.third_known + trap.third_ambiguous;
-                        assert!(trap.common_period == 0 && third == 0, "{what}");
-                        return;
-                    }
-                    assert_eq!(trap.wrong, 0, "{what}");
-                    assert!(trap.known_ms.is_some_and(|ms| ms <= 1_000.0), "{what}");
+                    let what = Named(case, rate, &traps);
                     match case.gate {
-                        Gate::FailLine => {
-                            assert!(total <= fail, "{what}: {total:.1} ms, fails at {fail} ms");
+                        Gate::Recorded => {}
+                        Gate::Chord => assert_eq!(traps.third(), 0, "{what}"),
+                        Gate::NoWrongFrame | Gate::FailLine => {
+                            assert_eq!(traps.wrong(), (0, 0), "{what}");
+                            assert!(shown.known_ms.is_some_and(|ms| ms <= 1_000.0), "{what}");
+                            if case.gate == Gate::FailLine {
+                                assert!(total <= fail, "{what}: {total:.1} ms, fails at {fail} ms");
+                            }
                         }
-                        Gate::Shortfall(at_48, at_44) => {
-                            let measured = if rate == 48_000 { at_48 } else { at_44 };
-                            let ceiling = measured + SHORTFALL_MARGIN_MS;
-                            assert!(arrived <= fail, "{what}: {arrived:.1} ms, fails at {fail} ms");
-                            assert!(total <= ceiling, "{what}: {total:.1} ms, ceiling {ceiling} ms");
-                        }
-                        Gate::NoWrongFrame | Gate::Chord | Gate::Recorded => {}
                     }
                 });
             }
@@ -1188,19 +1245,20 @@ fn a_downward_change_after_a_gap_the_hold_spans_meets_the_fail_line() {
                     for rate in SUPPORTED_RATES {
                         scope.spawn(move || {
                             let ending = Ending::Gap(gap + f64::from(step) * 0.00125);
-                            let trap = octave_trap(rate, Range::Mid, first, second, ending);
+                            let traps = octave_trap(rate, Range::Mid, first, second, ending);
                             let table = RangeTable::new(rate).unwrap();
-                            let target = table.range_for(second.1);
-                            let ledger = table.ledger(target);
-                            let others = (ledger.total_seconds() - ledger.chain_seconds()) * 1e3;
-                            let total = trap.needle_ms.map_or(f64::INFINITY, |ms| ms + others);
-                            let fail = fail_line_ms(target);
+                            let total = traps.needle_total_ms(&table, second.1);
+                            let fail = fail_line_ms(table.range_for(second.1));
                             report(format_args!(
-                                "after a held gap, {name} {ending:?} at {rate} Hz: {} judged \
-                                 wrong, total {total:.1} ms (fails at {fail:.0})",
-                                trap.wrong
+                                "after a held gap, {name} {ending:?} at {rate} Hz: {:?} judged \
+                                 wrong raw / shown, total {total:.1} ms (fails at {fail:.0})",
+                                traps.wrong()
                             ));
-                            assert_eq!(trap.wrong, 0, "{name} {ending:?} at {rate} Hz: {trap:?}");
+                            assert_eq!(
+                                traps.wrong(),
+                                (0, 0),
+                                "{name} {ending:?} at {rate} Hz: {traps:?}"
+                            );
                             assert!(
                                 total <= fail,
                                 "{name} {ending:?} at {rate} Hz: {total:.1} ms, fails at {fail} ms"
@@ -1257,7 +1315,9 @@ fn a_detuned_downward_change_or_chord_never_shows_a_wrong_or_third_note() {
                     for rate in SUPPORTED_RATES {
                         scope.spawn(move || {
                             let (from, to) = (detune(first, d1), detune(to, d2));
-                            let trap = octave_trap(rate, Range::Mid, (a2, from), (second, to), ending);
+                            let traps =
+                                octave_trap(rate, Range::Mid, (a2, from), (second, to), ending);
+                            let trap = traps.raw;
                             let off_harmonic = (d1 - d2).abs() > WRONG_NOTE_CENTS;
                             let chord = matches!(ending, Ending::Ringing(_))
                                 && (first < 300.0 || off_harmonic);
@@ -1275,7 +1335,7 @@ fn a_detuned_downward_change_or_chord_never_shows_a_wrong_or_third_note() {
                             let what = format_args!("{name} {d1:+}/{d2:+} {ending:?} at {rate} Hz");
                             // Detuned chords are `T-014`'s (`Gate::Recorded`): reported above only.
                             if !chord {
-                                assert_eq!(trap.wrong, 0, "{what}: {trap:?}");
+                                assert_eq!(traps.wrong(), (0, 0), "{what}: {traps:?}");
                                 // A loud, nearly harmonic string may hold the octave ambiguous.
                                 assert!(
                                     matches!(ending, Ending::Ringing(_))
@@ -1315,7 +1375,8 @@ fn an_octave_the_range_cannot_test_is_ambiguous_until_a_lower_range_reads_the_no
     for rate in SUPPORTED_RATES {
         let table = RangeTable::new(rate).unwrap();
         for (home, generate, hz, verifier) in cases {
-            let trap = octave_trap(rate, home, (silence, 0.0), (generate, hz), Ending::Stopped);
+            let traps = octave_trap(rate, home, (silence, 0.0), (generate, hz), Ending::Stopped);
+            let trap = traps.raw;
             let (needle, known) = (trap.needle_ms.unwrap(), trap.known_ms.unwrap());
             let bound = verifier.map_or(0.0, |range| {
                 let samples =
@@ -1328,7 +1389,14 @@ fn an_octave_the_range_cannot_test_is_ambiguous_until_a_lower_range_reads_the_no
                 needle + bound,
                 trap.wrong,
             ));
-            assert_eq!(trap.wrong, 0, "{hz} Hz at {rate} Hz: {trap:?}");
+            assert_eq!(traps.wrong(), (0, 0), "{hz} Hz at {rate} Hz: {traps:?}");
+            // The flag reaches the needle: shown, and ambiguous, before the octave is known.
+            let shown = traps.display;
+            assert!(
+                shown.known_ms.is_some()
+                    && (verifier.is_none() || shown.known_ms > shown.needle_ms),
+                "{hz} Hz at {rate} Hz: {shown:?}"
+            );
             assert!(
                 known <= needle + bound + 1e-9,
                 "{hz} Hz at {rate} Hz: known {known:.1} ms, bound {:.1} ms",
@@ -1365,7 +1433,8 @@ fn the_octave_above_a_still_ringing_string_stays_ambiguous_and_never_moves_down(
         for &(hz, ending) in &cases {
             for rate in SUPPORTED_RATES {
                 scope.spawn(move || {
-                    let trap = octave_trap(rate, Range::Mid, (saw, hz), (saw, 2.0 * hz), ending);
+                    let traps = octave_trap(rate, Range::Mid, (saw, hz), (saw, 2.0 * hz), ending);
+                    let trap = traps.raw;
                     report(format_args!(
                         "octave above a ringing {hz} Hz at {rate} Hz, {ending:?}: {} judged wrong \
                          (first at {:?} ms), needle {:?} ms, octave known {:?} ms, {} frames back \
@@ -1373,9 +1442,9 @@ fn the_octave_above_a_still_ringing_string_stays_ambiguous_and_never_moves_down(
                         trap.wrong, trap.first_wrong_ms, trap.needle_ms, trap.known_ms, trap.fell
                     ));
                     assert_eq!(
-                        (trap.wrong, trap.fell),
-                        (0, 0),
-                        "{hz} Hz, {ending:?}, {rate} Hz: {trap:?}"
+                        (trap.wrong, traps.display.wrong, trap.fell),
+                        (0, 0, 0),
+                        "{hz} Hz, {ending:?}, {rate} Hz: {traps:?}"
                     );
                     if matches!(ending, Ending::Under(..)) {
                         assert_eq!(
@@ -1514,7 +1583,7 @@ fn a_note_with_weak_odd_partials_reaches_its_octave_from_high() {
                 scope.spawn(move || {
                     let second = (weak_odd as Generator, hz);
                     let trap =
-                        octave_trap(rate, Range::High, (silence, 0.0), second, Ending::Stopped);
+                        octave_trap(rate, Range::High, (silence, 0.0), second, Ending::Stopped).raw;
                     report(format_args!(
                         "weak odd partials {hz} Hz at {rate} Hz from home High: {} wrong, note \
                          {:?} ms",
@@ -1549,15 +1618,18 @@ fn pinch_harmonics_and_a_weak_low_b_show_no_wrong_octave_from_any_home() {
                 for home in Range::ALL {
                     scope.spawn(move || {
                         let second = (generate, hz);
-                        let trap = octave_trap(rate, home, (silence, 0.0), second, Ending::Stopped);
+                        let traps =
+                            octave_trap(rate, home, (silence, 0.0), second, Ending::Stopped);
+                        let trap = traps.raw;
                         report(format_args!(
                             "{name} {hz} Hz at {rate} Hz from home {home:?}: {} wrong, needle \
                              {:?} ms, octave known {:?} ms",
                             trap.wrong, trap.needle_ms, trap.known_ms
                         ));
                         assert_eq!(
-                            trap.wrong, 0,
-                            "{name} {hz} Hz, {home:?}, {rate} Hz: {trap:?}"
+                            traps.wrong(),
+                            (0, 0),
+                            "{name} {hz} Hz, {home:?}, {rate} Hz: {traps:?}"
                         );
                         assert!(
                             trap.note_ms.is_some_and(|ms| ms <= 1_000.0),
@@ -1607,7 +1679,8 @@ fn a_melody_over_a_held_bass_note_keeps_its_range() {
 // ── Leaps ───────────────────────────────────────────────────────────────────────────────────
 
 /// One note for 0.3 s, then another with no gap, under the selector from home Mid. Returns the
-/// clear frames that break the rule below, and the range switches from the onset on.
+/// clear frames that break the rule below, on the estimate and on the needle, and the range
+/// switches from the onset on.
 fn leap(rate: u32, generate: Generator, from: f64, to: f64) -> (usize, usize) {
     let mut tuner = Tuner::new(rate, Selection::Auto(Range::Mid));
     let half = samples(0.3, rate);
@@ -1618,8 +1691,9 @@ fn leap(rate: u32, generate: Generator, from: f64, to: f64) -> (usize, usize) {
     let mut judge = Judge::new(tuner.table(), onset, to);
     let (mut wrong, mut switches, mut previous) = (0, 0, None);
     tuner.push(&signal, |frame| {
-        if judge.judged(frame) && shows_other_than(frame, to) {
-            wrong += 1;
+        if judge.judged(frame) {
+            wrong += usize::from(shows_other_than(frame, to));
+            wrong += usize::from(shows_other_than(&displayed(frame), to));
         }
         if frame.end > onset && previous.is_some_and(|range| range != frame.range) {
             switches += 1;
@@ -1744,6 +1818,137 @@ fn a_held_note_keeps_the_gate_open_through_the_chain() {
                 "{rate} Hz: closed after {} s",
                 index_to_f64(i) * 0.01
             );
+        }
+    }
+}
+
+// ── The needle ──────────────────────────────────────────────────────────────────────────────
+
+/// `docs/AUDIO_ENGINE.md` §1's display stability: a held note wobbles at most this much, peak to
+/// peak, on the needle.
+const STABILITY_CENTS: f64 = 1.0;
+
+/// **Display stability** (`T-003f`): a held sawtooth with seeded uniform noise mixed in at
+/// `snr_db` (`synth::mix_at_snr`, `Noise::new(7)`), 2 s under the selector from home Mid; from
+/// 0.5 s on, the needle's span in cents, the estimate's, and the frames the needle showed nothing.
+fn held_note(rate: u32, hz: f64, snr_db: f64) -> (f64, f64, usize) {
+    let mut tuner = Tuner::new(rate, Selection::Auto(Range::Mid));
+    let mut signal = vec![0.0_f32; samples(2.0, rate)];
+    synth::sawtooth(&mut signal, hz, rate, 0.3, 0.0);
+    let mut noise = vec![0.0_f32; signal.len()];
+    Noise::new(7).fill(&mut noise, 1.0);
+    synth::mix_at_snr(&mut signal, &noise, snr_db);
+    let held = u64::try_from(samples(0.5, rate)).unwrap();
+    let span = |range: &mut [f64; 2], hz_shown: f64| {
+        let off = cents(hz_shown, hz);
+        *range = [range[0].min(off), range[1].max(off)];
+    };
+    let mut raw = [f64::INFINITY, f64::NEG_INFINITY];
+    let mut shown = raw;
+    let mut blank = 0;
+    tuner.push(&signal, |frame| {
+        if frame.end < held {
+            return;
+        }
+        if let Some(e) = frame.estimate {
+            span(&mut raw, e.frequency_hz);
+        }
+        match frame.display {
+            Some(hz) => span(&mut shown, hz),
+            None => blank += 1,
+        }
+    });
+    (shown[1] - shown[0], raw[1] - raw[0], blank)
+}
+
+/// §1: a held note wobbles ≤ 1 ¢ peak to peak on the needle, at both rates, from a bass's E to
+/// E6, on [`held_note`]'s fixture at 20 dB SNR, where the estimate itself wobbles past the budget
+/// on every note but the bass E (asserted on the worst), so the smoothing is what meets it; and
+/// the needle never goes blank on a held note. At 10 dB SNR the figure is recorded (0.92 ¢ worst
+/// in `T-003f`).
+#[test]
+fn a_held_note_holds_the_needle_within_a_cent() {
+    let notes = [41.2, 82.41, 110.0, 196.0, 329.63, 659.26, 1_318.5];
+    let mut raw_worst: f64 = 0.0;
+    for rate in SUPPORTED_RATES {
+        let measured: Vec<_> = std::thread::scope(|scope| {
+            let handles: Vec<_> = notes
+                .iter()
+                .flat_map(|&hz| [20.0, 10.0].map(|snr| (hz, snr)))
+                .map(|(hz, snr)| scope.spawn(move || (hz, snr, held_note(rate, hz, snr))))
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        for (hz, snr, (needle, raw, blank)) in measured {
+            report(format_args!(
+                "held {hz} Hz at {rate} Hz, {snr} dB SNR: needle {needle:.2} ¢ peak to peak, \
+                 estimate {raw:.2} ¢, {blank} blank frames"
+            ));
+            if snr < 20.0 {
+                continue;
+            }
+            raw_worst = raw_worst.max(raw);
+            assert!(
+                needle <= STABILITY_CENTS && blank == 0,
+                "{hz} Hz at {rate} Hz: needle {needle:.2} ¢, {blank} blank"
+            );
+        }
+    }
+    assert!(
+        raw_worst > STABILITY_CENTS,
+        "the fixture no longer tests the smoothing: the estimate wobbles {raw_worst:.2} ¢"
+    );
+}
+
+/// **Lock detection through the chain** (`T-003f`, `docs/AUDIO_ENGINE.md` §3): a sawtooth held
+/// 1 ¢ sharp of its target locks on `frequency_raw`, never sooner than 250 ms after the onset and
+/// within 250 ms of the estimate settling (its range's chain line), and stays locked; held 4 ¢
+/// sharp, past the default ±3 ¢, it never locks. At both rates, in each range, from home Mid.
+#[test]
+fn a_note_in_tune_locks_on_the_audio_clock_and_one_out_of_tune_does_not() {
+    for rate in SUPPORTED_RATES {
+        let table = RangeTable::new(rate).unwrap();
+        for target in [41.2, 110.0, 329.63] {
+            for (detune_cents, locks) in [(1.0, true), (4.0, false)] {
+                let mut tuner = Tuner::new(rate, Selection::Auto(Range::Mid));
+                let mut lock = Lock::new(rate, DEFAULT_TOLERANCE_CENTS);
+                let onset = samples(0.05, rate);
+                let mut signal = vec![0.0_f32; onset + samples(1.0, rate)];
+                let hz = detune(target, detune_cents);
+                synth::sawtooth(&mut signal[onset..], hz, rate, 0.5, 0.0);
+                let onset = u64::try_from(onset).unwrap();
+                let mut locked_at: Option<u64> = None;
+                let mut unlocked_after = false;
+                tuner.push(&signal, |frame| {
+                    let cents = frame.estimate.map(|e| cents(e.frequency_hz, target));
+                    let clarity = frame.estimate.map_or(0.0, |e| e.clarity);
+                    let locked = lock.observe(cents, clarity, frame.end);
+                    if locked {
+                        locked_at.get_or_insert(frame.end - onset);
+                    } else if locked_at.is_some() {
+                        unlocked_after = true;
+                    }
+                });
+                let ms = |samples: u64| {
+                    index_to_f64(usize::try_from(samples).unwrap()) * 1e3 / f64::from(rate)
+                };
+                let line = table.ledger(table.range_for(hz)).chain_seconds() * 1e3;
+                report(format_args!(
+                    "lock, {target} Hz {detune_cents:+} ¢ at {rate} Hz: locked after {:?} ms \
+                     (chain line {line:.1} ms)",
+                    locked_at.map(ms)
+                ));
+                let what = format_args!("{target} Hz {detune_cents:+} ¢ at {rate} Hz");
+                if locks {
+                    let at = ms(locked_at.unwrap_or_else(|| panic!("{what}: never locks")));
+                    assert!(
+                        (250.0..=line + 250.0).contains(&at) && !unlocked_after,
+                        "{what}: locked after {at:.1} ms, unlocked again: {unlocked_after}"
+                    );
+                } else {
+                    assert_eq!(locked_at, None, "{what}");
+                }
+            }
         }
     }
 }
