@@ -40,6 +40,7 @@ jobs:
       - run: just fmt-check-rust
       - run: just lint-rust
       - run: just test-rust
+      - run: just fixtures-check   # recorded fixtures match their manifest and licences (adr/0030)
       - run: just deny
       - run: just doc-rust
 

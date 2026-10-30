@@ -74,7 +74,7 @@ gen-dart:
 
 # Everything CI checks. Must be green before any work is called done. Each CI job runs a subset of
 # these recipes, never a command of its own (docs/CI_RELEASE.md §1).
-verify: doctor-selftest fmt-check lint test deny doc-rust check-drift check-deps docs-check pr-check-selftest lint-ci ios-project-check
+verify: doctor-selftest fmt-check lint test fixtures-check deny doc-rust check-drift check-deps docs-check pr-check-selftest lint-ci ios-project-check
 
 fmt-check: fmt-check-dart fmt-check-rust fmt-check-kotlin
 
@@ -138,6 +138,10 @@ goldens-update:
 # reports every uncommitted edit as "codegen drift", which is a lie with a confusing fix attached.
 check-drift: gen
     @git diff --exit-code -- '**/frb_generated*.dart' '**/frb_generated.rs'         'packages/*/lib/src/rust/**'         || (echo "Generated code is out of date. Run: just gen" && exit 1)
+
+# Every recorded fixture matches its manifest: hash, header, licence evidence, size caps (adr/0030).
+fixtures-check:
+    cargo xtask fixtures check             # [T-003e]
 
 # Enforces the one-way dependency rule in AGENTS.md §5.
 check-deps:
