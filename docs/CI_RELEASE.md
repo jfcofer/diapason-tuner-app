@@ -8,7 +8,7 @@ This document owns **everything between a commit and a user**.
 
 | Job | Runner | Recipes | Blocking |
 |---|---|---|---|
-| `rust` | ubuntu-24.04 | `fmt-check-rust`, `lint-rust` (clippy `-D warnings`), `test-rust` (nextest + doctests), `deny`, `doc-rust` | Yes |
+| `rust` | ubuntu-24.04 | `fmt-check-rust`, `lint-rust` (clippy `-D warnings`), `test-rust` (nextest + doctests), `fixtures-check`, `deny`, `doc-rust` | Yes |
 | `dart` | ubuntu-24.04 | `fmt-check-dart`, `lint-dart` (analyze incl. riverpod_lint, `adr/0014`), `test-dart` | Yes |
 | `goldens` | ubuntu-24.04 | `goldens` (`adr/0016`) | Yes |
 | `checks` | ubuntu-24.04 | `doctor-selftest`, `fmt-check-kotlin`, `check-drift`, `ios-project-check`, `check-deps`, `docs-check`, `pr-check-selftest`, `pr-check` (pull requests), `lint-ci` | Yes |
