@@ -40,6 +40,25 @@ pre-commit:
           exit 1
         fi
 
+    - name: large-files
+      # Source sample libraries run to gigabytes and live outside the repo; only curated recordings
+      # under fixtures/audio/ may be large, and docs/adr/0030 caps those (T-019).
+      run: |
+        git diff --cached --name-only --diff-filter=AM | {
+          bad=0
+          while IFS= read -r f; do
+            case "$f" in
+              *.zip|*.7z|*.tar|*.tar.*|*.tgz|*.rar)
+                echo "✗ refusing to commit an archive: $f (keep sources outside the repo)"; bad=1 ;;
+              fixtures/audio/*) ;;
+              *) if [ "$(git cat-file -s ":$f")" -gt 1048576 ]; then
+                   echo "✗ refusing to commit a file over 1 MiB outside fixtures/audio/: $f"; bad=1
+                 fi ;;
+            esac
+          done
+          exit "$bad"
+        }
+
 commit-msg:
   jobs:
     - name: conventional-commit

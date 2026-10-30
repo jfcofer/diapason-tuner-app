@@ -69,3 +69,7 @@ CLAUDE.local.md
 
 # FVM Version Cache
 .fvm/
+
+# Source sample libraries for recorded fixtures: gigabytes, kept outside the repo
+# (~/.cache/diapason/sound-sources/); only the curated subset lands in fixtures/audio/ (T-019).
+sound-fixtures/
