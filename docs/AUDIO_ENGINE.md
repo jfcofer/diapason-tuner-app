@@ -192,10 +192,10 @@ is flagged `ambiguous octave` until a verifier that sees the octave below reads 
 in a window that started after the note did (`RangeSelector::octave`). A verifier's pitch below the
 current band moves the chain to that pitch's range under five conditions:
 - the current range's last clear pitch is 2, 3 or 4 times it, or there is none;
-- the current range cannot see it (`adr/0031`). A range that sees the longer period and still read
-  the shorter one found the shorter one about as periodic, which a hidden fundamental is not: the
-  longer period is a second sound's (a ukulele's G4 over its body and a sympathetic C4 reads G4/3
-  in Mid, `T-020`). A low note the current range sees moves the chain as its own reading;
+- at 3 or 4 times it, the current range cannot see it (`adr/0031`). A range that sees the longer
+  period and still read one a third or a quarter of it found the shorter one about as periodic,
+  which takes two sounds, not one string (a ukulele's G4 over its body and a sympathetic C4 reads
+  G4/3 in Mid, `T-020`). At twice it, a string with weak odd partials does it, so k = 2 moves;
 - the verifier window started after the last switch, pitch change or end of a held reading, since a
   window spanning a note change reads the notes' common period;
 - two such frames of that verifier agree, or such frames have agreed for 250 ms (a bound on how
