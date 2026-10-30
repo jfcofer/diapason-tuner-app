@@ -1451,14 +1451,21 @@ fn a_high_note_over_a_tone_at_a_third_of_it_never_hands_down_to_that_tone() {
                             let mut tuner = Tuner::new(rate, Selection::Auto(Range::High));
                             let mut judge = Judge::new(tuner.table(), 0, G4_HZ);
                             let (mut wrong, mut lower, mut known) = (0, 0, 0);
+                            let (mut first_known, mut settled) = (None, None);
                             tuner.push(&signal, |frame| {
+                                let at = index_to_f64(usize::try_from(frame.end).unwrap()) * 1e3
+                                    / f64::from(rate);
+                                let shown = frame.estimate.is_some() && octave_known(frame);
+                                if shown {
+                                    first_known.get_or_insert(at);
+                                }
+                                since(&mut settled, shown, at);
                                 if !judge.judged(frame) {
                                     return;
                                 }
                                 wrong += usize::from(shows_other_than(frame, G4_HZ));
                                 lower += usize::from(frame.range != Range::High);
-                                known +=
-                                    usize::from(frame.estimate.is_some() && octave_known(frame));
+                                known += usize::from(shown);
                             });
                             let what = format_args!(
                                 "G4 {levels:?} over G4/3 {body_cents:+} ¢, C4 {c4_db:?} dB, at \
@@ -1466,16 +1473,62 @@ fn a_high_note_over_a_tone_at_a_third_of_it_never_hands_down_to_that_tone() {
                             );
                             report(format_args!(
                                 "{what}: {wrong} judged wrong, {lower} frames below High, \
-                                 {known} known"
+                                 {known} known, first {first_known:?} ms, settled {settled:?} ms"
                             ));
                             assert_eq!((wrong, lower), (0, 0), "{what}");
-                            assert!(known > 0, "{what}: G4 never shown known");
+                            // Known within High's fail line; for the recording's spectrum, for
+                            // good. Under the gentler one with a C4, High's pick flips to G4/2 and
+                            // the guard's bridge holds G, ambiguous, through much of the note.
+                            let line = fail_line_ms(Range::High);
+                            assert!(first_known.is_some_and(|ms| ms <= line), "{what}");
+                            if *levels == G4_SPECTRA[0] {
+                                assert!(settled.is_some_and(|ms| ms <= line), "{what}");
+                            }
                         });
                     }
                 }
             }
         }
     });
+}
+
+/// Partials 1–12 of a string whose odd partials are weak (4.7 % of the energy): its NSDF at half
+/// its period is 0.906, past `Mpm`'s 0.9, so High reads 2f₀ though it sees f₀ (`T-020` review).
+const WEAK_ODD: [f64; 12] = [0.1, 1.0, 0.35, 0.8, 0.1, 0.8, 0.1, 0.7, 0.1, 0.6, 0.05, 0.5];
+
+fn weak_odd(out: &mut [f32], f0: f64, rate: u32, amplitude: f64, phase: f64) {
+    synth::partials(out, f0, rate, amplitude, phase, &WEAK_ODD);
+}
+
+/// **Half of a pitch the range sees can still be its hidden fundamental** (`docs/adr/0031`). A
+/// note at 107–150 Hz with weak odd partials, from home High, reads 2f₀ there, with its octave
+/// known, until Mid, the verifier, reads f₀ twice and moves the chain. Limiting moves to pitches
+/// High cannot see left 2f₀ on screen for the whole note (521–593 frames); the rule spares half.
+/// The right note, octave known, arrives within High's fail line. Its first judged frames are
+/// wrong, and recorded: High tests the octave of 2f₀ itself and finds none below.
+#[test]
+fn a_note_with_weak_odd_partials_reaches_its_octave_from_high() {
+    for rate in SUPPORTED_RATES {
+        std::thread::scope(|scope| {
+            for hz in [107.3, 110.0, 123.47, 146.83, 150.0] {
+                scope.spawn(move || {
+                    let second = (weak_odd as Generator, hz);
+                    let trap =
+                        octave_trap(rate, Range::High, (silence, 0.0), second, Ending::Stopped);
+                    report(format_args!(
+                        "weak odd partials {hz} Hz at {rate} Hz from home High: {} wrong, note \
+                         {:?} ms",
+                        trap.wrong, trap.note_ms
+                    ));
+                    assert!(
+                        trap.note_ms
+                            .is_some_and(|ms| ms <= fail_line_ms(Range::High)),
+                        "{hz} Hz at {rate} Hz: {trap:?}"
+                    );
+                });
+            }
+        });
+    }
 }
 
 /// A pinch harmonic (strong second and third partials) and a bass's low B with a weak fundamental
