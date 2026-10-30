@@ -1,12 +1,13 @@
 ---
 id: T-002d
 title: Release the microphone whenever the tuner is not in front of the user
-status: in-progress
+status: blocked
 milestone: M1
 owner: claude
 created: 2026-10-20
 ---
 
+**Blocked on the Redmi** (since 2026-10-22): L3/L4 need a call on the device, L10 the silenced mic.
 ## Goal
 
 Once the tuner listens, the microphone stays open until the process dies: across screens, in the
