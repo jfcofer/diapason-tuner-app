@@ -41,9 +41,12 @@ prohibitions. It never contains status, history, or explanation. It is deliberat
 hardest to get permission to grow.
 
 It is `AGENTS.md` rather than `CLAUDE.md` because the format is now a cross-vendor standard
-stewarded by the Linux Foundation and read natively by Codex, Cursor, Copilot, Gemini CLI, Aider and
-others. Claude Code reads `CLAUDE.md`, so `CLAUDE.md` is one `@AGENTS.md` import plus Claude-specific
-mechanics. One source of truth; no drift between tools. (`adr/0002-agent-context-system.md`.)
+stewarded by the Linux Foundation and read natively by Codex, Cursor, Copilot and others. Claude Code
+reads `CLAUDE.md`, so `CLAUDE.md` is one `@AGENTS.md` import plus Claude-specific mechanics. Two
+tools need a one-line pointer, checked against their docs on 2026-10-30 (`T-015`): Gemini CLI
+defaults to `GEMINI.md`, so `.gemini/settings.json` sets `context.fileName`; Aider loads only what
+`.aider.conf.yml` names under `read:`. A pointer is configuration, not a second copy of the rules.
+One source of truth; no drift between tools. (`adr/0002-agent-context-system.md`.)
 
 **`STATE.md` — the handoff.** The answer to "I am a competent engineer who has never seen this
 repo; what is going on and what do I do next?" It is a snapshot, and rewriting it in full each

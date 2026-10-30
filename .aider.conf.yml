@@ -1,0 +1,2 @@
+# Aider reads no instruction file on its own: load the canonical one (docs/agents/CONTEXT_SYSTEM.md).
+read: AGENTS.md
