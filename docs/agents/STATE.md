@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-30 (T-015 #36 and T-019 merged: protocol checked on every PR; T-003e next)
+# STATE — updated 2026-10-30 (T-020 merged: no wrong note shown as certain on recordings; T-003f next)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > Agents: run `just session-start`, read this, then the active task file. PR and merge state
@@ -9,19 +9,16 @@
 **Milestone:** M1 — Audio spine (`docs/ROADMAP.md`). **M0 closed 2026-10-09** (`T-006`); its one
 unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. **Status:**
 
-- **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`–`T-003c`, T-015, and
-  `T-019` with this snapshot (PRs #6–#9, #11–#16, #24, #27–#31, #34, #36), Dependabot #2, #10, #21,
-  #22, #25, #26. #20 closed; #35 closed, superseded by #36. **Open:** Dependabot #32 (actions)
-  and #33 (dart-minor), green, for the owner to merge.
+- **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`–`T-003c`, T-015,
+  T-019, `T-003e` and `T-020` with this snapshot (PRs #6–#9, #11–#16, #24, #27–#31, #34, #36,
+  #38, #39, #40), Dependabot #2, #10, #21, #22, #25, #26. #20, #33 closed; #35 closed, superseded
+  by #36. **Open:** Dependabot #32 (actions) and #37 (rust-minor), green, for the owner to merge.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-003e-recorded-fixtures.md`** (todo, planned 2026-10-30): recorded fixtures
-from CC0 libraries the owner chose over recording. The archives sit **outside the repo** in
-`~/.cache/diapason/sound-sources/`; the task file has the licence audit and the traps (Karoryfer bass
-names an octave high). Since `T-019`, **CI's `pr-check` fails a PR** whose task file, STATE or
-journal is not written as of after the merge.
+**`docs/agents/tasks/T-003f-smoothing.md`** (todo): median of five, one-euro, lock, the 260 ms
+gate, and the quiet-host `just bench` `T-020` (`adr/0031`) could not get.
 **Waiting on the Redmi:** `T-002d` (blocked; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## Hardware this project actually has
@@ -44,7 +41,9 @@ journal is not written as of after the merge.
 - **Tuner lifecycle** (`T-002d`): `engineTarget` policy, `AppLifecycle` seam; rows L1–L11 checked.
 - **Engine core** (`T-002a`): `Engine::prepare` → `(Engine, Processor)` over `rtrb`/`triple_buffer`.
 - **Pitch** (`T-003a`–`c`): `Mpm`, `synth` (`adr/0027`), `chain::Front` (RT) and `chain::Analysis`
-  split at the ring (`adr/0028`); octave guard and verifiers (`adr/0029`). ±0.09 ¢, 30–1400 Hz.
+  split at the ring (`adr/0028`); octave guard, verifiers (`adr/0029`, `0031`). ±0.09 ¢.
+- **Recorded fixtures** (`T-003e`, `adr/0030`): `fixtures/audio/`, `cargo xtask fixtures
+  import|reference|check` (`check` in `verify`), `recorded.rs`: no gross frame on gold or ceiling.
 
 ## Decisions already made (do not re-litigate without an ADR)
 
@@ -62,6 +61,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
   budgets ≥ 160 Hz ≤ 85 ms, 80–160 Hz ≤ 110 ms, low B ≤ 190 ms (owner, 2026-10-23).
 - `0026` patrol runs device tests, never in a release; it applies KGP: check before Flutter bumps.
 - `0027` synthetic audio fixtures are generated in code; only recordings are checked in.
+- `0031` a verifier moves down to a third or a quarter only of a pitch the range cannot see.
 
 ## Traps a later session will otherwise re-discover
 
@@ -95,13 +95,14 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - **Rust crate licences** missing from the licence page (M6), **`appLifecycleProvider`** moving down
   (M4): both in `ROADMAP.md`. **A stall's input queued as latency** (`adr/0025`): `T-002f`.
 - **The Redmi now refuses the output the FAST path** (on `main` too), unlike part 1: `T-002f`.
+- **Weak odd partials, 107–150 Hz:** 2f₀ shown known ~60 ms before Mid corrects it (`adr/0031`).
 - **`router.dart` uses plain `GoRoute`s**, not the typed routes `AGENTS.md` §7 requires: `T-016`.
 
 ## Open questions
 
 | Question | Needed by | Notes |
 |---|---|---|
-| Recorded budgets for bass, ukulele, violin, electric guitar | `T-003e` | §1 budgets only acoustic guitar. Owner, 2026-10-30: measure under ceilings first, then set budgets by ADR |
+| Recorded budgets for bass, ukulele, violin, electric guitar | `T-003g` | §1 budgets only acoustic guitar. Measured under ceilings in `recorded.rs` (every median within 2.6 ¢ of the consensus); budgets by ADR |
 | Monetisation model | M6 | Must not introduce ads, analytics or network calls (`PRODUCT_SPEC.md` §6) |
 | Reference devices beyond the Redmi | M1+ | No iPhone, Pixel or tablet available. `T-002` criteria were amended to "every device available" |
 | Font licences confirmed for bundling | M3 | `DESIGN_SYSTEM.md` §1 assumes OFL faces |
@@ -111,7 +112,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **`T-003e`** part 1 (fixtures, `adr/0030`, the independent reference), then `T-003f`, `T-014`,
+1. **`T-003f`** (smoothing and lock), then `T-014` (chords; `T-020` added the G4-over-G4/3 case),
    `T-003d`, `T-003g`. The owner may add the `SessionStart` hook `T-019` left out (its notes).
 2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then L10 (the silenced microphone).
    Also owed: `T-003a`'s 4096 frame cost on the phone (≤ 1.5 ms).

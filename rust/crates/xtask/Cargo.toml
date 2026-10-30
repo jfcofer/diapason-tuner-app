@@ -7,6 +7,11 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+diapason_dsp.workspace = true
+hound.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true

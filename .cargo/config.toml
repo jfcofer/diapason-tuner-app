@@ -1,0 +1,3 @@
+# `cargo xtask <command>`: repository automation in Rust (rust/crates/xtask).
+[alias]
+xtask = "run --quiet --package xtask --"

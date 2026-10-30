@@ -25,9 +25,13 @@ deterministic the test must be.
   example: cents↔frequency roundtrips, temperament tables summing correctly, fixed-point phase
   accumulation never losing a beat over arbitrary tempo sequences.
 - **Fixture accuracy tests**: every fixture, synthesised in code or recorded in `fixtures/audio/`
-  (`adr/0027`), has an expected f₀. A test either asserts an `AUDIO_ENGINE.md` §1 budget, or records
+  (`adr/0027`), has an expected pitch: its f₀ if synthesised, its harmonic consensus if recorded
+  (`adr/0030`). A test either asserts an `AUDIO_ENGINE.md` §1 budget, or records
   a measurement under a regression ceiling and names the task that owns the budget for it. These
-  are the tests that decide whether the app is good.
+  are the tests that decide whether the app is good. Recordings (`dsp/tests/recorded.rs`) are held
+  to the harmonic consensus `cargo xtask fixtures reference` measured, which shares no code with the
+  detector. `cargo xtask fixtures check`, in `just verify`, ties each WAV to its source, licence
+  and hash (`adr/0030`, `fixtures/audio/README.md`).
 - **No-allocation test**: 10 s of audio through `OfflineBackend` with `assert_no_alloc` armed.
 - **Scheduling test**: 30 minutes of offline audio, 47 tempos, every onset on its exact sample
   index. Zero tolerance — this test exists to make drift impossible to reintroduce.

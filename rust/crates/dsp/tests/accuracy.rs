@@ -19,14 +19,15 @@
 
 use std::collections::BTreeMap;
 use std::f64::consts::TAU;
-use std::fmt;
-use std::io::Write;
 
 use diapason_dsp::convert::index_to_f64;
 use diapason_dsp::pitch::{Mpm, MpmConfig, PitchEstimate};
 use diapason_dsp::synth::{self, Noise, Pluck};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
+
+pub mod common;
+use common::report;
 
 const RATE: u32 = 48_000;
 /// `docs/AUDIO_ENGINE.md` §1: synthetic steady tones, 30–1400 Hz.
@@ -50,19 +51,6 @@ type Generator = fn(&mut [f32], f64, u32, f64, f64);
 
 /// Where proptest keeps the cases that failed, beside this file.
 const REGRESSIONS: &str = "proptest-regressions";
-
-/// Writes a line of the summary, only under `--nocapture` (or `RUST_TEST_NOCAPTURE`).
-///
-/// `println!` is on the crate's real-time deny list (`engine/clippy.toml`), which covers tests too.
-/// A direct write to stdout is not, but libtest does not capture it either, so without this check
-/// the summary would print on every `just verify`.
-fn report(line: fmt::Arguments<'_>) {
-    let asked = std::env::args().any(|arg| arg == "--nocapture" || arg == "--show-output")
-        || std::env::var_os("RUST_TEST_NOCAPTURE").is_some();
-    if asked {
-        writeln!(std::io::stdout().lock(), "{line}").unwrap();
-    }
-}
 
 /// `LOWEST_HZ · 2^(i/24)` up to `HIGHEST_HZ`, which is always included.
 fn sweep() -> Vec<f64> {

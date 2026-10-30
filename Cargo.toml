@@ -38,6 +38,12 @@ realfft = "3.5"
 # Dev-only: the DSP benches behind `just bench`. No rayon or plotters: tools/bench-compare.sh reads
 # the JSON estimates, and nothing needs the HTML reports or a thread pool.
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+# Recorded fixtures (docs/adr/0030): WAV reading and writing, the manifest, and the hashes that tie
+# a fixture to its source. Tooling and tests only; nothing shipped links them.
+hound = "3.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
 
 diapason_dsp = { path = "rust/crates/dsp" }
 diapason_engine = { path = "rust/crates/engine" }
@@ -50,6 +56,11 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
+# `cargo xtask fixtures check` re-derives every recorded reference in `just verify`: about ten times
+# faster optimised. The xtask crate only, so the inner loop of every other crate is unchanged.
+[profile.dev.package.xtask]
+opt-level = 3
+
 # Release builds only: keeps `just verify` honest without slowing the inner loop.
 [profile.release]
 lto = true
