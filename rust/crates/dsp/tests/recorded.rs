@@ -29,8 +29,9 @@
 //! **What is gated,** by the manifest's `set`:
 //! - `gold`, recorded acoustic guitar: |median| within §1's ±2 ¢, no gross and no unvoiced frame;
 //! - `ceiling`: |median| under its entry in [`CEILINGS`], a regression ceiling, not a budget
-//!   (`T-003g` owns budgets for the instruments §1 does not name), and no unvoiced frame. `bass_b0`
-//!   also has no gross frame: the octave guard on a real low B, M2's exit criterion;
+//!   (`T-003g` owns budgets for the instruments §1 does not name), and no unvoiced and no gross
+//!   frame: a wrong note is no instrument's regression to allow. `bass_b0` is the octave guard on a
+//!   real low B, M2's exit criterion; `ukulele_g4` a G4 over a tone at a third of it (`T-020`);
 //! - `stress`: reported only.
 //!
 //! `cargo test -p diapason_dsp --test recorded -- --nocapture` prints the table.
@@ -51,8 +52,9 @@ use common::{Tuner, cents, report, span};
 const GOLD_BUDGET_CENTS: f64 = 2.0;
 /// An estimate further than this from the reference names another note (half a semitone).
 const GROSS_CENTS: f64 = 50.0;
-/// The fixture that holds the octave guard to a real low B (B0, 30.9 Hz).
-const LOW_B: &str = "bass_b0";
+/// The fixtures that hold the octave guard to a real low B (B0, 30.9 Hz) and to a high note over a
+/// tone at a third of it (`T-020`): both must stay in the ceiling set, where no frame may be gross.
+const OCTAVE_GUARDS: [&str; 2] = ["bass_b0", "ukulele_g4"];
 
 /// **Not budgets.** Regression ceilings on |median error| in cents for the `ceiling` set, the
 /// convention of `tests/accuracy.rs`: the value measured when the fixtures landed (`T-003e`, in the
@@ -71,7 +73,7 @@ const CEILINGS: [(&str, f64); 14] = [
     ("ukulele_a4", 2.0),     // −0.052
     ("ukulele_c4", 2.0),     // +0.259
     ("ukulele_e4", 3.0),     // +1.651
-    ("ukulele_g4", 4.0),     // −2.583; 20 gross frames from Mid at 1.20–1.25 s, `T-020`
+    ("ukulele_g4", 4.0),     // −2.577 since `T-020` (−2.583, with 20 gross frames, before)
     ("violin_pizz_a4", 2.0), // +0.432
     ("violin_pizz_e5", 2.0), // +0.162
     ("violin_pizz_g3", 3.0), // −1.025
@@ -337,7 +339,7 @@ fn ceiling(id: &str) -> Option<f64> {
 }
 
 #[test]
-fn every_ceiling_fixture_has_exactly_one_ceiling_and_the_low_b_is_there() {
+fn every_ceiling_fixture_has_exactly_one_ceiling_and_the_octave_guards_are_there() {
     let fixtures = manifest();
     let ceilings: Vec<&str> = fixtures
         .iter()
@@ -352,10 +354,9 @@ fn every_ceiling_fixture_has_exactly_one_ceiling_and_the_low_b_is_there() {
         named, ceilings,
         "CEILINGS and the manifest's ceiling set differ"
     );
-    assert!(
-        ceilings.contains(&LOW_B),
-        "{LOW_B} is not a ceiling fixture"
-    );
+    for id in OCTAVE_GUARDS {
+        assert!(ceilings.contains(&id), "{id} is not a ceiling fixture");
+    }
     assert!(fixtures.iter().any(|f| f.set == Set::Gold));
 }
 
@@ -379,10 +380,10 @@ fn recorded_acoustic_guitar_is_within_two_cents_and_never_on_another_note() {
     );
 }
 
-/// **Not the budget.** The other instruments under their regression ceilings, and the octave guard
-/// on a real low B. None withholds a frame today, so none may start to (`T-020` changes the guard).
+/// **Not the budget.** The other instruments under their regression ceilings, never on another
+/// note. None withholds a frame today, so none may start to.
 #[test]
-fn other_instruments_stay_under_their_ceilings_and_the_low_b_never_shows_another_note() {
+fn other_instruments_stay_under_their_ceilings_and_never_show_another_note() {
     let rows = measure_set(Set::Ceiling);
     let failing: Vec<(&Row, Option<f64>)> = rows
         .iter()
@@ -391,12 +392,12 @@ fn other_instruments_stay_under_their_ceilings_and_the_low_b_never_shows_another
             !limit.is_some_and(|limit| within(row.median_cents, limit))
                 || row.frames == 0
                 || row.unvoiced > 0
-                || (row.id == LOW_B && row.gross > 0)
+                || row.gross > 0
         })
         .collect();
     assert!(
         failing.is_empty(),
-        "over a ceiling, with an unvoiced frame, or the low B with a gross frame: {failing:#?}"
+        "over a ceiling, or with an unvoiced or a gross frame: {failing:#?}"
     );
 }
 
