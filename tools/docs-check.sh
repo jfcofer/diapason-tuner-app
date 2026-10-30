@@ -145,6 +145,19 @@ while read -r cited; do
     taskbad=1
 done < <(grep -oP '(?<![\w/-])(?:docs/agents/tasks/)?T-[0-9]{3}[a-z]?-[a-z0-9]+(?:-[a-z0-9]+)*' \
     docs/agents/STATE.md 2>/dev/null | sort -u)
+# A bare ID that STATE or an open task cites has a file, or a row in its parent's slice table: an ID
+# with neither is planned nowhere (T-019). Closed tasks are history and may name planted examples.
+living=(docs/agents/STATE.md)
+for f in docs/agents/tasks/T-*.md; do
+    grep -qE '^status:\s*(done|abandoned)\s*$' "$f" || living+=("$f")
+done
+while read -r cited; do
+    compgen -G "docs/agents/tasks/${cited}-*.md" >/dev/null && continue
+    grep -qE "^\| \`${cited}\` \|" docs/agents/tasks/T-*.md && continue
+    fail "$cited is cited, but has no task file and no slice row" \
+         "Write its task file, or add it as a row in its parent's slice table."
+    taskbad=1
+done < <(grep -ohP '\bT-[0-9]{3}[a-z]?\b' "${living[@]}" | sort -u)
 [[ $taskbad -eq 0 ]] && ok "task front matter valid, done means done, parents track their slices, active task is open, cited tasks exist"
 
 # ── Lifecycle matrix coverage (PLATFORM_AUDIO.md §5, T-002d) ─────────────────
