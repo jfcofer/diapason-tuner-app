@@ -190,8 +190,12 @@ partial, which High holds. So each frame of a range below the selected one is an
 **verifier**: Mid and Low under High, Low under Mid. An estimate whose range cannot test its octave
 is flagged `ambiguous octave` until a verifier that sees the octave below reads the estimate itself
 in a window that started after the note did (`RangeSelector::octave`). A verifier's pitch below the
-current band moves the chain to that pitch's range under four conditions:
+current band moves the chain to that pitch's range under five conditions:
 - the current range's last clear pitch is 2, 3 or 4 times it, or there is none;
+- the current range cannot see it (`adr/0031`). A range that sees the longer period and still read
+  the shorter one found the shorter one about as periodic, which a hidden fundamental is not: the
+  longer period is a second sound's (a ukulele's G4 over its body and a sympathetic C4 reads G4/3
+  in Mid, `T-020`). A low note the current range sees moves the chain as its own reading;
 - the verifier window started after the last switch, pitch change or end of a held reading, since a
   window spanning a note change reads the notes' common period;
 - two such frames of that verifier agree, or such frames have agreed for 250 ms (a bound on how
