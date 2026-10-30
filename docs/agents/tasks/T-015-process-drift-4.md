@@ -1,7 +1,7 @@
 ---
 id: T-015
 title: Close the session-end loop for every agent and catch stale code names in living docs
-status: in-progress
+status: done
 milestone: M2
 owner: claude
 created: 2026-10-30
@@ -53,7 +53,7 @@ nothing passes silently.
   - the stall-latency gap (`adr/0025`) gets an owner.
 - [x] **Honest states:** T-002d is `blocked` on the Redmi, and `tasks/README.md` allows one active
   task per agent, with blocked tasks naming what unblocks them.
-- [ ] `just verify` passes, and all six CI jobs are green.
+- [x] `just verify` passes, and all six CI jobs are green (the ruleset merges nothing otherwise).
 
 ## Out of scope
 
@@ -76,6 +76,10 @@ files beyond a pointer to `AGENTS.md` (`CONTEXT_SYSTEM.md` §"one file").
   comment names it); ROADMAP M4 and M6; `T-002f` gets the stall-latency criterion.
 - **Blocked:** T-002d is `blocked`, with a `**Blocked on**` line, which `docs-check` now requires of
   every blocked task.
+- **Deviation, rebase:** `T-003c` merged first (#34), so this branch was rebased onto it as
+  `chore/T-015-process-drift-4-rebased`, a new PR that supersedes #35, with no force push. STATE
+  kept `T-003c`'s snapshot plus the gap owners. The same PR closes `T-003c`, whose task and STATE
+  still read "PR not yet opened" after its merge: that drift is why `T-019` exists.
 
 ## Verification performed
 
