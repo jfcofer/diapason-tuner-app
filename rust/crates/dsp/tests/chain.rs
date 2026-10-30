@@ -1394,6 +1394,90 @@ fn the_octave_above_a_still_ringing_string_stays_ambiguous_and_never_moves_down(
     });
 }
 
+// ── A high note over a tone at a third of it ────────────────────────────────────────────────
+
+/// A ukulele's G4 (`fixtures/audio/ukulele_g4.wav`, `T-020`).
+const G4_HZ: f64 = 392.0;
+
+/// Partials 1–3 of that G4 late in its decay, the third almost as strong as the first (−2 and
+/// 0 dB at 1.1–1.25 s), and a gentler spectrum.
+const G4_SPECTRA: [[f64; 3]; 2] = [[1.0, 0.18, 0.9], [1.0, 0.3, 0.5]];
+
+/// The tone below the recorded G4, in dB under its first partial: 134.8 Hz, the body's, 54 ¢ above
+/// G4/3, 11 dB down at 1.1–1.25 s.
+const BODY_DB: f64 = -11.0;
+
+/// `levels` of [`G4_HZ`], a tone near G4/3 ([`BODY_DB`], `body_cents` above it) and, if `c4_db`,
+/// the C4 string ringing in sympathy that many dB under the first partial (G4's second partial
+/// is its third): the three are periodic, or nearly, at G4/3. For 1.5 s, from silence.
+fn over_a_third(rate: u32, levels: &[f64], body_cents: f64, c4_db: Option<f64>) -> Vec<f32> {
+    let length = samples(1.5, rate);
+    let mut signal = vec![0.0_f32; length];
+    synth::partials(&mut signal, G4_HZ, rate, 0.5, 0.0, levels);
+    // `partials` scales the levels to sum to its amplitude; the first partial's is its share.
+    let first = 0.5 * levels.first().copied().unwrap_or(0.0) / levels.iter().sum::<f64>();
+    let mut tone = vec![0.0_f32; length];
+    let mut add = |hz: f64, db: f64, phase: f64| {
+        synth::sine(&mut tone, hz, rate, first * 10_f64.powf(db / 20.0), phase);
+        for (sample, added) in signal.iter_mut().zip(&tone) {
+            *sample += *added;
+        }
+    };
+    add(detune(G4_HZ / 3.0, body_cents), BODY_DB, 0.3);
+    if let Some(db) = c4_db {
+        add(2.0 * G4_HZ / 3.0, db, 1.1);
+    }
+    signal
+}
+
+/// **A high note never hands down to a tone at a third of it** (`T-020`, `docs/adr/0031`). A G4
+/// over a tone near G4/3 (the body's, 11 dB down, in tune with G4/3 or 30 or 54 ¢ sharp of it), with
+/// or without a C4 ringing in sympathy 20 dB down, from home High. Mid, the verifier, reads their
+/// near-common period, ~130.7 Hz (clarity 0.85–0.9 on the recording). As G4 is 3 × 130.7 Hz, the
+/// chain took it for a fundamental High could not see, and showed a C3, octave known, in every Mid
+/// frame: in 20 of these 24 cases, up to 577 frames; 20 frames on the recording. High sees 130.7 Hz
+/// and reads G4, so it is no hidden fundamental: no judged frame shows another note, none leaves
+/// High, and G4 is shown known. A G4 that is a bare sine, or a tone 6 dB down, is a chord High
+/// itself reads at the common period: `T-014`'s.
+#[test]
+fn a_high_note_over_a_tone_at_a_third_of_it_never_hands_down_to_that_tone() {
+    std::thread::scope(|scope| {
+        for levels in &G4_SPECTRA {
+            for body_cents in [0.0, 30.0, 54.0] {
+                for c4_db in [None, Some(-20.0)] {
+                    for rate in SUPPORTED_RATES {
+                        scope.spawn(move || {
+                            let signal = over_a_third(rate, levels, body_cents, c4_db);
+                            let mut tuner = Tuner::new(rate, Selection::Auto(Range::High));
+                            let mut judge = Judge::new(tuner.table(), 0, G4_HZ);
+                            let (mut wrong, mut lower, mut known) = (0, 0, 0);
+                            tuner.push(&signal, |frame| {
+                                if !judge.judged(frame) {
+                                    return;
+                                }
+                                wrong += usize::from(shows_other_than(frame, G4_HZ));
+                                lower += usize::from(frame.range != Range::High);
+                                known +=
+                                    usize::from(frame.estimate.is_some() && octave_known(frame));
+                            });
+                            let what = format_args!(
+                                "G4 {levels:?} over G4/3 {body_cents:+} ¢, C4 {c4_db:?} dB, at \
+                                 {rate} Hz"
+                            );
+                            report(format_args!(
+                                "{what}: {wrong} judged wrong, {lower} frames below High, \
+                                 {known} known"
+                            ));
+                            assert_eq!((wrong, lower), (0, 0), "{what}");
+                            assert!(known > 0, "{what}: G4 never shown known");
+                        });
+                    }
+                }
+            }
+        }
+    });
+}
+
 /// A pinch harmonic (strong second and third partials) and a bass's low B with a weak fundamental
 /// (`synth::PINCH_HARMONIC`, `synth::WEAK_LOW_B`), from silence and from every home: no judged
 /// frame shows a wrong octave, and the right note, octave known, arrives within 1 s.
