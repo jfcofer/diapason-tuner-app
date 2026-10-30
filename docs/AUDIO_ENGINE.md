@@ -393,8 +393,10 @@ The rules are in `AGENTS.md` §6; this is how they are enforced rather than mere
 - `Offline` backend feeds a WAV or generated buffer through the identical engine, deterministically
   and faster than real time — every accuracy and scheduling test uses it.
 - Fixtures: synthesised sines, sawtooths and an inharmonic plucked-string model, generated in code
-  at test time by `diapason_dsp::synth` (`adr/0027`). Recorded samples of guitar, bass, ukulele and
-  violin at known pitches, with vibrato, with room noise, and detuned by known cent offsets, are
-  the only fixtures checked in (`fixtures/audio/`, `T-003e`).
+  at test time by `diapason_dsp::synth` (`adr/0027`). The only fixtures checked in are recorded
+  notes of acoustic and electric guitar, five-string bass, ukulele and violin (pizzicato, and arco
+  with vibrato), cut from CC0 libraries, each with an independently measured harmonic
+  consensus (`fixtures/audio/`, `adr/0030`). Room noise, phone microphones and notes detuned by known
+  offsets are not yet among them.
 - Scheduling test: run 30 minutes of audio through the offline backend at 47 different tempos and
   assert every onset lands on the exact expected sample index. Zero tolerance.

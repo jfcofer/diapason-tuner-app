@@ -61,12 +61,12 @@ diapason/
 │   │   │                        tuner pipeline, engine state machine
 │   │   ├── audio_io/            AudioBackend trait + aaudio/coreaudio/cpal/offline
 │   │   ├── session/             Stream supervisor between ffi and engine (adr/0022)
-│   │   └── xtask/               cargo xtask: size-report; fixtures pending T-003e
+│   │   └── xtask/               cargo xtask: fixtures import/reference/check (adr/0030)
 │   └── (diapason_ffi lives in packages/audio_engine/rust — see below)
 │
 ├── fixtures/                    Test vectors shared by Rust and Dart
 │   ├── note_table.json          The shared truth for note/cents math
-│   └── audio/                   Recorded instruments only (adr/0027, T-003e)
+│   └── audio/                   Recorded instruments only: WAVs, manifest, LICENSES (adr/0030)
 │
 ├── docs/                        See docs/README.md
 ├── tools/                       Scripts called by the justfile. Bash, POSIX-ish
