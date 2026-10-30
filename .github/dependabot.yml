@@ -32,7 +32,7 @@ updates:
       # Pinned with their CLI in tools/versions.env; they only move together (docs/adr/0026).
       - dependency-name: patrol
       - dependency-name: patrol_cli
-      # 13 needs compileSdk 37, and raising that is its own task and ADR (AGENTS.md §8, T-012).
+      # 13 needs compileSdk 37, and raising that is its own task and ADR (AGENTS.md §8, T-018).
       - dependency-name: permission_handler
         update-types: ["version-update:semver-major"]
     groups:

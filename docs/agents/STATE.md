@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-23 (T-003b is #31, six checks green; owner merges)
+# STATE — updated 2026-10-30 (T-015 process drift 4 on its branch; T-003c rebases this on merge)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > If you are an agent starting a session: run `just session-start`, read this, then the active task
@@ -18,7 +18,7 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. 
 
 **`docs/agents/tasks/T-003b-preprocessing.md`** (in progress, branch `feat/T-003b-preprocessing`,
 #31, six green): left only the owner's rebase-merge. NoiseGate stays open on purpose (Dev. 4).
-**Waiting on the Redmi:** `T-002d` (in progress; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
+**Waiting on the Redmi:** `T-002d` (blocked; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## Hardware this project actually has
 
@@ -89,13 +89,12 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 - **CI reproducibility leftovers** are in `T-004`: unpinned cargo-ndk and Xcode, the AAB manifest,
   the `Podfile.lock` policy.
-- **`audio_engine` lacks SwiftPM support**, which Flutter 3.47 warns will become an error: own task.
-- **Rust crate licences are not in the in-app licence page** (`triple_buffer` MPL-2.0, realfft; M6).
-- **`permission_handler` held at 12** (Dependabot too): 13 needs compileSdk 37, its own task.
-- **`appLifecycleProvider` is in `feature_tuner`**; it moves down when the metronome needs it (M4).
-- **A stall's input stays queued as latency** until a rebuild (`adr/0025`); none seen yet.
+- **`audio_engine` lacks SwiftPM support** (Flutter 3.47 warns it will be an error): `T-017`.
+- **`permission_handler` held at 12** (Dependabot too): 13 needs compileSdk 37, `T-018`.
+- **Rust crate licences** missing from the licence page (M6), **`appLifecycleProvider`** moving down
+  (M4): both in `ROADMAP.md`. **A stall's input queued as latency** (`adr/0025`): `T-002f`.
 - **The Redmi now refuses the output the FAST path** (on `main` too), unlike part 1: `T-002f`.
-- **`router.dart` uses plain `GoRoute`s**, not the typed routes `AGENTS.md` §7 requires.
+- **`router.dart` uses plain `GoRoute`s**, not the typed routes `AGENTS.md` §7 requires: `T-016`.
 - **The ledger is measured from silence:** downward note changes (178–223 ms; more if the old
   string rings) break §1's fail lines. `T-003c-octave-guard` owes them; `T-003b` holds the baseline.
 

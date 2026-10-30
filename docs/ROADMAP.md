@@ -46,6 +46,8 @@ committed · 120 fps sustained on ProMotion, 60 fps on the budget Android · usa
 
 ## M4 — Metronome core
 Sample-accurate scheduler, procedural clicks, signatures, subdivisions, accents. Minimal UI.
+`appLifecycleProvider` moves from `feature_tuner` down to a `core_*` package, now that two features
+need it.
 
 **Exit:** the 30-minute zero-drift scheduling test passes at 47 tempos · tempo and signature changes
 preserve phase · background playback works on both platforms with lock-screen controls · voice pool
@@ -60,6 +62,7 @@ Bluetooth · trainer and gap trainer complete.
 
 ## M6 — Production polish
 Adaptive layouts, accessibility, localisation, theming, settings, onboarding, error recovery.
+The in-app licence page lists the Rust crates' licences too (`triple_buffer` MPL-2.0, `realfft`).
 
 **Exit:** every accessibility requirement in `PRODUCT_SPEC.md` §4 verified with a screen reader on
 both platforms · en + es complete including note-name systems · expanded layout designed, not
