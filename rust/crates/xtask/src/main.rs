@@ -1,27 +1,23 @@
 //! Repository automation that is easier to write in Rust than in bash.
 //!
-//! Invoked as `cargo xtask <command>`. Fixture generation, bench comparison and size reporting land
-//! here as the tasks that need them arrive; `T-001` ships the dispatcher so the entry point exists
-//! and is covered by `cargo clippy` and `cargo build` from the first commit.
+//! Invoked as `cargo xtask <command>` (the alias is in `.cargo/config.toml`). `fixtures` imports,
+//! measures and checks the recorded fixtures (`docs/adr/0030`); size reporting lands with M5.
 
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
 use std::process::ExitCode;
 
+mod fixtures;
+
 fn main() -> ExitCode {
-    let command = std::env::args().nth(1);
-    match command.as_deref() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
         Some("size-report") => {
             eprintln!("xtask: size-report is not implemented yet (T-0xx, milestone M5)");
             ExitCode::FAILURE
         }
-        Some("fixtures") => {
-            eprintln!(
-                "xtask: synthetic fixtures are generated in code (docs/adr/0027); recordings arrive in T-003e"
-            );
-            ExitCode::FAILURE
-        }
+        Some("fixtures") => fixtures::run(&args[1..]),
         Some(other) => {
             eprintln!("xtask: unknown command `{other}`");
             usage();
