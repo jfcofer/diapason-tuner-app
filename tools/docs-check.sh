@@ -53,10 +53,10 @@ while read -r linked; do
 done < <(grep -oP '\]\(\K[0-9]{4}-[^)]+\.md' docs/adr/README.md 2>/dev/null)
 [[ $missing -eq 0 ]] && ok "every ADR is indexed, and every indexed ADR exists"
 
-# Status lines must be one of the documented values.
+# Status lines must be one of the documented values, then the decision date (adr/README.md).
 badstatus=0
 for adr in docs/adr/[0-9]*.md; do
-    grep -qE '^\*\*Status:\*\* (Accepted|Proposed|Rejected|Superseded by [0-9]{4})' "$adr" || {
+    grep -qE '^\*\*Status:\*\* (Accepted|Proposed|Rejected|Superseded by \[?[0-9]{4}[^ ]*) · [0-9]{4}-[0-9]{2}-[0-9]{2}( |$)' "$adr" || {
         fail "$(basename "$adr"): missing or malformed Status line"; badstatus=1; }
 done
 [[ $badstatus -eq 0 ]] && ok "every ADR has a valid Status line"
@@ -91,6 +91,11 @@ for task in docs/agents/tasks/T-*.md; do
         todo|in-progress|blocked|done|abandoned) ;;
         *) fail "$base: status '${status}' is not one of todo|in-progress|blocked|done|abandoned"; taskbad=1 ;;
     esac
+    # A blocked task says what would unblock it, or nobody knows when to pick it up (T-015).
+    if [[ "$status" == blocked ]] && ! grep -q '^\*\*Blocked on' "$task"; then
+        fail "$base is blocked but has no '**Blocked on …**' line" "Name what unblocks it, and since when."
+        taskbad=1
+    fi
     if [[ "$status" == "done" ]]; then
         # A criterion wraps onto indented lines; judge the whole item, report its first line.
         while read -r open; do
@@ -277,6 +282,42 @@ while read -r id; do
     fi
 done < <(sort -u <<<"$todo_hits")
 [[ $unknown -eq 0 ]] && ok "every TODO names a real task (or T-0xx)"
+
+# ── Code names in living docs must exist in the code ─────────────────────────
+printf '\n%sCode names in docs%s\n' "$BOLD" "$OFF"
+# A doc that names a constant or a `Type::member` the code no longer has describes code that is
+# gone: d009555 dropped NEW_NOTE_CLARITY while AUDIO_ENGINE.md and ADR 0029 still set it (T-015).
+# Living docs only: ADRs and the journal record the past by design, and PLATFORM_AUDIO.md names
+# platform APIs (Android permissions, AAudio constants) that are not ours to define.
+tick=$'\x60'
+code_name="${tick}\\K([A-Z][A-Z0-9]*_[A-Z0-9_]+|[A-Z][A-Za-z0-9]*::[A-Za-z_][A-Za-z0-9_]*)(?=[${tick}(])"
+sample="needs ${tick}AFTER_NOTE_CLARITY${tick}, ${tick}Observation::Holding${tick}."
+if [[ "$(grep -oP "$code_name" <<<"$sample")" \
+    != $'AFTER_NOTE_CLARITY\nObservation::Holding' ]]; then
+    fail "the code-name pattern no longer extracts names" "Fix code_name in tools/docs-check.sh."
+fi
+stale=0
+for doc in docs/*.md docs/agents/STATE.md; do
+    [[ "$doc" == docs/PLATFORM_AUDIO.md ]] && continue
+    while read -r name; do
+        [[ -z "$name" ]] && continue
+        # Each part of `Type::member` must exist as a word outside docs/. Exit 1 is "absent";
+        # anything above it means the scan never ran, which must not read as a pass.
+        for part in ${name//::/ }; do
+            git grep --untracked -qw -e "$part" -- . ':!docs'
+            rc=$?
+            if [[ $rc -eq 1 ]]; then
+                fail "$doc names ${tick}$name${tick}, which no code defines" \
+                    "Update the doc to the code as it is, or restore the name."
+                stale=1
+            elif [[ $rc -gt 1 ]]; then
+                fail "the code-name scan could not run on $doc"
+                stale=1
+            fi
+        done
+    done < <(grep -oP "$code_name" "$doc" | sort -u)
+done
+[[ $stale -eq 0 ]] && ok "every constant and Type::member a living doc names exists in the code"
 
 printf '\n'
 if [[ $FAILURES -gt 0 ]]; then
