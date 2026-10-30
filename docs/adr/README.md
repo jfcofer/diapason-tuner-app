@@ -50,3 +50,4 @@ agent from "improving" a deliberate choice.
 | [0027](0027-synthetic-fixtures-in-code.md) | Synthetic audio fixtures are generated in code; only recordings are checked in | Accepted |
 | [0028](0028-windows-hops-from-the-latency-ledger.md) | Analysis windows, hops and the decimation crossover come from the latency ledger | Accepted, in part superseded by 0029 |
 | [0029](0029-octave-guard.md) | Octave guard: provisional octaves, verified by the ranges below; supersedes part of 0028 | Accepted |
+| [0030](0030-recorded-fixtures.md) | Recorded fixtures: CC0 libraries, cut exactly, held to an independent harmonic consensus | Accepted |
