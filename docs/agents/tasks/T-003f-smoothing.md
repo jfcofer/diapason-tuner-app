@@ -58,6 +58,8 @@ guard kept apart. Smoothing must not undo the guard.
   ringing 12 dB under, τ 1.5 s. The `T-003c` ceilings (`Gate::Shortfall` in `tests/chain.rs`)
   become that gate, and the figure against the 190 ms target is recorded in §1.
 - [ ] A criterion bench for the smoothing per frame; the CPU figure is re-recorded.
+- [ ] `just bench` holds on a quiet host, `T-020`'s selector change included (`T-020` could not
+  get one).
 - [ ] `just verify` passes, and all six CI jobs are green.
 
 ## Out of scope

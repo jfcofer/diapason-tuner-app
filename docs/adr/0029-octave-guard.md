@@ -1,6 +1,7 @@
 # 0029 — Octave guard: provisional octaves, verified by the ranges below
 
-**Status:** Accepted · 2026-10-23 (the ambiguity rule decided by the owner, 2026-10-23). Revised
+**Status:** Accepted · 2026-10-23 (the ambiguity rule decided by the owner, 2026-10-23) · in part
+superseded by [0031](0031-verifiers-move-only-to-a-hidden-fundamental.md). Revised
 before merge, on `T-003c`'s branch, after review rounds 3 to 6 (2026-10-24 to 2026-10-30; the
 owner's decision that single notes win over chord rejection, 2026-10-25); the decision date stands.
 
