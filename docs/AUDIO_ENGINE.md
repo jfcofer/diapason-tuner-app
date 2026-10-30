@@ -66,32 +66,44 @@ every case below, no frame shows a wrong note once judged by the leap rule (§2)
 
 | Downward change, 48 / 44.1 kHz | Needle (ms) | Total (ms) | Octave known (ms) | Target / fails at |
 |---|---|---|---|---|
-| E4 → low E, E4 stopped | 62.5 / 61.3 | 120.8 / 119.7 | 170 / 170.5 | 110 / 150 |
-| E4 → low E, after a 0.1 s gap | 35 / 37.5 | 93.3 / 95.9 | 145 / 149.2 | 110 / 150 |
+| E4 → low E, E4 stopped | 60 / 58.7 | 118.3 / 117.1 | 170 / 170.5 | 110 / 150 |
+| E4 → low E, after a 0.1 s gap | 37.5 / 37.5 | 95.8 / 95.9 | 145 / 149.2 | 110 / 150 |
 | E4 → low E, E4 rings 12 dB under (τ 0.6–3 s) | 55 / 53.7 | 113.3 / 112.1 | 165 / 165.4 | 110 / 150 |
-| A2 → bass E, A2 stopped | 110 / 113.6 | 173.3 / 176.9 | as the needle | 190 / 260 |
-| A2 → bass E, after a 0.1 s gap | 85 / 83.4 | 148.3 / 146.8 | as the needle | 190 / 260 |
+| A2 → bass E, A2 stopped | 115 / 118.6 | 178.3 / 181.9 | as the needle | 190 / 260 |
+| A2 → bass E, after a 0.1 s gap | 85 / 88.4 | 148.3 / 151.7 | as the needle | 190 / 260 |
 | A2 → bass E, A2 rings 12 dB under, τ 0.6 / 1.5 s | 110, 185 / 148.5 | 173.3, 248.3 / 211.8 | as the needle | 190 / 260 |
-| A2 → low B, A2 stopped | 105 / 108.6 | 168.3 / 171.9 | as the needle | 190 / 260 |
+| A2 → low B, A2 stopped | 115 / 113.6 | 178.3 / 176.9 | as the needle | 190 / 260 |
 | **Gated in `T-003f`:** A2 → bass E, 12 dB under, τ 3 s | 330 / 402.9 | 393.3 / 466.3 | as the needle | 190 / 260 |
 | **Gated in `T-003f`:** A2 → low B, 12 dB under, τ 1.5 s | 585 / 358.0 | 648.3 / 421.4 | as the needle | 190 / 260 |
 
 Every change gated here meets its fail line. The last two miss it on cents, not octave, and their
 260 ms gate is `T-003f`'s (owner, 2026-10-23). The right note, octave known, is shown from
-95–114 ms (totals 158–177 ms). Low's estimate under a string ringing 12 dB down then wanders past
+99–104 ms (totals 162–167 ms). Low's estimate under a string ringing 12 dB down then wanders past
 ±5 ¢ in single frames, by up to 6.1 ¢ under a bass E and 8 ¢ under a low B, for as long as that
 string lasts: a three-period window's limit. `T-003f`'s median of five, which the smoothing line
 reserves, removes single frames. Until then the test holds both to regression ceilings
 (`Gate::Shortfall`: these totals plus 20 ms). A low E's octave is known only once Low, which can
 see 41.2 Hz, reads it (§2), so 105–110 ms after the needle.
 
+**A gap shorter than the gate's 250 ms hold** is no silence to the selector: the gate stays open,
+and its frames find no pitch. They are no misses (`Observation::Holding`, §2), so the chain stays
+where the last note put it, as if that note had stopped. Counted as misses, they scanned it away
+from the next note's range by chance of where the onset fell: an A2 after an A3 and 0.15 s took up
+to 155 ms in all (fails at 150). Gated over 0.15 and 0.2 s gaps, each at four onset offsets, sine
+and weak fundamental, both rates (`tests/chain.rs`,
+`a_downward_change_after_a_gap_the_hold_spans_meets_the_fail_line`): A3 → A2 totals 78–101 ms,
+A1 → low B 129–180 ms. The cost: a note whose range a lucky scan had reached during the gap now
+waits for its own scan, so A2 → bass E after 0.1 s takes 148.3 / 151.7 ms in all (was 113.3 /
+116.8), inside its target.
+
 Two louder cases are recorded only. E4 ringing at the new note's level is a harmonic of it: the
-needle moves in 60 / 58.7 ms, and the octave is known in 170 ms. A2 ringing over a bass E or a low
-B is a chord. It shows `None`, ambiguity or the old note, never a third note: not the notes'
-common period, and not a reading near the old one that is no single note (§3). That holds for those
-two chords and E4 over low E, each detuned ±30 ¢ (`tests/chain.rs`,
-`a_detuned_downward_change_or_chord_never_shows_a_wrong_or_third_note`), **and not for loud chords
-in general:** a consonant interval (a fourth or fifth: A2 + D3 reads D1, D3 + G3 G1, B3 + E4 E2, at
+needle moves in 115 / 114.6 ms, and the octave is known in 225 / 223.8 ms. A2 ringing over a bass
+E is a chord. It shows `None`, ambiguity or the old note, never a third note: not the notes' common
+period, and not a reading near the old one that is no single note (§3). **That holds for that chord
+only:** since single notes win over chord rejection (owner, 2026-10-25), A2 ringing over a low B and
+the detuned chords (`tests/chain.rs`,
+`a_detuned_downward_change_or_chord_never_shows_a_wrong_or_third_note`) are recorded, not gated,
+and loud chords in general are not handled: a consonant interval (a fourth or fifth: A2 + D3 reads D1, D3 + G3 G1, B3 + E4 E2, at
 clarity 1.0) is periodic at the common period and cannot be told from one note by periodicity, and
 other pairs read the old note's sub-harmonic (G2 over low B, C3 over bass E). That is
 `T-014-consonant-chords`, a known gap that predates `T-003c`.
@@ -163,7 +175,10 @@ returns to the home range on silence. The instrument preset picks that range (M3
 case (guitar E-standard, Mid) never pays the bass window. A note the home range cannot see (1.4 kHz
 from Low is in the decimator's stopband) is found by scanning after a window and 50 ms of unclear
 frames. The scan runs downward (High → Mid → Low → High), since a range that hears nothing is most
-often above the note. Every range's history is kept full, so a switch costs one hop.
+often above the note. Every range's history is kept full, so a switch costs one hop. Only frames
+with the gate open by its level count: while it only holds over a gap (`GateState::Holding`)
+nothing new is taken to be played, so there is nothing to scan for (§1, `T-003c`). A note started
+under the close threshold during the hold waits for the hold to end before a scan finds it.
 
 **Verifiers decide the octave a range cannot test** (`adr/0029`). A range cannot see below 1.5
 periods of its floor, since `Mpm` searches lags up to half the window (`RangeTable::sees`): High is
@@ -254,11 +269,16 @@ defences, which work as one, over the selected range's frames:
   known for a window may still sound, two strings sound together and read as neither, near one of
   them. An estimate that is barely clear (under 0.75) or an octave of that note must repeat at 2τ:
   its peak there at least 0.975 of its clarity (`REPEATS`); where the range cannot search 2τ (Mid at
-  55 Hz), it stays `ambiguous octave` until a verifier reads it. Any other note needs clarity 0.85
-  (`NEW_NOTE_CLARITY`). Measured on filled windows: correct readings repeat at ≥ 0.9895 and are
-  ≥ 0.9 clear, the third notes of A2 over a bass E or a low B and of E4 over low E (each ±30 ¢)
-  repeat at ≤ 0.959 and are ≤ 0.833 clear. Held-out notes and detunings passed every gated case
-  with these values. A melody over a bass (repeats 0.72–0.82, clarity ≥ 0.775) is the held note.
+  55 Hz), it stays `ambiguous octave` until a verifier reads it. An estimate of another note that
+  its range cannot test needs clarity 0.85 (`AFTER_NOTE_CLARITY`), unless a lower range reads it
+  too; an estimate its range can test needs nothing more. A frame failing a test is withheld, no
+  miss. The locked note is forgotten once no range has read it for Low's window
+  (`OctaveGuard::heard`), or when the gate closes. Measured on filled windows: correct readings
+  repeat at ≥ 0.9895 and are ≥ 0.9 clear, the third notes of A2 over a bass E or a low B and of E4
+  over low E (each ±30 ¢) repeat at ≤ 0.959 and are ≤ 0.833 clear. A melody over a bass (repeats
+  0.72–0.82, clarity ≥ 0.775) is the held note. **Single notes win over chord rejection** (owner,
+  2026-10-25): a bar on every new note after a locked one slowed notes after a gap and dropped
+  noisy ones, so only blind estimates pay it (`T-003c`, review round 4).
 - **The octave above a held note.** A string plucked an octave above one still ringing, in a range
   that sees both, reads as the lower one. Its τ/2 NSDF level (`Mpm::value_at`, a level and not a
   peak, which comes and goes where barely formed) rising by `RISE` (0.5) over its floor since the
