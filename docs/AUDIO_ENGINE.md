@@ -30,7 +30,8 @@ bind this table:
   parses every row of the table and the budget rows above, and compares them with the code, so
   a change on either side fails until the other matches;
 - `tests/chain.rs`, `onset_latency_is_within_the_ledger`, measures each range's chain line at both
-  rates: silence, then a tone, to the first estimate within ±5 ¢ that stays, on the audio clock.
+  rates: silence, then a tone, to the first estimate within ±5 ¢ that stays, on the audio clock;
+  and the needle (`frequency_display`, §3) within the chain line plus the smoothing line.
 
 | Stage | Low (from 30 Hz) | Mid (from 75 Hz) | High (from 160 Hz) |
 |---|---|---|---|
@@ -40,7 +41,7 @@ bind this table:
 | Settling (the DC block's transient; High needs none, measured) | 15 | 5 | 0 |
 | One hop, waiting for the next frame | 5 | 2.5 | 2.5 |
 | **Chain line, asserted** (measured worst, both rates) | **122.7** (117.1) | **50.2** (49.1) | **21.9** (21.7) |
-| Smoothing reserve: two hops for `T-003f`'s median of five | 10 | 5 | 5 |
+| Smoothing: two hops, the median of five (§3, `adr/0032`) | 10 | 5 | 5 |
 | Snapshot period: tuner snapshots at 60 Hz | 16.7 | 16.7 | 16.7 |
 | One display frame (60 Hz) | 16.7 | 16.7 | 16.7 |
 | **Total** (budget) | **186.0** (190) | **108.5** (110) | **80.2** (85) |
@@ -55,35 +56,37 @@ for battery, and the snapshot line of this ledger does not apply.
 (`tests/chain.rs`, `a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave`,
 `adr/0029`). Moving *down* a range is the costly case: the range playing cannot see the new note's
 fundamental and reads a partial, until a range below, analysed alongside, moves the chain (§2). Two
-times are measured from the new note's onset, each to the first frame from which every frame holds:
+times are measured on the needle (`frequency_display`, §3) from the new note's onset, each to the
+first frame from which every frame holds:
 - **the needle moves:** the right pitch class within ±5 ¢. A frame flagged `ambiguous octave`
   counts (owner, 2026-10-23), because an octave error keeps the letter and the cents;
 - **the octave is known:** the right note within ±5 ¢, not flagged.
 
-A total adds the target range's other ledger lines (58.3 ms for Mid, 63.3 ms for Low) to the
-needle's time. The new notes have a weak fundamental (`synth::WEAK_FUNDAMENTAL`, `WEAK_LOW_B`). In
+A total adds the target range's ledger lines after the smoothing (53.3 ms: I/O, snapshot,
+display), since the needle's time includes it. The new notes have a weak fundamental (`synth::WEAK_FUNDAMENTAL`, `WEAK_LOW_B`). In
 every case below, no frame shows a wrong note once judged by the leap rule (§2).
 
 | Downward change, 48 / 44.1 kHz | Needle (ms) | Total (ms) | Octave known (ms) | Target / fails at |
 |---|---|---|---|---|
-| E4 → low E, E4 stopped | 60 / 58.7 | 118.3 / 117.1 | 170 / 170.5 | 110 / 150 |
-| E4 → low E, after a 0.1 s gap | 37.5 / 37.5 | 95.8 / 95.9 | 145 / 149.2 | 110 / 150 |
-| E4 → low E, E4 rings 12 dB under (τ 0.6–3 s) | 55 / 53.7 | 113.3 / 112.1 | 165 / 165.4 | 110 / 150 |
-| A2 → bass E, A2 stopped | 115 / 118.6 | 178.3 / 181.9 | as the needle | 190 / 260 |
-| A2 → bass E, after a 0.1 s gap | 85 / 88.4 | 148.3 / 151.7 | as the needle | 190 / 260 |
-| A2 → bass E, A2 rings 12 dB under, τ 0.6 / 1.5 s | 110, 185 / 148.5 | 173.3, 248.3 / 211.8 | as the needle | 190 / 260 |
-| A2 → low B, A2 stopped | 115 / 113.6 | 178.3 / 176.9 | as the needle | 190 / 260 |
-| **Gated in `T-003f`:** A2 → bass E, 12 dB under, τ 3 s | 330 / 402.9 | 393.3 / 466.3 | as the needle | 190 / 260 |
-| **Gated in `T-003f`:** A2 → low B, 12 dB under, τ 1.5 s | 585 / 358.0 | 648.3 / 421.4 | as the needle | 190 / 260 |
+| E4 → low E, E4 stopped | 65 / 63.8 | 118.3 / 117.1 | 170 / 170.5 | 110 / 150 |
+| E4 → low E, after a 0.1 s gap | 42.5 / 42.5 | 95.8 / 95.9 | 145 / 149.2 | 110 / 150 |
+| E4 → low E, E4 rings 12 dB under (τ 0.6–3 s) | 60 / 58.7 | 113.3 / 112.1 | 165 / 165.4 | 110 / 150 |
+| A2 → bass E, A2 stopped | 125 / 128.6 | 178.3 / 181.9 | as the needle | 190 / 260 |
+| A2 → bass E, after a 0.1 s gap | 95 / 98.4 | 148.3 / 151.7 | as the needle | 190 / 260 |
+| A2 → bass E, A2 rings 12 dB under (τ 0.6–3 s) | 110 / 113.6 | 163.3 / 166.9 | as the needle | 190 / 260 |
+| A2 → low B, A2 stopped | 125 / 123.6 | 178.3 / 176.9 | as the needle | 190 / 260 |
+| A2 → low B, A2 rings 12 dB under, τ 1.5 s | 110 / 138.5 | 163.3 / 191.9 | as the needle | 190 / 260 |
 
-Every change gated here meets its fail line. The last two miss it on cents, not octave, and their
-260 ms gate is `T-003f`'s (owner, 2026-10-23). The right note, octave known, is shown from
-99–104 ms (totals 162–167 ms). Low's estimate under a string ringing 12 dB down then wanders past
-±5 ¢ in single frames, by up to 6.1 ¢ under a bass E and 8 ¢ under a low B, for as long as that
-string lasts: a three-period window's limit. `T-003f`'s median of five, which the smoothing line
-reserves, removes single frames. Until then the test holds both to regression ceilings
-(`Gate::Shortfall`: these totals plus 20 ms). A low E's octave is known only once Low, which can
-see 41.2 Hz, reads it (§2), so 105–110 ms after the needle.
+Every change gated here meets its fail line, on the estimate and on the needle alike for wrong
+frames. Low's estimate under a string ringing 12 dB down wanders past ±5 ¢ in single frames, by up
+to 6.1 ¢ under a bass E and 8 ¢ under a low B, for as long as that string lasts: a three-period
+window's limit. On the estimate, that kept the needle's time at 330 / 402.9 ms (A2 → bass E, τ 3 s)
+and 585 / 358.0 ms (low B), past the fail line, until `T-003f`'s median of five removed those frames
+(the owner's decision of 2026-10-23 gave it their 260 ms gate). One row, the low B at 44.1 kHz, is
+1.9 ms past its 190 ms target. On the stopped and gap rows the needle is the smoothing line (5 or
+10 ms) behind the estimate, so their totals are `T-003c`'s; on the 12 dB-under rows it is faster
+than the estimate was, which wandered and the median does not. A low E's octave is known only once Low, which can see
+41.2 Hz, reads it (§2), so 105–110 ms after the needle.
 
 **A gap shorter than the gate's 250 ms hold** is no silence to the selector: the gate stays open,
 and its frames find no pitch. They are no misses (`Observation::Holding`, §2), so the chain stays
@@ -218,7 +221,8 @@ From silence, a low E is in Mid within 25 ms and its octave is known about 140 m
 a G3 is known about 65 ms after (`tests/chain.rs`,
 `an_octave_the_range_cannot_test_is_ambiguous_until_a_lower_range_reads_the_note`, which bounds
 it by the verifier's span and two of its hops). In High this costs a Mid and a Low frame per hop
-(0.78 % of a host core in all, `chain/analysis`). A no-gap leap sweep (sine, sawtooth, weak fundamental, pinch
+(0.77 % of a host core in all with the needle's smoothing, `chain/analysis`, re-measured in
+`T-003f` on a busy host; the smoothing alone, `chain/smooth`, is 52 ns a frame). A no-gap leap sweep (sine, sawtooth, weak fundamental, pinch
 harmonic) asserts that no judged frame shows a wrong note and that each leap switches at most
 once.
 
@@ -296,15 +300,38 @@ Tests: `octave::tests` covers both cases of (b), the hysteresis holding and givi
 threshold at its edge and in absolute terms, and which estimates must repeat. `tests/chain.rs` holds the leap sweep to zero wrong
 frames. The octave of notes a range cannot test is the range selector's (§2).
 
-**Smoothing.** Two separate values leave the engine, and conflating them is a design error:
-- `frequency_raw` — unsmoothed, used for lock detection and the strobe phase.
-- `frequency_display` — median-of-5 then a one-euro filter (`min_cutoff = 0.6`, `beta = 0.02`).
-  One-euro rather than a fixed low-pass because it gives a still needle at rest *and* a fast needle
-  when the player turns the peg, which a single time constant cannot do.
+**Smoothing** (`dsp::smooth`, `adr/0032`). Two separate values leave the engine, and conflating
+them is a design error:
+- `frequency_raw` — unsmoothed, used for lock detection and the strobe phase (`chain::Frame`'s
+  estimate).
+- `frequency_display` — median-of-5 then a one-euro filter (`min_cutoff = 0.6` Hz, `beta = 0.02`
+  Hz per ¢/s, `d_cutoff = 1` Hz), in cents, with the needle never more than 3 ¢ behind the median
+  (`MAX_LAG_CENTS`) (`chain::Frame::display`). One-euro rather than a fixed low-pass because it
+  gives a still needle at rest *and* a fast needle when the player turns the peg, which a single
+  time constant cannot do. The bound is for an onset, which converges rather than steps: the
+  median follows it two frames behind, and the filter alone would put the needle up to 19 ms past
+  the ledger. With it, the needle is within ±5 ¢ once the median is within 2 ¢. §1's smoothing
+  line holds worst case against worst case, as every line does, not run by run: an onset whose
+  estimate settles early may see the needle up to 30 ms after it (Low, measured in review).
+- **It never undoes the octave guard:** frames whose pitch class is more than 50 ¢ from the held
+  note's gather apart, and become the note once three are in (the two hops of §1), so one stray
+  frame does not cost the held note; meanwhile the needle shows nothing, never the old note. The
+  held note in another octave, the guard settling it, moves the history by that octave: the needle
+  neither blanks nor mixes octaves. A frame without an estimate shows none; the history outlives
+  five of them (`smooth::HELD_GAP_FRAMES`). The octave flag is the frame's own.
+- Measured (`tests/chain.rs`, `a_held_note_holds_the_needle_within_a_cent`): a held sawtooth with
+  noise at 20 dB SNR, 41.2–1318.5 Hz, wobbles ≤ 0.12 ¢ peak to peak on the needle (the estimate:
+  up to 2.22 ¢); at 10 dB SNR, ≤ 0.92 ¢ (the estimate: 7.2 ¢). On every recording
+  (`tests/recorded.rs`) the needle shows no other note and never flickers: blank while the
+  estimate shows the note it showed last.
 
-**Lock detection.** `|cents| ≤ tolerance` (default ±3, configurable 1–10) for ≥ 250 ms of
-consecutive frames with clarity > 0.8. Unlock has a wider band (tolerance + 1.5 cents) so the
-indicator does not chatter at the boundary.
+**Lock detection** (`dsp::lock`, `adr/0032`). `|cents| ≤ tolerance` (default ±3, configurable 1–10)
+for ≥ 250 ms of consecutive frames with clarity > 0.8, timed by the frames' positions on the audio
+clock. Unlock has a wider band (tolerance + 1.5 cents) so the indicator does not chatter at the
+boundary; a frame without an estimate, or not clear, unlocks. It reads `frequency_raw` as cents
+from the target, which the caller computes from §4's settings. The needle can be up to 3 ¢ behind
+the estimate just after an onset, so at a 1 ¢ tolerance it may read outside it while the lock is
+on: M3 decides which value drives `in tune` (`adr/0032`).
 
 ## 4. Note and temperament math
 

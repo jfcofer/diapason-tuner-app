@@ -52,3 +52,4 @@ agent from "improving" a deliberate choice.
 | [0029](0029-octave-guard.md) | Octave guard: provisional octaves, verified by the ranges below; supersedes part of 0028 | Accepted, in part superseded by 0031 |
 | [0030](0030-recorded-fixtures.md) | Recorded fixtures: CC0 libraries, cut exactly, held to an independent harmonic consensus | Accepted |
 | [0031](0031-verifiers-move-only-to-a-hidden-fundamental.md) | A verifier moves the chain down to a third or a quarter only of a pitch the range cannot see; supersedes part of 0029 | Accepted |
+| [0032](0032-display-smoothing-and-lock.md) | The needle: a median of five, a one-euro filter in cents bounded to the median, and a lock from the caller's cents | Accepted |
