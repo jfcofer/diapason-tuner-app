@@ -1,7 +1,7 @@
 ---
 id: T-003c
 title: Octave guard across estimates and ranges, inside the latency budgets
-status: in-progress
+status: done
 milestone: M2
 owner: claude
 created: 2026-10-23
@@ -86,7 +86,7 @@ estimate, and multi-frame confirmation.
   CPU figure is re-recorded.
 - [x] Any decision that closes off an alternative gets an ADR, or a superseding one if it
   contradicts 0028.
-- [ ] `just verify` passes, and all six CI jobs are green.
+- [x] `just verify` passes, and all six CI jobs are green (#34, rebase-merged 2026-10-30).
 
 ## Out of scope
 
