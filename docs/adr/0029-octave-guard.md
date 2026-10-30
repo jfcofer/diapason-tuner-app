@@ -1,6 +1,8 @@
 # 0029 — Octave guard: provisional octaves, verified by the ranges below
 
-**Status:** Accepted · 2026-10-23 (the ambiguity rule decided by the owner, 2026-10-23)
+**Status:** Accepted · 2026-10-23 (the ambiguity rule decided by the owner, 2026-10-23). Revised
+before merge, on `T-003c`'s branch, after review rounds 3 to 6 (2026-10-24 to 2026-10-30; the
+owner's decision that single notes win over chord rejection, 2026-10-25); the decision date stands.
 
 ## Context
 
@@ -33,8 +35,17 @@ in all (fails at 150); A2 → bass E 24 / 26; an A2 ringing over a bass E showed
   for a window without the upper one. Before any move, the octave above entering a held note (its
   τ/2 NSDF level rising by `RISE` = 0.5) makes the held note ambiguous.
 - **After a locked note, which may still sound, estimates must prove they are one note.** An octave
-  of it, or a barely clear one (< 0.75), must repeat at 2τ (0.975, `REPEATS`); any other note needs
-  clarity 0.85 (`NEW_NOTE_CLARITY`). Two notes sounding together read as neither, near one of them.
+  of it, or a barely clear one (< 0.75), must repeat at 2τ (0.975, `REPEATS`); another note its
+  range cannot test needs clarity 0.85 (`AFTER_NOTE_CLARITY`) unless a lower range reads it too.
+  Two notes sounding together read as neither, near one of them. **Single notes win over chord
+  rejection** (owner, 2026-10-25): a bar on every new note slowed notes after a gap and dropped
+  noisy ones, so detuned chords and A2 over a low B are `T-014`'s, recorded and not gated. The
+  locked note is forgotten once no range has read it for Low's window.
+- **A gap shorter than the gate's hold is not scanned through.** Frames with the gate open only by
+  its hold (`GateState::Holding`) are no misses, so the chain stays where the last note put it.
+  Counting them scanned away from the next note's range by chance: A3 → A2 after 0.15 s, up to
+  155 ms (fails at 150). Treating the hold as silence was rejected: it would reset the guard
+  between two plucks of one string.
 - **An estimate its range cannot test needs clarity 0.75** (`UNVERIFIED_CLARITY`), above `Mpm`'s 0.6:
   a partial read by a range blind to its fundamental is skewed by the other partials (±32 ¢ at 0.6).
 
@@ -49,11 +60,12 @@ in all (fails at 150); A2 → bass E 24 / 26; an A2 ringing over a bass E showed
 - **Measured** (`AUDIO_ENGINE.md` §1's table; `tests/chain.rs`): no judged wrong frame outside
   chords in the leap sweep (sine, sawtooth, weak, pinch), the downward changes, the detuned ones
   (±30 ¢ and the review's offsets), the octave above a ringing string (E2/E3 … G3/G4, 10–12 dB),
-  pinch harmonics and a weak low B from every home. E4 → low E, stopped: 120.8 / 119.7 ms in all
-  (110 / 150); A2 → bass E 173.3 / 176.9 ms (190 / 260). Gated chords show no third note.
+  pinch harmonics and a weak low B from every home. E4 → low E, stopped: 118.3 / 117.1 ms in all
+  (110 / 150); A2 → bass E 178.3 / 181.9 ms (190 / 260). The gated chord (A2 over a bass E) shows
+  no third note.
 - **The margins were checked on held-out fixtures** (D3/bass A, G2/low B, C3/bass E, E3/low E at
-  ±7, ±22, ±45 ¢; four more octave-above pairs): every gated case passes. Their *loud chords* do
-  not; see the gap below.
+  ±7, ±22, ±45 ¢; twelve octave-above pairs at 10–12 dB; after-gap sweeps over 8 phases): every
+  gated case passes. Their *loud chords* do not; see the gap below.
 - **Known gap, `T-014-consonant-chords`:** two strings ringing loud together are handled only for
   the families gated here. A consonant interval is periodic at the common period (A2 + D3 reads D1,
   D3 + G3 G1, B3 + E4 E2, at clarity 1.0), and no periodicity test can tell it from one note. Other
@@ -65,8 +77,9 @@ in all (fails at 150); A2 → bass E 24 / 26; an A2 ringing over a bass E showed
   time, but Low's estimate wanders past ±5 ¢ in single frames; held to ceilings (+ 20 ms) until then.
 - **Octaves are known later than the needle:** a low E ~170 ms after a downward change, ~140 ms
   from silence (only Low sees 41.2 Hz); a G3 ~65 ms; bounded by the verifier's span plus two hops.
-- **The rules after a note cost onsets after a gap** with the old note locked: A2 → bass E after
-  0.1 s, 85 / 83.4 ms (was 50 / 53.5); E4 ringing loud over low E, 60 / 58.7 ms (was 12.5 / 11.3).
+- **Onsets after a short gap wait for their own scan:** A2 → bass E after 0.1 s, 85 / 88.4 ms (was
+  50 / 53.5, when a scan through the gap sometimes reached Low first). E4 ringing loud over low E,
+  recorded only: 115 / 114.6 ms (was 12.5 / 11.3).
 - **CPU:** in High, a Mid and a Low frame per hop, and the guard; 0.78 % of a host core at worst
   (`T-003c`'s task file has the bench figures). The phone figure is still owed.
 
