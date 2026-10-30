@@ -69,7 +69,7 @@ runs:
       run: rustup toolchain install
 
     - if: inputs.rust == 'true'
-      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
     # The runner image's NDKs never include the pinned one for long; sdkmanager is not on PATH.
     # `yes` dies of SIGPIPE when sdkmanager exits, which pipefail would report as a failure.
@@ -81,7 +81,7 @@ runs:
         { yes || true; } | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK" > /dev/null
         test -d "$ANDROID_HOME/ndk/$NDK"
 
-    - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+    - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
       with:
         tool: ${{ inputs.tools != '' && format('just,{0}', inputs.tools) || 'just' }}
 
