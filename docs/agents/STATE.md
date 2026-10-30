@@ -21,7 +21,7 @@ pushed). Owner: ambiguous octaves move the needle; two 260 ms gates to `T-003f`;
 over a bass E to `T-014`; **single notes win over chord rejection** (2026-10-25). Round 6 found a gap
 under the gate's hold scanning away (A3 → A2 155 ms, fails 150): fixed with `GateState::Holding`.
 Next: push, PR, six checks. **This shell has no SSH agent** (`git fetch` fails on `publickey`).
-**Waiting on the Redmi:** `T-002d` (in progress; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
+**Waiting on the Redmi:** `T-002d` (blocked; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## Hardware this project actually has
 
@@ -89,13 +89,12 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 ## Known gaps (not blocking)
 
 - **CI reproducibility leftovers** (`T-004`): unpinned cargo-ndk, Xcode; AAB manifest; `Podfile.lock`.
-- **`audio_engine` lacks SwiftPM support** (Flutter 3.47 warns it will be an error); Rust crate
-  licences are not on the in-app licence page (`triple_buffer` MPL-2.0, realfft; M6). Owners: `T-015`.
-- **`permission_handler` held at 12** (Dependabot too): 13 needs compileSdk 37, its own task.
-- **`appLifecycleProvider` is in `feature_tuner`**; it moves down when the metronome needs it (M4).
-- **A stall's input stays queued as latency** until a rebuild (`adr/0025`); none seen yet.
+- **`audio_engine` lacks SwiftPM support** (Flutter 3.47 warns it will be an error): `T-017`.
+- **`permission_handler` held at 12** (Dependabot too): 13 needs compileSdk 37, `T-018`.
+- **Rust crate licences** missing from the licence page (M6), **`appLifecycleProvider`** moving down
+  (M4): both in `ROADMAP.md`. **A stall's input queued as latency** (`adr/0025`): `T-002f`.
 - **The Redmi now refuses the output the FAST path** (on `main` too), unlike part 1: `T-002f`.
-- **`router.dart` uses plain `GoRoute`s**, not the typed routes `AGENTS.md` §7 requires.
+- **`router.dart` uses plain `GoRoute`s**, not the typed routes `AGENTS.md` §7 requires: `T-016`.
 
 ## Open questions
 

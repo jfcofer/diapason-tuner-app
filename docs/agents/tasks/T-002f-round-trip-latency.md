@@ -42,6 +42,8 @@ Read: `docs/PLATFORM_AUDIO.md` (latency sections), `docs/AUDIO_ENGINE.md` §7 (a
 - [ ] On the Redmi, wired headphones and the built-in speaker/mic: the in-app estimate is within
       ±5 ms of OboeTester's round-trip median, or the gap is explained
 - [ ] The numbers are recorded in the journal, with device, OS, route, rate and burst
+- [ ] A stall's input stays queued as latency until a rebuild (`adr/0025`): the estimate shows it,
+      and a test on the virtual clock covers it (owner since `T-015`)
 - [ ] Any new RT call is in the audited list and its ADR; the allocation canary still fires
 - [ ] `just verify` passes; `just test-android-device` debug and `--release` pass
 
