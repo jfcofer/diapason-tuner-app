@@ -5,7 +5,8 @@
 ## Gate
 
 - [ ] `just verify` is green locally (paste the summary line)
-- [ ] `STATE.md`, the task file and a journal entry are updated (`AGENTS.md` §2)
+- CI's `just pr-check` checks that `STATE.md`, the task file and a journal entry are updated, as
+  they will be after the merge (`AGENTS.md` §2). Run it locally before pushing.
 
 ## New dependencies
 

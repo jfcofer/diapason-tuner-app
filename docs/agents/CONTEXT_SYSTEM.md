@@ -75,6 +75,12 @@ compliance does not depend on an agent remembering. On entry the recipe prints t
 the working tree, branches not merged into `main` and open PRs with their check verdicts. On exit
 it runs `just verify` and checks that STATE, the task file and the journal were all touched.
 
+**The PR is the enforcement point, not the session.** Only an agent that runs `session-end` is held
+by it, so the rules a PR can be judged on live in `tools/pr-check.sh`, and CI's `checks` job runs it
+on every pull request: code changed means the branch's task file changed, STATE changed, a journal
+entry was added and none was edited, and the task's status says what it is after the merge (`done`,
+or a `**Next part:**`). `session-end` calls the same script for the rules they share (`T-019`).
+
 **STATE goes stale between sessions, not only within them.** Merges, Dependabot and CI happen while
 no agent is running, so STATE records PRs by number and never asserts merge state as settled.
 `session-start` prints that state and the agent reconciles the two before working (`T-007`).
