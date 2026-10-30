@@ -26,6 +26,7 @@ use std::io::Write;
 use diapason_dsp::chain::{Frame, Selection, UNPITCHED_SECONDS};
 use diapason_dsp::convert::{index_from_f64, index_to_f64, to_f32};
 use diapason_dsp::filter::{DcBlock, Decimator};
+use diapason_dsp::gate::GateState;
 use diapason_dsp::octave::Octave;
 use diapason_dsp::pitch::{Mpm, MpmConfig};
 use diapason_dsp::range::{
@@ -391,8 +392,11 @@ fn steady_case(rate: u32, generate: Generator, hz: f64, phase_index: usize, rang
     };
     for block in signal.chunks_mut(BLOCK) {
         let near = tuner.analysis.position() + u64::try_from(2 * BLOCK).unwrap() >= first;
-        let open = tuner.front.process(block) && near;
-        tuner.analysis.push(block, open, |frame| {
+        let gate = match tuner.front.process(block) {
+            gate if near => gate,
+            _ => GateState::Closed,
+        };
+        tuner.analysis.push(block, gate, |frame| {
             if frame.end < first {
                 return;
             }
@@ -1167,6 +1171,54 @@ fn a_downward_change_meets_the_fail_lines_and_never_shows_a_wrong_octave() {
                         Gate::NoWrongFrame | Gate::Chord | Gate::Recorded => {}
                     }
                 });
+            }
+        }
+    });
+}
+
+/// **A gap the gate's hold spans** (`T-003c`, review round 5): the gate stays open for 250 ms after
+/// a note stops, so a shorter gap is no silence to the selector. Its frames find no pitch, and
+/// counted as misses they scanned the chain away from the range the next note needs: an A2 (a
+/// sine) after an A3 and 0.15 s of silence landed in Low, 153 ms in all. Where the onset falls
+/// between frames decides how far a scan gets, so each gap is moved across a Low hop. At both
+/// rates: no judged wrong frame, and the needle within §1's fail line.
+#[test]
+fn a_downward_change_after_a_gap_the_hold_spans_meets_the_fail_line() {
+    let a3 = (synth::sawtooth as Generator, 220.0);
+    let a1 = (synth::sawtooth as Generator, 55.0);
+    let cases = [
+        ("A3 → A2", a3, (synth::sine as Generator, 110.0)),
+        ("A3 → A2", a3, (weak_fundamental as Generator, 110.0)),
+        ("A1 → low B", a1, (synth::sine as Generator, 30.87)),
+        ("A1 → low B", a1, (weak_low_b as Generator, 30.87)),
+    ];
+    std::thread::scope(|scope| {
+        for (name, first, second) in cases {
+            for gap in [0.15, 0.2] {
+                for step in 0..4_u32 {
+                    for rate in SUPPORTED_RATES {
+                        scope.spawn(move || {
+                            let ending = Ending::Gap(gap + f64::from(step) * 0.00125);
+                            let trap = octave_trap(rate, Range::Mid, first, second, ending);
+                            let table = RangeTable::new(rate).unwrap();
+                            let target = table.range_for(second.1);
+                            let ledger = table.ledger(target);
+                            let others = (ledger.total_seconds() - ledger.chain_seconds()) * 1e3;
+                            let total = trap.needle_ms.map_or(f64::INFINITY, |ms| ms + others);
+                            let fail = fail_line_ms(target);
+                            report(format_args!(
+                                "after a held gap, {name} {ending:?} at {rate} Hz: {} judged \
+                                 wrong, total {total:.1} ms (fails at {fail:.0})",
+                                trap.wrong
+                            ));
+                            assert_eq!(trap.wrong, 0, "{name} {ending:?} at {rate} Hz: {trap:?}");
+                            assert!(
+                                total <= fail,
+                                "{name} {ending:?} at {rate} Hz: {total:.1} ms, fails at {fail} ms"
+                            );
+                        });
+                    }
+                }
             }
         }
     });

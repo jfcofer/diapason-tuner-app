@@ -19,7 +19,7 @@ use std::fmt;
 use crate::convert::{index_from_f64, index_to_f64, to_f32};
 use crate::filter::{DcBlock, Decimator, FilterError};
 use crate::frame::{FrameAssembler, FrameError};
-use crate::gate::{GateConfig, GateError, NoiseGate};
+use crate::gate::{GateConfig, GateError, GateState, NoiseGate};
 use crate::octave::{
     AFTER_NOTE_CLARITY, Guarded, Octave, OctaveGuard, REPEATS, SAME_NOTE_CENTS, UNVERIFIED_CLARITY,
 };
@@ -88,11 +88,11 @@ impl From<MpmError> for ChainError {
 ///
 /// ```
 /// use diapason_dsp::chain::Front;
-/// use diapason_dsp::gate::GateConfig;
+/// use diapason_dsp::gate::{GateConfig, GateState};
 ///
 /// let mut front = Front::new(48_000, GateConfig::default())?;
 /// let mut block = [0.1_f32; 480]; // a DC step at −20 dBFS: the gate opens, the DC goes
-/// assert!(front.process(&mut block));
+/// assert_eq!(front.process(&mut block), GateState::Open);
 /// assert!(block[479].abs() < 0.1);
 /// # Ok::<(), diapason_dsp::chain::ChainError>(())
 /// ```
@@ -117,10 +117,10 @@ impl Front {
 
     /// Filter `block` in place and run the gate over it; return the gate's state after the block,
     /// which travels across the ring buffer with it.
-    pub fn process(&mut self, block: &mut [f32]) -> bool {
+    pub fn process(&mut self, block: &mut [f32]) -> GateState {
         self.dc.process(block);
         self.gate.process(block);
-        self.gate.is_open()
+        self.gate.state()
     }
 
     /// Pass on [`Analysis::unpitched`] (see [`NoiseGate::set_unpitched`]).
@@ -174,6 +174,7 @@ pub struct Frame {
 ///
 /// ```
 /// use diapason_dsp::chain::{Analysis, Selection};
+/// use diapason_dsp::gate::GateState;
 /// use diapason_dsp::range::Range;
 /// use diapason_dsp::synth::sine;
 ///
@@ -181,7 +182,7 @@ pub struct Frame {
 /// let mut tone = vec![0.0_f32; 4_800];
 /// sine(&mut tone, 110.0, 48_000, 0.5, 0.0);
 /// let mut last = None;
-/// analysis.push(&tone, true, |frame| last = frame.estimate);
+/// analysis.push(&tone, GateState::Open, |frame| last = frame.estimate);
 /// assert!((last.expect("a clear A2").frequency_hz - 110.0).abs() < 0.01);
 /// # Ok::<(), diapason_dsp::chain::ChainError>(())
 /// ```
@@ -202,7 +203,7 @@ pub struct Analysis {
     /// reading must exceed ([`RangeSelector::observe_watcher`]).
     current_clarity: Option<f32>,
     position: u64,
-    gate_open: bool,
+    gate: GateState,
     /// The position of the latest clear estimate, or of the latest closed-gate block.
     pitched_at: u64,
     unpitched_after: u64,
@@ -263,7 +264,7 @@ impl Analysis {
             table,
             selection,
             position: 0,
-            gate_open: false,
+            gate: GateState::Closed,
             pitched_at: 0,
             unpitched_after: u64::try_from(unpitched_after).unwrap_or(u64::MAX),
         })
@@ -294,13 +295,13 @@ impl Analysis {
     /// gate is hearing noise. The engine hands this to [`Front::set_unpitched`].
     #[must_use]
     pub fn unpitched(&self) -> bool {
-        self.gate_open && self.position.saturating_sub(self.pitched_at) >= self.unpitched_after
+        self.gate.is_open() && self.position.saturating_sub(self.pitched_at) >= self.unpitched_after
     }
 
     /// Take `block`, with the gate's state after it ([`Front::process`]), and hand each analysed
     /// frame of the selected range to `on_frame`.
-    pub fn push(&mut self, block: &[f32], gate_open: bool, mut on_frame: impl FnMut(&Frame)) {
-        self.gate_open = gate_open;
+    pub fn push(&mut self, block: &[f32], gate: GateState, mut on_frame: impl FnMut(&Frame)) {
+        self.gate = gate;
         for &sample in block {
             self.position += 1;
             if self.runs(Path::Full)
@@ -315,7 +316,7 @@ impl Analysis {
                 self.feed(Range::Mid, decimated, &mut on_frame);
             }
         }
-        if !gate_open {
+        if !gate.is_open() {
             self.pitched_at = self.position;
         }
     }
@@ -348,7 +349,7 @@ impl Analysis {
         }
         let current = self.current();
         if range == current {
-            if !self.gate_open {
+            if !self.gate.is_open() {
                 self.guard.reset();
                 self.observe(Observation::Silent);
                 return;
@@ -360,7 +361,9 @@ impl Analysis {
                 estimate,
                 octave,
             });
-        } else if matches!(self.selection, Selection::Auto(_)) && self.gate_open && range < current
+        } else if matches!(self.selection, Selection::Auto(_))
+            && self.gate.is_open()
+            && range < current
         {
             // A verifier's reading must pass the same tests, or a chord's would verify an octave.
             let analysed = self.analyse(range);
@@ -380,7 +383,7 @@ impl Analysis {
                 self.guard.switched();
             }
         } else if matches!(self.selection, Selection::Auto(_))
-            && self.gate_open
+            && self.gate.is_open()
             && current.above() == Some(range)
         {
             let reading = self
@@ -420,22 +423,25 @@ impl Analysis {
             None
         };
         let hz = guarded.map(|g| g.estimate.frequency_hz);
-        // An estimate under `UNVERIFIED_CLARITY` is shown (the locked note in noise, or a blind
-        // one a lower range reads too, `Self::corroborated`), but once the selector has a pitch it
-        // is no evidence of a change of note within the range's band, nor that a held note goes on:
-        // `Observation::Faint`. (Out of the band it moves the chain as any pitch does: a quiet
-        // melody note entering over a bass is first read faint, by the bass's range.)
-        // Taken as a pitch, it restarts or delays the verifiers' freshness and the scan: High's
-        // 0.6-clear E3 after an E4 delayed Mid by 25 ms; A2's last faint frames (0.73, 0.62 ...)
-        // delayed Low by 10 ms.
+        // An estimate under `UNVERIFIED_CLARITY` in the range's band is shown (the locked note in
+        // noise, or a blind one a lower range reads too, `Self::corroborated`), but once the
+        // selector has a pitch it is withheld from it: no evidence of a change of note, nor that a
+        // held note goes on. Taken as a pitch, it restarts or delays the verifiers' freshness:
+        // High's 0.6-clear E3 after an E4 delayed Mid by 25 ms. Out of the band it moves the chain
+        // as any pitch does: a quiet melody note entering over a bass is first read faint, by the
+        // bass's range. (Before `Observation::Holding`, counted as a miss, a string's last faint
+        // frames after a 0.15 s gap scanned away from the next note's range: A3 → A2 151 ms, not
+        // 79. Since then no gated test needs this rule, as a miss or as a pitch: `T-003c`.)
         let faint = raw.is_some_and(|pick| {
             pick.clarity < UNVERIFIED_CLARITY && self.table.holds(range, pick.frequency_hz)
         }) && self.selector.pitch().is_some();
-        // A pitch the range hears but may not show yet is not a miss (`Observation::Withheld`).
+        // A pitch the range hears but may not show yet is not a miss (`Observation::Withheld`), nor
+        // is a frame without one while the gate only holds (`Observation::Holding`).
         let observation = match (hz, raw) {
-            (Some(_), _) if faint => Observation::Faint,
+            (Some(_), _) if faint => Observation::Withheld,
             (Some(hz), _) => Observation::Pitch(hz),
             (None, Some(_)) => Observation::Withheld,
+            (None, None) if self.gate == GateState::Holding => Observation::Holding,
             (None, None) => Observation::Unclear,
         };
         self.observe(observation);
@@ -590,13 +596,13 @@ mod tests {
         analysis.push(&silence, open, |_| frames += 1);
         assert_eq!(
             (open, frames),
-            (false, 0),
+            (GateState::Closed, 0),
             "no frame is analysed with the gate closed"
         );
         let open = front.process(&mut tone);
         analysis.push(&tone, open, |_| frames += 1);
         // 9600 samples at 12 kHz / 4 is 2400 decimated samples: 80 hops of 30.
-        assert_eq!((open, frames), (true, 80));
+        assert_eq!((open, frames), (GateState::Open, 80));
         assert_eq!(analysis.position(), 19_200);
     }
 
@@ -605,16 +611,16 @@ mod tests {
         let mut analysis = Analysis::new(48_000, Selection::Auto(Range::Low)).unwrap();
         let mut noise = vec![0.0_f32; 48_000];
         crate::synth::Noise::new(4).fill(&mut noise, 0.05);
-        analysis.push(&noise, false, |_| {});
-        analysis.push(&noise, false, |_| {});
+        analysis.push(&noise, GateState::Closed, |_| {});
+        analysis.push(&noise, GateState::Closed, |_| {});
         assert!(!analysis.unpitched(), "a closed gate is not unpitched");
-        analysis.push(&noise, true, |_| {});
+        analysis.push(&noise, GateState::Open, |_| {});
         assert!(!analysis.unpitched());
-        analysis.push(&noise, true, |_| {});
+        analysis.push(&noise, GateState::Open, |_| {});
         assert!(analysis.unpitched());
         let mut tone = vec![0.0_f32; 9_600];
         sine(&mut tone, 220.0, 48_000, 0.5, 0.0);
-        analysis.push(&tone, true, |_| {});
+        analysis.push(&tone, GateState::Open, |_| {});
         assert!(!analysis.unpitched(), "a clear pitch resets it");
     }
 
@@ -625,7 +631,7 @@ mod tests {
             let mut tone = vec![0.0_f32; 48_000];
             crate::synth::sawtooth(&mut tone, hz, 48_000, 0.5, 0.0);
             let mut octaves = Vec::new();
-            analysis.push(&tone, true, |frame| {
+            analysis.push(&tone, GateState::Open, |frame| {
                 if frame.end > 4_800 && frame.estimate.is_some() {
                     octaves.extend([frame.octave]);
                 }

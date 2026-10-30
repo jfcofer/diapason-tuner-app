@@ -78,6 +78,27 @@ impl std::error::Error for GateError {}
 /// The level reported for a block of digital silence, in dBFS, instead of `−∞`.
 pub const SILENCE_DBFS: f64 = -200.0;
 
+/// The gate's state after a block ([`NoiseGate::state`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GateState {
+    /// Nothing is being played.
+    Closed,
+    /// Open only by its hold: the level has fallen below the close threshold, in a gap between
+    /// notes or as a note dies away. Taken to mean nothing new is played: a note started under the
+    /// close threshold during the hold is not told apart from the gap.
+    Holding,
+    /// Something is being played: the level is at or above the close threshold.
+    Open,
+}
+
+impl GateState {
+    /// Whether the gate is open, by its level or by its hold.
+    #[must_use]
+    pub fn is_open(self) -> bool {
+        self != Self::Closed
+    }
+}
+
 /// An RMS gate with a threshold that adapts to the room.
 ///
 /// Every block (an [`RmsMeter`] window, 10 ms by default) it compares the block's level `L` with
@@ -182,6 +203,18 @@ impl NoiseGate {
     #[must_use]
     pub fn is_open(&self) -> bool {
         self.open
+    }
+
+    /// Whether the gate is closed, open by its level, or open only by its hold.
+    #[must_use]
+    pub fn state(&self) -> GateState {
+        if !self.open {
+            GateState::Closed
+        } else if self.hold_left < self.hold_blocks {
+            GateState::Holding
+        } else {
+            GateState::Open
+        }
     }
 
     /// Samples per decision.
@@ -451,6 +484,26 @@ mod tests {
         assert_eq!(gap.iter().position(|&s| !s), Some(25));
         // And the next note opens it on its first block.
         assert!(states(&mut gate, &tone(-40.0, 0.05))[0]);
+    }
+
+    /// The state says why the gate is open: by the level, or only by the hold over a gap.
+    #[test]
+    fn the_state_tells_a_held_gap_from_a_played_note() {
+        let mut gate = gate();
+        assert_eq!(gate.state(), GateState::Closed);
+        gate.process(&tone(-30.0, 0.5));
+        assert_eq!(gate.state(), GateState::Open);
+        let block = vec![0.0; gate.block_len()];
+        let mut gap = Vec::new();
+        for _ in 0..30 {
+            gate.process(&block);
+            gap.extend([gate.state()]);
+        }
+        // 25 blocks of hold, then closed; open the whole time by `is_open` until then.
+        assert!(gap[..25].iter().all(|&s| s == GateState::Holding));
+        assert!(gap[25..].iter().all(|&s| s == GateState::Closed));
+        gate.process(&tone(-30.0, 0.05));
+        assert_eq!(gate.state(), GateState::Open);
     }
 
     #[test]
