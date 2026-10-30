@@ -18,4 +18,6 @@ Close out this working session. Follow `AGENTS.md` §2 exactly.
    the index. If a decided ADR turned out wrong, supersede it; never edit it.
 6. If a reference doc is now inaccurate because of what you built, fix the doc in this session.
    A doc that lies is worse than no doc.
-7. Show me the diff summary and the proposed commit messages. Do not push.
+7. Run `just session-end`. It fails if STATE.md, the task file or the journal were not touched
+   this session, then runs `just verify`. Fix what it names; do not skip it.
+8. Show me the diff summary and the proposed commit messages. Do not push.
