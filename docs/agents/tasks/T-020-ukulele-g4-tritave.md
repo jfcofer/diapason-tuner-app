@@ -35,8 +35,8 @@ agent. Reproduce first: `cargo nextest run -p diapason_dsp --test recorded --no-
   other row is identical.)*
 - [x] Latency budgets in `AUDIO_ENGINE.md` §1 still hold (`tests/chain.rs`): every reported figure
   is identical.
-- [ ] The bench gate holds. *Closed unproven: no quiet host this session (Verification); the owner
-  reruns `just bench` on one. The change adds one comparison per verifier frame.*
+- [ ] The bench gate holds. *Closed here, moved to `T-003f`'s criteria: no quiet host this session
+  (Verification). The change adds two comparisons per verifier frame.*
 - [x] Any change to the guard's rules supersedes the relevant part of `adr/0029`. *(`adr/0031`.)*
 - [x] `just verify` passes, and all six CI jobs are green (the ruleset merges nothing otherwise).
 
@@ -57,8 +57,11 @@ showed 130.7–131.6 Hz for 20 frames (1.2025–1.250 s) as **Known**: Mid can t
 +498 ¢). The watcher moved the chain back up at 1.2525 s. A second move at 1.305 s fell after the
 reference window. High sees 130.7 Hz (down to 106.9 Hz) and read G4 throughout.
 
-**Fix:** `observe_verifier` takes a candidate only if the current range cannot see it
-(`RangeTable::sees`). The reasoning and the measurements are in `adr/0031`. Ten `ukulele_g4` frames
+**Fix:** `observe_verifier` takes a candidate at a third or a quarter of the current pitch only if
+the current range cannot see it (`RangeTable::sees`); half still moves. Reasons and measurements
+are in `adr/0031`. The review found the first draft's rule, visibility for every multiple, wrong:
+a string with weak odd partials at 107–150 Hz, which High reads at 2f₀, then showed 2f₀ known for
+the whole note (`a_note_with_weak_odd_partials_reaches_its_octave_from_high` now gates it). Ten `ukulele_g4` frames
 (1.250–1.2725 s) are now `ambiguous`: High's pick flips to G4/2 and the guard's τ/2 bridge shows the
 held G4 (`adr/0029` (a)), so the letter and cents are right.
 
@@ -74,15 +77,14 @@ held G4 (`adr/0029` (a)), so the letter and cents are right.
 
 ## Verification performed
 
-- **Before the fix:** `ukulele_g4` 20 gross, median −2.583 ¢. The new chain test failed 20 of 24
+- **Before the fix:** `ukulele_g4` 20 gross, median −2.583 ¢. The G4 chain test failed 20 of 24
   cases (up to 577 wrong frames each), and the new `range` unit test failed.
+- **Each gate against each rule:** with no rule the G4 test fails; with the first draft's the
+  weak-odd test fails; with the final rule both pass.
 - **After:** `ukulele_g4` 0 gross, 10 ambiguous, median −2.577 ¢. The other 23 recorded rows are
-  identical. All 127 `diapason_dsp` tests pass (two new).
-- **Diffed** every line `tests/chain.rs` reports, before and after: all gated figures are
-  identical. Only ungated `T-014` chords moved (A2 ringing loud over a bass E, 1–8 frames either
-  way). Then a throwaway probe of 108 cases: weak-fundamental and pinch notes at 51.9–73.4 Hz (home
-  Mid and High) and 108–146.8 Hz (home High), from silence and after a note two octaves up. Output
-  was identical before and after: no wrong frame, same latencies.
+  identical. All 128 `diapason_dsp` tests pass (three new); clippy clean.
+- **Diffed** every line `tests/chain.rs` reports against `main`: every existing figure is
+  identical (the first draft had moved ungated `T-014` chords by 1–8 frames; k = 2 did that).
 - `just verify`: every step green (196 workspace tests, clippy, drift, deny, fixtures check) except
   `docs-check`. That one fails only on the session-end items this task file and STATE fix.
 - `just bench`, twice, on a busy host. Run 1: everything within 10 % except `chain/octave`, +12 %

@@ -18,7 +18,7 @@ unverifiable criterion, clean-clone setup on macOS, is recorded in the roadmap. 
 ## Active task
 
 **`docs/agents/tasks/T-003f-smoothing.md`** (todo): median of five, one-euro, lock, the 260 ms
-gate. `T-020` (`adr/0031`) owes one `just bench` on a quiet host; none was possible (its file).
+gate, and the quiet-host `just bench` `T-020` (`adr/0031`) could not get.
 **Waiting on the Redmi:** `T-002d` (blocked; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## Hardware this project actually has
@@ -61,7 +61,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
   budgets ≥ 160 Hz ≤ 85 ms, 80–160 Hz ≤ 110 ms, low B ≤ 190 ms (owner, 2026-10-23).
 - `0026` patrol runs device tests, never in a release; it applies KGP: check before Flutter bumps.
 - `0027` synthetic audio fixtures are generated in code; only recordings are checked in.
-- `0031` a verifier moves the chain down only to a pitch the current range cannot see.
+- `0031` a verifier moves down to a third or a quarter only of a pitch the range cannot see.
 
 ## Traps a later session will otherwise re-discover
 
@@ -95,6 +95,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - **Rust crate licences** missing from the licence page (M6), **`appLifecycleProvider`** moving down
   (M4): both in `ROADMAP.md`. **A stall's input queued as latency** (`adr/0025`): `T-002f`.
 - **The Redmi now refuses the output the FAST path** (on `main` too), unlike part 1: `T-002f`.
+- **Weak odd partials, 107–150 Hz:** 2f₀ shown known ~60 ms before Mid corrects it (`adr/0031`).
 - **`router.dart` uses plain `GoRoute`s**, not the typed routes `AGENTS.md` §7 requires: `T-016`.
 
 ## Open questions
