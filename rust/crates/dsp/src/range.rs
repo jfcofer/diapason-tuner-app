@@ -447,15 +447,17 @@ pub enum Observation {
     Pitch(f64),
     /// The gate is open but the frame had no clear pitch.
     Unclear,
-    /// The frame had a clear pitch, but the octave guard withheld it (`crate::octave`): not proven
-    /// one note yet, or a jump waiting for confirmation. Like [`Self::Unclear`], except that it is
-    /// no miss: a range that hears a pitch it may not show yet has no reason to scan away from it.
+    /// The frame had a pitch the selector may not take: the octave guard withheld it
+    /// (`crate::octave`), not proven one note yet or a jump waiting for confirmation, or it was
+    /// barely clear in the range's band (`crate::octave::UNVERIFIED_CLARITY`), no evidence of a
+    /// change of note nor that a held one goes on. Like [`Self::Unclear`], except that it is no
+    /// miss: a range that hears a pitch it may not show yet has no reason to scan away from it.
     Withheld,
-    /// The frame had a pitch, shown but barely clear (`crate::octave::UNVERIFIED_CLARITY`): no
-    /// evidence of a change of note, nor that the note held goes on. After a held reading it is
-    /// the note dying away, and a miss, so that the scan to the next note is not delayed; while no
-    /// reading was held (a quiet note in noise, or under a louder one) it is [`Self::Withheld`].
-    Faint,
+    /// The gate is open only by its hold ([`crate::gate::GateState::Holding`]) and the frame had no
+    /// clear pitch: a gap between notes, or a note dying away. No miss either: nothing new is
+    /// played, so there is nothing to scan for. Counted as misses, a gap shorter than the hold
+    /// scanned the chain away from the range of the note after it (`T-003c`).
+    Holding,
     /// The gate is closed.
     Silent,
 }
@@ -500,7 +502,9 @@ pub const REFERENCE_PATIENCE_SECONDS: f64 = 0.25;
 ///   change finds the two notes' common period, lower than either. The bands overlap, so a note
 ///   tuned across a boundary stays where it is.
 /// - Silence (a closed gate) returns to the home range, the one a preset picks (M3).
-/// - Each frame without a clear pitch, gate open, adds a miss; each clear one takes a miss away
+/// - Each frame without a clear pitch, the gate open by its level and not only by its hold
+///   ([`Observation::Holding`]), adds a miss, unless the range hears a pitch it may not show yet
+///   ([`Observation::Withheld`]); each clear one takes a miss away
 ///   (a decay, not a reset, so sporadic clear frames cannot hold a range that mostly sees
 ///   nothing). After a window and [`MISS_GRACE_SECONDS`] of misses it tries the next range
 ///   ([`Range::next`]). That is how a note no range can see from home (1.4 kHz is in the
@@ -573,8 +577,6 @@ pub struct RangeSelector {
     /// The first pitch read since the input last fell silent: while the current pitch is another
     /// one, the first may still sound under it.
     first: Option<f64>,
-    /// Whether a held reading ended in [`Observation::Faint`] frames, which then count as misses.
-    fading: bool,
     /// Low's latest reading as a verifier, before any test.
     low: Option<f64>,
     /// Per verifier (Low, Mid): its last eligible pitch, for the agreement of two in a row.
@@ -623,7 +625,6 @@ impl RangeSelector {
             came_from: None,
             watched: None,
             first: None,
-            fading: false,
             low: None,
             reference: [None; 2],
             clear_run: 0,
@@ -752,7 +753,6 @@ impl RangeSelector {
             Observation::Pitch(hz) if hz.is_finite() && hz > 0.0 => {
                 self.misses = self.misses.saturating_sub(1);
                 self.clear_run += 1;
-                self.fading = false;
                 self.first.get_or_insert(hz);
                 // The lower string still ringing under the octave the chain just moved up to, read
                 // by the current range itself: neither a change of note nor a reason to move down.
@@ -790,21 +790,11 @@ impl RangeSelector {
                 self.changed(end);
                 self.clear_run = 0;
             }
-            Observation::Withheld => {
+            Observation::Withheld | Observation::Holding => {
                 if self.clear_run >= self.held_frames(self.current) {
                     self.changed(end);
                 }
                 self.clear_run = 0;
-            }
-            Observation::Faint => {
-                if self.clear_run >= self.held_frames(self.current) {
-                    self.changed(end);
-                    self.fading = true;
-                }
-                self.clear_run = 0;
-                if self.fading {
-                    self.miss(end);
-                }
             }
             Observation::Pitch(_) | Observation::Unclear => {
                 if self.clear_run >= self.held_frames(self.current) {

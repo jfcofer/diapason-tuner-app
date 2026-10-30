@@ -22,6 +22,7 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use diapason_dsp::chain::{Analysis, Selection};
 use diapason_dsp::frame::FrameAssembler;
+use diapason_dsp::gate::GateState;
 use diapason_dsp::octave::OctaveGuard;
 use diapason_dsp::pitch::{Mpm, MpmConfig};
 use diapason_dsp::range::{Path, Range, RangeTable};
@@ -123,7 +124,7 @@ fn chain(c: &mut Criterion) {
         b.iter(|| {
             let block = blocks.next().unwrap_or_default();
             let mut estimates = 0_usize;
-            analysis.push(std::hint::black_box(block), true, |frame| {
+            analysis.push(std::hint::black_box(block), GateState::Open, |frame| {
                 estimates += usize::from(frame.estimate.is_some());
             });
             estimates

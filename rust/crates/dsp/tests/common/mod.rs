@@ -38,8 +38,8 @@ impl Tuner {
         for chunk in input.chunks(MAX_BLOCK) {
             let block = &mut self.block[..chunk.len()];
             block.copy_from_slice(chunk);
-            let open = self.front.process(block);
-            self.analysis.push(block, open, &mut on_frame);
+            let gate = self.front.process(block);
+            self.analysis.push(block, gate, &mut on_frame);
             self.front.set_unpitched(self.analysis.unpitched());
         }
     }
