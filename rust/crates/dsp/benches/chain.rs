@@ -11,10 +11,13 @@
 //!   twice the period and `OctaveGuard::judge`: what each selected frame pays on top of
 //!   `chain/frame` (Mid's shape, a weak low E, the case whose octave Mid cannot test).
 //!
+//! - `chain/smooth`: one frame's needle and lock, `smooth::Needle` and `lock::Lock`, on a held
+//!   note wobbling ±2 ¢: what each selected frame pays after the octave guard (`T-003f`).
+//!
 //! - `chain/analysis`: one 10 ms block through the whole `chain::Analysis`, held in High on a G3
 //!   (196 Hz, whose octave High cannot test): band-limit and decimator, High's frames with the
-//!   octave guard, and the Mid and Low verifier frames. The worst case per 10 ms of input, so the
-//!   CPU figure is this over 10 ms.
+//!   octave guard and the needle, and the Mid and Low verifier frames. The worst case per 10 ms of
+//!   input, so the CPU figure is this over 10 ms.
 //!
 //! `just bench` compares the medians with `benches/baseline.json` (`tools/bench-compare.sh`): the
 //! ids are the baseline's keys, so renaming one orphans its baseline.
@@ -23,9 +26,11 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use diapason_dsp::chain::{Analysis, Selection};
 use diapason_dsp::frame::FrameAssembler;
 use diapason_dsp::gate::GateState;
+use diapason_dsp::lock::{DEFAULT_TOLERANCE_CENTS, Lock};
 use diapason_dsp::octave::OctaveGuard;
 use diapason_dsp::pitch::{Mpm, MpmConfig};
 use diapason_dsp::range::{Path, Range, RangeTable};
+use diapason_dsp::smooth::Needle;
 use diapason_dsp::synth::{Pluck, WEAK_FUNDAMENTAL, partials, pluck};
 
 const RATE: u32 = 48_000;
@@ -112,6 +117,25 @@ fn chain(c: &mut Criterion) {
             let up = mpm.peak_near(frame, mid.analysis_rate, pick.period_samples / 2.0);
             let down = mpm.peak_near(frame, mid.analysis_rate, pick.period_samples * 2.0);
             guard.judge(pick, up, down, 0.6, lock)
+        });
+    });
+
+    // A held A2 wobbling ±2 ¢ over eight frames, one Mid hop apart: the median moves, the bound and
+    // the filter both act, and the lock holds.
+    let wobble =
+        [0.0, 2.0, -1.0, 1.5, -2.0, 0.5, -0.5, 1.0].map(|c: f64| 110.0 * (c / 1_200.0).exp2());
+    let hop = u64::try_from(mid.hop * 4).expect("small");
+    let mut display = Needle::new(RATE);
+    let mut needle_lock = Lock::new(RATE, DEFAULT_TOLERANCE_CENTS);
+    let mut readings = wobble.iter().cycle();
+    let mut end = 0;
+    group.bench_function("smooth", |b| {
+        b.iter(|| {
+            let hz = *readings.next().unwrap_or(&110.0);
+            end += hop;
+            let shown = display.update(std::hint::black_box(Some(hz)), end);
+            let cents = 1_200.0 * (hz / 110.0).log2();
+            (shown, needle_lock.observe(Some(cents), 0.95, end))
         });
     });
 
