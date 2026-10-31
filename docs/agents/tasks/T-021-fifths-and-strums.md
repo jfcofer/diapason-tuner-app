@@ -1,9 +1,9 @@
 ---
 id: T-021
 title: Fifths up and two strings struck together show no third note
-status: todo
+status: in-progress
 milestone: M2
-owner: unassigned
+owner: claude
 created: 2026-10-30
 ---
 
@@ -45,5 +45,16 @@ Also open: while two strings ring loud, the new note waits until the old one dec
 - Showing both notes (polyphonic tuning). The engine, the FFI and the UI (M3).
 
 ## Implementation notes
+
+**Plan** (owner, 2026-10-31: from silence, show nothing until one string reads as one; `T-014`'s
+three ceilings accepted, so this task must not grow them). One test, "does one string explain
+this reading?", from the partials at f, 2f, 3f and 5f (`pitch::partial_near`):
+- a string sounds its fundamental; one whose fundamental a microphone removed still sounds 2f, 3f
+  and 5f; one read an octave low sounds 2f, and neither 3f nor 5f;
+- a fifth (2 : 3) sounds 2f and 3f, not 5f; fourths (3 : 4) and thirds (4 : 5) not 2f; two sines
+  read at their mean or a quasi-period sound none of them.
+
+It is asked of a reading half the locked note (fifths up; the octave guard keeps every reading one
+string explains) and of every reading while no note has locked (strums from silence).
 
 ## Verification performed
