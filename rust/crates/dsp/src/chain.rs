@@ -51,6 +51,15 @@ pub const FUNDAMENTAL_SHARE: f64 = 1e-3;
 /// peak, alone, lands 27.5 ¢ sharp, and G2's third, 32.67 Hz, over a low B, reads as one.
 pub const RESOLVED_BINS: f64 = 4.0;
 
+/// What two strings ringing at once rang over: the chord latch of [`Analysis`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Over {
+    /// The note locked before, as it locked ([`OctaveGuard::anchor`]).
+    Note(f64),
+    /// No note: the two were struck together, and no note had locked to hold (`docs/adr/0034`).
+    Nothing,
+}
+
 /// Why a chain could not be built.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ChainError {
@@ -184,7 +193,8 @@ pub struct Frame {
     /// Two strings ring at once: a range read their common period within its last window, and the
     /// chain withheld it (`docs/adr/0033`). The estimate is `None`, so nothing locks on it, and the
     /// display holds the last value the needle showed of the note that rang before, flagged
-    /// [`Octave::Ambiguous`].
+    /// [`Octave::Ambiguous`]. Struck together from silence, no note rang before, and the display
+    /// shows none (`docs/adr/0034`).
     pub held: bool,
 }
 
@@ -231,10 +241,10 @@ pub struct Analysis {
     /// The position up to which a chord's common period is within the window of the range that read
     /// it ([`Self::in_chord`]).
     chord_until: u64,
-    /// The locked note a chord was read over ([`OctaveGuard::anchor`]): until another note locks,
-    /// the two strings may still both ring ([`Self::in_chord`]), even once the guard forgets the
-    /// old note, whose string may still beat under the new one.
-    chord_over: Option<f64>,
+    /// The locked note a chord was read over ([`OctaveGuard::anchor`]), or none, struck together:
+    /// until another note locks, the two strings may still both ring ([`Self::in_chord`]), even
+    /// once the guard forgets the old note, whose string may still beat under the new one.
+    chord_over: Option<Over>,
     /// Since when suspected common periods have had no fundamental, and from when that is longer
     /// than one takes to resolve: then the two strings are taken to ring, and frames are held
     /// ([`Frame::held`]). Before, a low string just plucked may only not be resolved yet.
@@ -247,6 +257,9 @@ pub struct Analysis {
     confident: Option<f64>,
     position: u64,
     gate: GateState,
+    /// The end of the block the gate last opened in, from closed or from its hold: no earlier than
+    /// an onset ([`GateState::Holding`] takes nothing new to be played).
+    opened_at: u64,
     /// The position of the latest clear estimate, or of the latest closed-gate block.
     pitched_at: u64,
     unpitched_after: u64,
@@ -314,6 +327,7 @@ impl Analysis {
             selection,
             position: 0,
             gate: GateState::Closed,
+            opened_at: 0,
             pitched_at: 0,
             unpitched_after: u64::try_from(unpitched_after).unwrap_or(u64::MAX),
         })
@@ -350,6 +364,9 @@ impl Analysis {
     /// Take `block`, with the gate's state after it ([`Front::process`]), and hand each analysed
     /// frame of the selected range to `on_frame`.
     pub fn push(&mut self, block: &[f32], gate: GateState, mut on_frame: impl FnMut(&Frame)) {
+        if self.gate != GateState::Open && gate == GateState::Open {
+            self.opened_at = self.position + u64::try_from(block.len()).unwrap_or(u64::MAX);
+        }
         self.gate = gate;
         for &sample in block {
             self.position += 1;
@@ -408,7 +425,11 @@ impl Analysis {
             let (estimate, octave) = self.judge(range);
             // Another note has locked: whatever rang with the old one, this one is no chord.
             if self.chord_over.is_some_and(|over| {
-                self.guard.anchor().is_some() && !self.guard.is_anchor_note(over)
+                self.guard.anchor().is_some()
+                    && match over {
+                        Over::Note(hz) => !self.guard.is_anchor_note(hz),
+                        Over::Nothing => true,
+                    }
             }) {
                 self.release_chord();
             }
@@ -493,6 +514,8 @@ impl Analysis {
             self.guard.heard(e.frequency_hz);
         }
         let chord = self.chord(range, analysed);
+        // Struck together from silence: no note locked, so `chord` left none.
+        let struck = chord && self.guard.anchor().is_none();
         let raw = analysed.filter(|pick| self.within_range(range, pick));
         let pick =
             raw.filter(|pick| !chord && self.proven(range, pick) && self.one_string(range, pick));
@@ -519,10 +542,15 @@ impl Analysis {
             pick.clarity < UNVERIFIED_CLARITY && self.table.holds(range, pick.frequency_hz)
         }) && self.selector.pitch().is_some();
         // A pitch the range hears but may not show yet is not a miss (`Observation::Withheld`), nor
-        // is a frame without one while the gate only holds (`Observation::Holding`).
+        // is a frame without one while the gate only holds (`Observation::Holding`). Two strings
+        // struck together move the selector as their reading did before `docs/adr/0034`: from
+        // silence it has nothing to hold, and a single note it misjudges must scan as it would.
         let observation = match (hz, raw) {
             (Some(_), _) if faint => Observation::Withheld,
             (Some(hz), _) => Observation::Pitch(hz),
+            (None, Some(pick)) if struck && pick.clarity >= UNVERIFIED_CLARITY => {
+                Observation::Pitch(pick.frequency_hz)
+            }
             (None, Some(_)) => Observation::Withheld,
             (None, None) if self.gate == GateState::Holding => Observation::Holding,
             (None, None) => Observation::Unclear,
@@ -563,17 +591,41 @@ impl Analysis {
     }
 
     /// Whether `analysed`, `range`'s reading, is the common period of two strings ringing at once
-    /// (`docs/adr/0033`): 3/2, 3 or 4 times it is the locked note ([`OctaveGuard::is_common_period`]),
-    /// which still sounds, and it has no fundamental of its own ([`Self::sounds`]). If so, the
-    /// locked note is still sounding, and frames without an estimate are [`Frame::held`].
+    /// (`docs/adr/0033`, `0034`). If so, frames without an estimate are [`Frame::held`].
+    /// - After a note: 3/2, 3 or 4 times it is the locked note ([`OctaveGuard::is_common_period`]),
+    ///   which still sounds, and it has no fundamental of its own ([`Self::sounds`]). Or the
+    ///   locked note is twice it ([`OctaveGuard::is_octave_common_period`]), a fifth up: no
+    ///   string sounds there, and the upper string does at 3f. With no string there and none at
+    ///   3f, the reading is withheld, but no chord is latched: it is no note at all.
+    /// - With no note locked, there is nothing to suspect it against: it is two strings struck
+    ///   together if no single string explains it.
     fn chord(&mut self, range: Range, analysed: Option<PitchEstimate>) -> bool {
-        let Some((hz, anchor)) = analysed
-            .map(|e| e.frequency_hz)
-            .filter(|&hz| self.guard.is_common_period(hz))
-            .zip(self.guard.anchor())
-        else {
+        let Some(hz) = analysed.map(|e| e.frequency_hz) else {
             return false;
         };
+        let Some(anchor) = self.guard.anchor() else {
+            if self.undecided(range, hz) {
+                return false;
+            }
+            // A reading one string explains releases nothing: either string, read as itself, is.
+            // The string left ringing alone locks, and that releases it.
+            if self.explains(range, hz) {
+                return false;
+            }
+            self.latch(range, hz);
+            if self.chord_over.is_none() {
+                // No note rang before them, so there is none to hold: a forgotten one is not.
+                self.confident = None;
+                self.chord_over = Some(Over::Nothing);
+            }
+            return true;
+        };
+        // A real string an octave below, plucked after a gap, is no fifth's period until it can
+        // be told from one.
+        let fifth = self.guard.is_octave_common_period(hz) && !self.undecided(range, hz);
+        if !fifth && !self.guard.is_common_period(hz) {
+            return false;
+        }
         // A note left for one a fifth below it is no chord: the old string has stopped. Only the
         // latch goes: this test flickers under a near-miss chord (G2 over a low B), so the last
         // reading's window still asks for one string, and a held needle keeps its value.
@@ -582,16 +634,38 @@ impl Analysis {
             self.chord_since = None;
             return false;
         }
-        if self.sounds(range, hz) {
-            // A string is sounding there. Confirmed, whatever rang before is no chord with it.
-            self.strings += 1;
-            if self.strings >= CONFIRM_FRAMES {
-                self.release_chord();
-            }
+        let at = |k: f64| self.sounds_partial(range, hz, k);
+        // Half the locked note: a string there sounds its fundamental, or, with the microphone's
+        // high-pass, 2f, 3f and 5f. Anything else is no string at all: a fifth's common period if
+        // its upper string sounds at 3f; else the locked string read an octave low while another
+        // beats under it, or a leap's window holding both notes, withheld but no chord.
+        let string = self.sounds(range, hz) || (fifth && at(2.0) && at(3.0) && at(5.0));
+        if string {
+            self.string_sounds();
             return false;
         }
-        self.strings = 0;
+        if fifth && !at(3.0) {
+            return true;
+        }
         self.guard.ringing();
+        self.latch(range, hz);
+        self.chord_over = Some(Over::Note(anchor));
+        true
+    }
+
+    /// A string sounds at a reading suspected of being a common period. [`CONFIRM_FRAMES`] in a
+    /// row, and whatever rang before is no chord with it.
+    fn string_sounds(&mut self) {
+        self.strings += 1;
+        if self.strings >= CONFIRM_FRAMES {
+            self.release_chord();
+        }
+    }
+
+    /// `range` read `hz`, two strings' common period: they ring for at least its window, and from
+    /// once `hz` would have resolved ([`Self::resolving_samples`]) the frames are held.
+    fn latch(&mut self, range: Range, hz: f64) {
+        self.strings = 0;
         if self.position > self.chord_until {
             self.chord_since = None;
         }
@@ -599,8 +673,21 @@ impl Analysis {
         self.chord_since
             .get_or_insert((self.position, self.position + resolve));
         self.chord_until = self.position + self.selector.span(range);
-        self.chord_over = Some(anchor);
-        true
+    }
+
+    /// Whether the onset is too recent for [`Self::explains`] to decide on `hz`: until the onset has
+    /// passed through the filters and fills the tail the test reads, the tail holds what came
+    /// before it, silence or a gap. An undecided test rejects nothing, so a single note pays
+    /// nothing (owner, 2026-10-25).
+    fn undecided(&self, range: Range, hz: f64) -> bool {
+        let delay = self
+            .table
+            .group_delay(Path::Decimated)
+            .max(self.table.group_delay(Path::Full));
+        let needed = self
+            .resolving_samples(range, hz)
+            .saturating_add(u64::try_from(delay).unwrap_or(u64::MAX));
+        self.position.saturating_sub(self.opened_at) < needed
     }
 
     /// Two strings no longer ring together: the old one stopped, a string sounds at the reading,
@@ -636,7 +723,8 @@ impl Analysis {
     fn in_chord(&self) -> bool {
         self.position <= self.chord_until
             || self.chord_over.is_some_and(|over| {
-                self.guard.anchor().is_none() || self.guard.is_anchor_note(over)
+                self.guard.anchor().is_none()
+                    || matches!(over, Over::Note(hz) if self.guard.is_anchor_note(hz))
             })
     }
 
@@ -679,25 +767,75 @@ impl Analysis {
         )
     }
 
-    /// Whether a partial sounds at `hz` itself ([`partial_near`]), in the latest samples of `range`'s
-    /// window, or else of Low's, the longest, if the decimated path runs: as few as resolve `hz`
-    /// from its octave ([`RESOLVED_BINS`]), so that as little as possible of them is from before
-    /// the string was plucked. A whole window spanning the onset puts a low E's fundamental, under
-    /// the E4 it is a quarter of, 50 to 150 ¢ flat for 70 ms. The first window long enough decides;
-    /// a partial no window resolves is taken to be absent.
+    /// Whether a partial sounds at `hz` itself ([`Self::resolved`]); one no window resolves is taken
+    /// to be absent.
     fn sounds(&self, range: Range, hz: f64) -> bool {
+        self.resolved(range, hz).unwrap_or(false)
+    }
+
+    /// Whether a partial sounds at `hz` itself ([`partial_near`]), in the latest samples of `range`'s
+    /// window that resolve it from its octave ([`Self::tail`]). `None` where no window is that long.
+    fn resolved(&self, range: Range, hz: f64) -> Option<bool> {
+        self.tail(range, hz).map(|(tail, rate)| {
+            partial_near(tail, rate, hz).is_some_and(|partial| present(partial, hz))
+        })
+    }
+
+    /// The latest samples of `range`'s window, or else of Low's, the longest, if the decimated path
+    /// runs, that tell partials `spacing` hertz apart ([`RESOLVED_BINS`]), and their rate: as few as
+    /// that, so that as little as possible of them is from before the string was plucked. A whole
+    /// window spanning the onset puts a low E's fundamental, under the E4 it is a quarter of, 50 to
+    /// 150 ¢ flat for 70 ms. The first window long enough decides; `None` where none is.
+    fn tail(&self, range: Range, spacing: f64) -> Option<(&[f32], u32)> {
         [range, Range::Low]
             .into_iter()
             .filter(|&range| self.runs(range.path()))
             .find_map(|range| {
                 let rate = self.table.spec(range).analysis_rate;
                 let window = self.frames.get(slot(range))?.window();
-                let needed = index_from_f64((RESOLVED_BINS * f64::from(rate) / hz).ceil());
-                let tail = window.get(window.len().checked_sub(needed)?..)?;
-                Some(partial_near(tail, rate, hz))
+                let needed = index_from_f64((RESOLVED_BINS * f64::from(rate) / spacing).ceil());
+                Some((window.get(window.len().checked_sub(needed)?..)?, rate))
             })
-            .flatten()
-            .is_some_and(|partial| present(partial, hz))
+    }
+
+    /// Whether `hz`'s partial `k` sounds ([`partial_near`]), told from partials `k ± 1`: in the same
+    /// tail that resolves `hz` itself ([`Self::tail`]), whose partials are `hz` apart, or else the
+    /// longest window that runs.
+    fn sounds_partial(&self, range: Range, hz: f64, k: f64) -> bool {
+        let longest = || {
+            [range, Range::Low]
+                .into_iter()
+                .filter(|&range| self.runs(range.path()))
+                .filter_map(|range| {
+                    let window = self.frames.get(slot(range))?.window();
+                    Some((window, self.table.spec(range).analysis_rate))
+                })
+                .max_by_key(|(window, _)| window.len())
+        };
+        self.tail(range, hz)
+            .or_else(longest)
+            .and_then(|(tail, rate)| partial_near(tail, rate, k * hz))
+            .is_some_and(|partial| present(partial, k * hz))
+    }
+
+    /// Whether one string explains a reading of `hz` (`docs/adr/0034`), from the partials at its
+    /// multiples ([`Self::sounds_partial`]):
+    /// - its fundamental sounds: a string at `hz`;
+    /// - 2f, 3f and 5f sound, but not f: a string whose fundamental a phone's microphone removed;
+    /// - 2f, and neither 3f nor 5f: a string at 2f read an octave low, the octave guard's case.
+    ///
+    /// What is left is two strings: a fifth (2 : 3) sounds 2f and 3f, not 5f; a fourth (3 : 4) or a
+    /// major third (4 : 5) not 2f; two sines read at their mean, or at a quasi-period, none. Where
+    /// no window resolves `hz` from its octave (below 40 Hz in Low's, or a range fixed by hand), a
+    /// string sounds both 2f and 3f, or, a sine, neither: the D1 that A2 and D3 share sounds 3f
+    /// only.
+    fn explains(&self, range: Range, hz: f64) -> bool {
+        let at = |k: f64| self.sounds_partial(range, hz, k);
+        match self.resolved(range, hz) {
+            Some(true) => true,
+            Some(false) => at(2.0) && at(3.0) == at(5.0),
+            None => at(2.0) == at(3.0),
+        }
     }
 
     /// Whether a partial sounds at `hz` in `range`'s whole window ([`partial_near`]): the note

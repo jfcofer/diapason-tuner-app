@@ -114,8 +114,15 @@ pub const AFTER_NOTE_CLARITY: f32 = 0.85;
 /// third up, at a quarter of the higher (D3 + A2, G3 + B3). With a weak fundamental, the lower
 /// note's octave partial and the upper note make a fifth, periodic at two thirds of the lower note
 /// (A2 + D3 at D2, 73.4 Hz). A fifth's own common period, half the lower note, is the octave
-/// guard's case.
+/// guard's case: [`OCTAVE_COMMON_RATIO`].
 pub const COMMON_RATIOS: [f64; 3] = [1.5, 3.0, 4.0];
+
+/// The ratio of the locked note to a reading for the reading to be suspected of being the common
+/// period of a fifth up (D3 + A3 at D2, `docs/adr/0034`). Kept out of [`COMMON_RATIOS`]: a single
+/// string read an octave low is the octave guard's (`docs/adr/0029`), and so is a real string an
+/// octave below. Only a reading no string sounds at, whose upper string sounds at 3f, is a
+/// fifth's.
+pub const OCTAVE_COMMON_RATIO: f64 = 2.0;
 
 /// What the guard made of one frame's estimate.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -242,6 +249,15 @@ impl OctaveGuard {
                 .iter()
                 .any(|&k| cents(anchor / hz, k).abs() <= SAME_NOTE_CENTS)
         })
+    }
+
+    /// Whether the locked note, as it locked, is twice `hz` ([`OCTAVE_COMMON_RATIO`], within
+    /// [`SAME_NOTE_CENTS`]): the common period of a fifth up, if a string a fifth above it was
+    /// plucked, or the locked string read an octave low, or a real string an octave below it.
+    #[must_use]
+    pub fn is_octave_common_period(&self, hz: f64) -> bool {
+        self.anchor
+            .is_some_and(|anchor| cents(anchor / hz, OCTAVE_COMMON_RATIO).abs() <= SAME_NOTE_CENTS)
     }
 
     /// The locked note as it locked, while it is remembered.
