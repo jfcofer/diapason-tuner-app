@@ -50,7 +50,8 @@ never flickers between octaves. Where the octave is not yet decided, `ambiguous 
 letter and the cents without the octave number (`adr/0029`). Ambient noise raises the gate rather
 than producing wrong readings.
 Two strings ringing at once: hold the last confident estimate rather than alternating
-(`adr/0033`).
+(`adr/0033`). Struck together from silence there is none to hold: show nothing until one string
+reads as one (owner, 2026-10-31; `adr/0034`).
 
 ## 3. Metronome
 

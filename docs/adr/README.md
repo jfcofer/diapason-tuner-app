@@ -53,4 +53,5 @@ agent from "improving" a deliberate choice.
 | [0030](0030-recorded-fixtures.md) | Recorded fixtures: CC0 libraries, cut exactly, held to an independent harmonic consensus | Accepted |
 | [0031](0031-verifiers-move-only-to-a-hidden-fundamental.md) | A verifier moves the chain down to a third or a quarter only of a pitch the range cannot see; supersedes part of 0029 | Accepted, in part superseded by 0033 |
 | [0032](0032-display-smoothing-and-lock.md) | The needle: a median of five, a one-euro filter in cents bounded to the median, and a lock from the caller's cents | Accepted, in part superseded by 0033 |
-| [0033](0033-two-strings-ringing.md) | Two strings ringing: a common period has no fundamental, and the needle holds; supersedes part of 0029, 0031 and 0032 | Accepted |
+| [0033](0033-two-strings-ringing.md) | Two strings ringing: a common period has no fundamental, and the needle holds; supersedes part of 0029, 0031 and 0032 | Accepted, in part superseded by 0034 |
+| [0034](0034-fifths-and-strums.md) | Fifths up and strums: a reading must be one string, by the partials it sounds; supersedes part of 0033 | Accepted |

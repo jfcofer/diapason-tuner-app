@@ -305,9 +305,15 @@ defences, which work as one, over the selected range's frames:
   withheld, moves no verifier, and keeps the old note heard. Until another note locks, every
   frame shown must be the held note or repeat at 2τ (`REPEATS`) in the first range that can
   search there: two strings also read as quasi-periods of neither. Three suspects in a row with a
-  fundamental, or the old string stopping, release it. Not handled, measured: fifths up, whose
-  common period is half the lower note, and two strings struck together from silence, where no
-  note is locked (`T-021`).
+  fundamental, or the old string stopping, release it.
+- **Fifths up and strums** (`adr/0034`, `chain::Analysis::explains`). A reading half the locked
+  note (`octave::OCTAVE_COMMON_RATIO`), and every reading while no note is locked, must be one
+  string by the partials it sounds at f, 2f, 3f and 5f: its fundamental; or, with the
+  microphone's high-pass, 2f, 3f and 5f; or 2f alone, the octave guard's string read an octave
+  low. A fifth sounds 2f and 3f, not 5f; a fourth or a third no 2f. Half the locked note is a
+  fifth only with its upper string at 3f; with nothing at f or 3f it is withheld, unlatched. A
+  strum is withheld and shows nothing, while the selector moves as it did. Until the onset,
+  past the filters, fills the tail, the test rejects nothing (`Analysis::undecided`).
 
 Tests: `octave::tests` covers both cases of (b), the hysteresis holding and giving way, the
 threshold at its edge and in absolute terms, and which estimates must repeat. `tests/chain.rs` holds the leap sweep to zero wrong
