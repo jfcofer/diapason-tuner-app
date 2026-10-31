@@ -1,9 +1,9 @@
 ---
 id: T-014
 title: Two strings ringing at once, consonant intervals included, hold the last confident estimate
-status: todo
+status: in-progress
 milestone: M2
-owner: unassigned
+owner: claude
 created: 2026-10-24
 ---
 
@@ -54,6 +54,10 @@ needs a decision on which of the two owns "hold", and an ADR.
   sawtooth and weak fundamental. `T-003c`'s judging rule (`tests/chain.rs`, `Judge`).
 - [ ] The other loud chords above show no third note either: G2 over a low B, C3 over a bass E, A2
   + 60 to + 100 ¢ over a bass E, and E3 ringing over a low E shows no wrong octave.
+- [ ] **Measured and reported, not gated** (owner, 2026-10-30): fifths (D3 → A3, G3 → D4, the
+  violin family's double stops), major thirds (G3 → B3, C4 → E4), two strings struck together from
+  silence, and the gated chords detuned ±7, ±22 and ±45 ¢ (held out, to check the rule's margins).
+  A row the rule cannot hold without regressing a gate gets a follow-up task with its numbers.
 - [ ] None of `T-003c`'s gates regress (leap sweep, downward changes, detuned gate, octave above a
   ringing string, latency from silence), and latency stays within §1's fail lines.
 
