@@ -513,6 +513,118 @@ impl Iterator for KeyMaxima<'_> {
     }
 }
 
+/// How far either side of a frequency [`partial_near`] looks for a peak, in cents.
+pub const PARTIAL_SPAN_CENTS: f64 = 150.0;
+
+/// Points [`partial_near`] evaluates across its span, an odd number so that one is the frequency
+/// asked about: 37.5 ¢ apart.
+const PARTIAL_POINTS: usize = 9;
+
+/// A spectral peak near a frequency: what [`partial_near`] found.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Partial {
+    /// Where the peak is, in hertz. At an end of the span when the level still rises there: the
+    /// peak is further away, and this is as near as it comes.
+    pub frequency_hz: f64,
+    /// Its share of the frame's power: 1 for a frame that is one sinusoid at that frequency, and
+    /// near 0 where nothing sounds within the window's main lobe.
+    pub share: f64,
+}
+
+/// The strongest spectral peak of `frame` within [`PARTIAL_SPAN_CENTS`] of `hz`: whether a partial
+/// sounds at `hz` itself, or only near it.
+///
+/// Two strings ringing at once are periodic at their common period, which no NSDF test tells from
+/// one note (`docs/adr/0029`). But they put energy only on its multiples that are partials of one
+/// string or the other: none at the period's own frequency, which a string there would sound
+/// (`docs/adr/0033`). A Hann-windowed DFT is evaluated at nine frequencies, 37.5 ¢ apart, across the
+/// span, and the highest refined by a parabola through its neighbours' levels in decibels. The
+/// main lobe is four bins wide (±2/T: ±20 Hz for Low's 100 ms window, ±50 Hz for Mid's 40 ms), so a
+/// partial further than that from `hz` leaks in only through side lobes, 31 dB down and falling.
+/// Within the lobe, the peak's position says which partial it is: C3/3 at 43.6 Hz, the common
+/// period C3 makes with a bass E, finds the bass E's fundamental at 41.2 Hz, 98 ¢ away. Where a
+/// fundamental is closer to its octave than two lobe widths the two merge, and the position is not
+/// the fundamental's: a low B alone, in Low's window, peaks 27.5 ¢ sharp.
+///
+/// O(N) per point; allocation-free and panic-free. `None` for a frame of fewer than two samples, a
+/// zero rate, a frequency that is not positive or whose span reaches Nyquist, or a frame with no
+/// energy.
+///
+/// ```
+/// use diapason_dsp::pitch::partial_near;
+/// use diapason_dsp::synth::sine;
+///
+/// let mut frame = vec![0.0_f32; 1_200];
+/// sine(&mut frame, 41.2, 12_000, 0.5, 0.0);
+/// let partial = partial_near(&frame, 12_000, 43.0).expect("a sine near 43 Hz");
+/// assert!((1_200.0 * (partial.frequency_hz / 41.2).log2()).abs() < 2.0);
+/// assert!(partial.share > 0.9);
+/// ```
+#[must_use]
+pub fn partial_near(frame: &[f32], sample_rate: u32, hz: f64) -> Option<Partial> {
+    let rate = f64::from(sample_rate);
+    let top = hz * (PARTIAL_SPAN_CENTS / 1_200.0).exp2();
+    if frame.len() < 2 || sample_rate == 0 || !(hz > 0.0 && top < rate / 2.0) {
+        return None;
+    }
+    // The frame's mean is no partial, but a window holding a fraction of a period has one, and its
+    // lobe would reach a low note's fundamental: 33 Hz is 3.3 bins from 0 Hz in a 100 ms window.
+    let mean = frame.iter().map(|&x| f64::from(x)).sum::<f64>() / index_to_f64(frame.len());
+    let power: f64 = frame.iter().map(|&x| (f64::from(x) - mean).powi(2)).sum();
+    if !(power > 0.0 && power.is_finite()) {
+        return None;
+    }
+    let half = index_to_f64(PARTIAL_POINTS / 2);
+    let step = PARTIAL_SPAN_CENTS / half;
+    let at = |point: usize| hz * ((index_to_f64(point) - half) * step / 1_200.0).exp2();
+    let mut levels = [0.0_f64; PARTIAL_POINTS];
+    for (point, level) in levels.iter_mut().enumerate() {
+        *level = hann_power(frame, mean, rate, at(point));
+    }
+    let (best, &peak) = levels
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.total_cmp(b.1))?;
+    let offset = match (best.checked_sub(1), levels.get(best + 1)) {
+        (Some(before), Some(&after)) => {
+            let db = |level: f64| 10.0 * level.max(f64::MIN_POSITIVE).log10();
+            levels
+                .get(before)
+                .and_then(|&before| vertex(db(before), db(peak), db(after)))
+                .map_or(0.0, |(offset, _)| offset)
+        }
+        _ => 0.0,
+    };
+    let frequency_hz = hz * ((index_to_f64(best) + offset - half) * step / 1_200.0).exp2();
+    // A sinusoid of amplitude A gives |X| = A·Σw/2 and power A²/2 · N; its share is the ratio.
+    let window_sum = 0.5 * index_to_f64(frame.len() - 1);
+    let sinusoid = 2.0 * peak / (window_sum * window_sum);
+    Some(Partial {
+        frequency_hz,
+        share: (sinusoid * index_to_f64(frame.len()) / power).min(1.0),
+    })
+}
+
+/// `|X(f)|²` of `frame` less its `mean`, under a Hann window, both rotations by recurrence, in `f64`.
+fn hann_power(frame: &[f32], mean: f64, rate: f64, hz: f64) -> f64 {
+    let omega = std::f64::consts::TAU * hz / rate;
+    let theta = std::f64::consts::TAU / index_to_f64(frame.len().saturating_sub(1).max(1));
+    let (step, window_step) = ((omega.cos(), -omega.sin()), (theta.cos(), theta.sin()));
+    let (mut z, mut w) = ((1.0_f64, 0.0_f64), (1.0_f64, 0.0_f64));
+    let (mut re, mut im) = (0.0, 0.0);
+    for &x in frame {
+        let weighted = (f64::from(x) - mean) * 0.5 * (1.0 - w.0);
+        re += weighted * z.0;
+        im += weighted * z.1;
+        z = (z.0 * step.0 - z.1 * step.1, z.0 * step.1 + z.1 * step.0);
+        w = (
+            w.0 * window_step.0 - w.1 * window_step.1,
+            w.0 * window_step.1 + w.1 * window_step.0,
+        );
+    }
+    re * re + im * im
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -810,5 +922,42 @@ mod tests {
         // n(τ) = 1 everywhere: no zero crossing, so no key maximum.
         let mut mpm = Mpm::new(MpmConfig::with_window(256)).unwrap();
         assert_eq!(mpm.analyze(&[0.25; 256], 48_000), None);
+    }
+
+    #[test]
+    fn a_partial_is_found_where_it_sounds_and_not_where_it_does_not() {
+        let mut frame = vec![0.0_f32; 1_200];
+        // A2 and D3 together: periodic at D1, 36.7 Hz, with nothing sounding there.
+        crate::synth::sawtooth(&mut frame, 110.0, 12_000, 0.25, 0.0);
+        let mut d3 = vec![0.0_f32; 1_200];
+        crate::synth::sawtooth(&mut d3, 146.83, 12_000, 0.25, 0.3);
+        for (x, y) in frame.iter_mut().zip(&d3) {
+            *x += y;
+        }
+        let common = partial_near(&frame, 12_000, 36.7).unwrap();
+        assert!(common.share < 1e-3, "{common:?}");
+        let a2 = partial_near(&frame, 12_000, 110.0).unwrap();
+        assert!(
+            (1_200.0 * (a2.frequency_hz / 110.0).log2()).abs() < 1.0,
+            "{a2:?}"
+        );
+        assert!(a2.share > 0.1, "{a2:?}");
+        // C3/3 over a bass E: the peak near 43.6 Hz is the bass E's fundamental, 41.2 Hz.
+        let mut bass_e = vec![0.0_f32; 1_200];
+        crate::synth::partials(
+            &mut bass_e,
+            41.2,
+            12_000,
+            0.5,
+            0.0,
+            &crate::synth::WEAK_FUNDAMENTAL,
+        );
+        let near = partial_near(&bass_e, 12_000, 130.81 / 3.0).unwrap();
+        assert!(
+            (1_200.0 * (near.frequency_hz / 41.2).log2()).abs() < 25.0,
+            "{near:?}"
+        );
+        assert_eq!(partial_near(&[0.0; 64], 12_000, 100.0), None);
+        assert_eq!(partial_near(&frame, 12_000, 7_000.0), None);
     }
 }
