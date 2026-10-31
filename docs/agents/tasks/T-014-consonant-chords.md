@@ -49,7 +49,7 @@ needs a decision on which of the two owns "hold", and an ADR.
 - [x] `just verify` passes, and all six CI jobs are green (CI: on the PR).
 - [x] A design note or ADR states how the tuner knows which string was just plucked, and what it
   shows while two strings ring.
-- [x] *(with deviation: three ceilings, owner to accept)* **The three consonant cases show no third note**, known or ambiguous, at both rates, with the
+- [x] *(with deviation: three ceilings, accepted by the owner 2026-10-31)* **The three consonant cases show no third note**, known or ambiguous, at both rates, with the
   first note ringing loud (τ 1.5 and 3 s) and 6 dB under: A2 → D3, D3 → G3, B3 → E4, sine,
   sawtooth and weak fundamental. `T-003c`'s judging rule (`tests/chain.rs`, `Judge`).
 - [x] *(with deviation, as above)* The other loud chords above show no third note either: G2 over a low B, C3 over a bass E, A2
@@ -79,7 +79,7 @@ dropped are in the ADR's rejected options and the journal.
 
 **Deviations** (owner to accept or reject):
 - Criteria 3 and 4 hold except for three residuals, each 1–2 frames, gated at their measured
-  counts (`Gate::ChordCeiling`) so they cannot grow:
+  counts (`Gate::ChordCeiling`) so they cannot grow. **Accepted by the owner on 2026-10-31.**
   - D3 → G3, two sines, D3 6 dB under: one raw High frame, 21 ms after the onset;
   - A2 → D3, two sines, A2 6 dB under: the needle 60 ¢ behind the converging new note, 1–2 frames,
     at 47.5 ms;
