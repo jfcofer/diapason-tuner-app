@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-30 (T-014 merged: two strings ringing; T-003d next)
+# STATE — updated 2026-10-30 (T-014 merged: two strings ringing; T-021 next)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > Agents: run `just session-start`, read this, then the active task file. PR and merge state
@@ -19,8 +19,8 @@ is the active work.** M0 closed 2026-10-09 (`T-006`; its macOS gap is in the roa
 
 ## Active task
 
-**`T-003d`** (note table; M3's lock needs it): no task file yet, so write it first. `T-021` is
-planned; read `adr/0033` before touching the chain. **Waiting on the Redmi:** `T-002d` (blocked;
+**`docs/agents/tasks/T-021-fifths-and-strums.md`** (todo): fifths up and strums from silence. Read
+`adr/0033` first. Then `T-003d` (note table, no file yet). **Waiting on the Redmi:** `T-002d` (blocked;
 part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## What exists now
@@ -110,7 +110,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **`T-003d`** (note table; M3's lock needs it), then `T-021`, `T-003g`. **Owner:** accept or
+1. **`T-021`**, then `T-003d` (note table; M3's lock needs it), `T-003g`. **Owner:** accept or
    reject `T-014`'s three ceilings; on a quiet host `just bench`, then `just bench-baseline`
    (it adopts `chain/smooth` and `chain/chord`); and, if wanted, `T-019`'s hook.
 2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then L10 (the silenced microphone).
