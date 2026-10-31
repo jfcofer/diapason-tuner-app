@@ -7,8 +7,9 @@
 //! hysteresis, bridge, the tests after a note, the string left below. And all of it streamed
 //! together through the shipped `chain::Front` and `chain::Analysis` (`common::Tuner`), asserting
 //! that ambiguous frames, range switches and needle values occurred, which the verifier frames and
-//! the gate learning while open bring. Construction allocates, by design, and runs
-//! outside the trap.
+//! the gate learning while open bring, and two strings ringing at once, whose common period the
+//! chain withholds and whose frames it holds (`docs/adr/0033`). Construction allocates, by design,
+//! and runs outside the trap.
 //!
 //! `assert_no_alloc` aborts the process on a trapped allocation; it cannot panic, because
 //! panicking allocates. So the canary that proves the trap is armed runs in a child process: this
@@ -174,6 +175,32 @@ fn the_chain_never_allocates() {
             && streamed.switches >= 8,
         "{streamed:?}"
     );
+}
+
+/// Two strings ringing at once, at both rates: an A2, then a D3 over it, a fourth up, periodic at
+/// D1. The chord's paths run with the trap armed and are asserted reached: the common period
+/// withheld and frames held (`chain::Frame::held`), the fundamental and anchor tests
+/// (`pitch::partial_near`) on the way.
+#[test]
+fn two_strings_ringing_never_allocate() {
+    for rate in SUPPORTED_RATES {
+        let second = usize::try_from(rate).unwrap();
+        let mut signal = vec![0.0_f32; 2 * second];
+        synth::sawtooth(&mut signal, 110.0, rate, 0.25, 0.0);
+        let mut d3 = vec![0.0_f32; second];
+        synth::sawtooth(&mut d3, 146.83, rate, 0.25, 0.0);
+        for (s, d) in signal[second..].iter_mut().zip(&d3) {
+            *s += d;
+        }
+        let mut chain = Tuner::new(rate, Selection::Auto(Range::Mid));
+        let mut held = 0;
+        for block in signal.chunks(173) {
+            assert_no_alloc(|| {
+                chain.push(block, |frame| held += usize::from(frame.held));
+            });
+        }
+        assert!(held > 100, "{rate} Hz: {held} held frames");
+    }
 }
 
 /// Each stage's per-call path on its own, with the trap armed, so a failure names the stage.
