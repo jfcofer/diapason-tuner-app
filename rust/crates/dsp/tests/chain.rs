@@ -1431,6 +1431,39 @@ fn chord_cases() -> Vec<ChordCase> {
             }
         }
     }
+    // The two fifths up, gated as the fourths (`T-021`, `docs/adr/0034`): their common period is
+    // half the lower note, the octave guard's ratio. D3 → A3 with D3 6 dB under: A3's octave
+    // below, A2, read before A3 locks as D3 decays (0.8–1.4 s), never the common period.
+    let fifths = [("D3 → A3", 146.83, 220.0), ("G3 → D4", 196.0, 293.66)];
+    for (name, from, to) in fifths {
+        for (timbre_name, timbre) in TIMBRES {
+            for ending in loud {
+                let gate = match (name, timbre_name, ending) {
+                    ("D3 → A3", "sawtooth", Ending::Under(1.5, _)) => {
+                        Gate::ChordCeiling { raw: 6, shown: 4 }
+                    }
+                    ("D3 → A3", "sine", Ending::Under(1.5, _)) => {
+                        Gate::ChordCeiling { raw: 2, shown: 0 }
+                    }
+                    ("D3 → A3", "weak", Ending::Under(1.5, _)) => {
+                        Gate::ChordCeiling { raw: 5, shown: 3 }
+                    }
+                    ("D3 → A3", "weak", Ending::Under(..)) => {
+                        Gate::ChordCeiling { raw: 7, shown: 5 }
+                    }
+                    _ => Gate::Chord,
+                };
+                cases.extend([case(
+                    name,
+                    timbre_name,
+                    (timbre, from),
+                    (timbre, to),
+                    ending,
+                    gate,
+                )]);
+            }
+        }
+    }
     // The other loud chords of `T-003c`'s review, gated: the old note's sub-harmonics.
     let saw = synth::sawtooth as Generator;
     let others = [
@@ -1481,11 +1514,9 @@ fn chord_cases() -> Vec<ChordCase> {
             )]);
         }
     }
-    // Measured, not gated (owner, 2026-10-30): fifths, major thirds, the fourths the other way
-    // round, and the fourths detuned (held out: the rule's margins).
+    // Measured, not gated (owner, 2026-10-30): a fifth down, major thirds, the fourths the other
+    // way round, and the fourths detuned (held out: the rule's margins).
     let measured = [
-        ("D3 → A3 (fifth)", 146.83, 220.0),
-        ("G3 → D4 (fifth)", 196.0, 293.66),
         ("A3 → D3 (fifth, down)", 220.0, 146.83),
         ("G3 → B3 (third)", 196.0, 246.94),
         ("C4 → E4 (third)", 261.63, 329.63),
@@ -1646,25 +1677,48 @@ fn the_hold_of_two_strings_lets_go() {
     }
 }
 
+/// How two strings are struck together.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Strum {
+    /// At the same instant and level.
+    Together,
+    /// The higher string this many seconds after the lower, as a downstroke across them.
+    Staggered(f64),
+    /// Together, the lower string this many dB under the higher.
+    Under(f64),
+}
+
 /// Two strings struck together from silence, as a strum across them: the signal and the onset.
-fn strum_signal(rate: u32, timbre: Generator, notes: (f64, f64)) -> (Vec<f32>, usize) {
+fn strum_signal(
+    rate: u32,
+    timbre: Generator,
+    notes: (f64, f64),
+    strum: Strum,
+) -> (Vec<f32>, usize) {
     let onset = samples(0.5, rate);
     let mut signal = vec![0.0_f32; onset + samples(1.5, rate)];
-    let mut note = vec![0.0_f32; signal.len() - onset];
-    for hz in [notes.0, notes.1] {
-        timbre(&mut note, hz, rate, 0.25, 0.0);
-        for (s, n) in signal[onset..].iter_mut().zip(&note) {
+    let (delay, low_gain) = match strum {
+        Strum::Together => (0, 1.0),
+        Strum::Staggered(seconds) => (samples(seconds, rate), 1.0),
+        Strum::Under(db) => (0, 10_f64.powf(-db / 20.0)),
+    };
+    for (hz, start, gain) in [(notes.0, onset, low_gain), (notes.1, onset + delay, 1.0)] {
+        let mut note = vec![0.0_f32; signal.len() - start];
+        timbre(&mut note, hz, rate, 0.25 * gain, 0.0);
+        for (s, n) in signal[start..].iter_mut().zip(&note) {
             *s += n;
         }
     }
     (signal, onset)
 }
 
-/// **Two strings struck together from silence**: measured, not gated (owner, 2026-10-30). Judged
+/// **Two strings struck together from silence** (`T-021`, `docs/adr/0034`): no note has locked to
+/// hold, so nothing is shown while both ring (owner, 2026-10-31), and never a third note. Judged
 /// frames (the leap rule, [`Judge`]) showing neither string, by pitch class when ambiguous, and
-/// clear frames at the common period.
+/// clear frames at the common period, on the estimate and on the needle. Held out, measured only:
+/// the higher string 20 ms after the lower, and the lower 6 dB under.
 #[test]
-fn two_strings_struck_together_from_silence_are_measured() {
+fn two_strings_struck_together_from_silence_show_no_third_note() {
     let pairs = [
         ("A2 + D3", 110.0, 146.83),
         ("D3 + G3", 146.83, 196.0),
@@ -1676,9 +1730,10 @@ fn two_strings_struck_together_from_silence_are_measured() {
     std::thread::scope(|scope| {
         for (name, low, high) in pairs {
             for (timbre_name, timbre) in TIMBRES {
-                for rate in SUPPORTED_RATES {
-                    scope.spawn(move || {
-                        let (signal, onset) = strum_signal(rate, timbre, (low, high));
+                for strum in [Strum::Together, Strum::Staggered(0.02), Strum::Under(6.0)] {
+                    for rate in SUPPORTED_RATES {
+                        scope.spawn(move || {
+                        let (signal, onset) = strum_signal(rate, timbre, (low, high), strum);
                         let mut tuner = Tuner::new(rate, Selection::Auto(Range::Mid));
                         let onset = u64::try_from(onset).unwrap();
                         let mut judge = Judge::new(tuner.table(), onset, high);
@@ -1701,15 +1756,69 @@ fn two_strings_struck_together_from_silence_are_measured() {
                             frames += usize::from(judged);
                         });
                         report(format_args!(
-                            "strum {name} ({timbre_name}) at {rate} Hz: third note {} raw / {} \
-                             shown, {} / {} common-period, of {frames} judged frames",
+                            "strum {name} ({timbre_name}) {strum:?} at {rate} Hz: third note {} \
+                             raw / {} shown, {} / {} common-period, of {frames} judged frames",
                             third[0], third[1], common[0], common[1],
                         ));
+                        if strum != Strum::Together {
+                            return;
+                        }
+                        // The frames before the test can decide (`docs/adr/0034`): the window's
+                        // tail still holds the silence before the onset, and single notes win.
+                        let ceiling = match (name, timbre_name) {
+                            ("A2 + D3", "sawtooth") => [5, 3],
+                            ("D3 + G3", "sawtooth") => [3, 1],
+                            ("D3 + G3", "sine") => [1, 1],
+                            ("G3 + B3", "sine") => [3, 2],
+                            _ => [0, 0],
+                        };
+                        let what = format_args!("strum {name} ({timbre_name}) at {rate} Hz");
+                        assert!(third[0] <= ceiling[0] && third[1] <= ceiling[1], "{what}: {third:?}");
+                        assert_eq!(common, [0, 0], "{what}");
                     });
+                    }
                 }
             }
         }
     });
+}
+
+/// Partials 2–8 of a sawtooth, with no fundamental: a phone microphone's high-pass at its worst
+/// under a low string (`docs/adr/0034`).
+const NO_FUNDAMENTAL: [f64; 8] = [0.0, 0.5, 1.0 / 3.0, 0.25, 0.2, 1.0 / 6.0, 1.0 / 7.0, 0.125];
+
+fn no_fundamental(out: &mut [f32], f0: f64, rate: u32, amplitude: f64, phase: f64) {
+    synth::partials(out, f0, rate, amplitude, phase, &NO_FUNDAMENTAL);
+}
+
+/// **A string whose fundamental the microphone removed is still one string** (`docs/adr/0034`).
+/// From silence nothing is suspected against a note, so every reading must explain itself: a low
+/// E, an A2 and a D3 with no partial at f₀, from home Mid, show no wrong frame, on the estimate
+/// or on the needle, and the needle moves within §1's fail line.
+#[test]
+fn a_string_with_no_fundamental_is_shown_from_silence() {
+    for rate in SUPPORTED_RATES {
+        let table = RangeTable::new(rate).unwrap();
+        for hz in [82.41, 110.0, 146.83] {
+            let traps = octave_trap(
+                rate,
+                Range::Mid,
+                (silence, 0.0),
+                (no_fundamental, hz),
+                Ending::Stopped,
+            );
+            let total = traps.needle_total_ms(&table, hz);
+            let fail = fail_line_ms(table.range_for(hz));
+            report(format_args!(
+                "no fundamental, {hz} Hz at {rate} Hz from home Mid: {:?} judged wrong raw / \
+                 shown, needle {:?} ms, total {total:.1} ms (fails at {fail:.0})",
+                traps.wrong(),
+                traps.display.needle_ms,
+            ));
+            assert_eq!(traps.wrong(), (0, 0), "{hz} Hz at {rate} Hz: {traps:?}");
+            assert!(total <= fail, "{hz} Hz at {rate} Hz: {total:.1} ms");
+        }
+    }
 }
 
 /// Half a second of nothing before a note: the gate stays closed and the selector at home.

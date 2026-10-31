@@ -25,6 +25,11 @@
 //!   worst case of the chord rule. The second cycles through one `Analysis`, so a later block may
 //!   meet the chain in another state: reported, not gated, until a baseline adopts it.
 //!
+//! - `chain/strum`: the same 10 ms block through `chain::Analysis` from home Mid while two
+//!   strings struck together from silence ring, a D3 and an A3, a fifth: no note has locked, so
+//!   each reading pays `pitch::partial_near` at f, 2f, 3f and 5f (`docs/adr/0034`), the worst
+//!   case of the test for one string. Reported, not gated, as `chain/chord`.
+//!
 //! `just bench` compares the medians with `benches/baseline.json` (`tools/bench-compare.sh`): the
 //! ids are the baseline's keys, so renaming one orphans its baseline.
 
@@ -182,6 +187,30 @@ fn chain(c: &mut Criterion) {
                 held += usize::from(frame.held);
             });
             held
+        });
+    });
+
+    // A D3 and an A3 struck together, after a tenth of a second of silence, once the test decides.
+    let mut strum = vec![0.0_f32; usize::try_from(RATE).expect("small")];
+    let mut a3 = vec![0.0_f32; strum.len()];
+    pluck(&mut strum, 146.83, RATE, 0.4, &Pluck::default());
+    pluck(&mut a3, 220.0, RATE, 0.4, &Pluck::default());
+    for (d, a) in strum.iter_mut().zip(&a3) {
+        *d += a;
+    }
+    let mut struck = Analysis::new(RATE, Selection::Auto(Range::Mid)).expect("a supported rate");
+    struck.push(&vec![0.0_f32; strum.len() / 10], GateState::Closed, |_| {});
+    let (onset, rest) = strum.split_at(strum.len() / 5);
+    struck.push(onset, GateState::Open, |_| {});
+    let mut strum_blocks = rest.chunks(BLOCK).cycle();
+    group.bench_function("strum", |b| {
+        b.iter(|| {
+            let block = strum_blocks.next().unwrap_or_default();
+            let mut shown = 0_usize;
+            struck.push(std::hint::black_box(block), GateState::Open, |frame| {
+                shown += usize::from(frame.display.is_some());
+            });
+            shown
         });
     });
     group.finish();
