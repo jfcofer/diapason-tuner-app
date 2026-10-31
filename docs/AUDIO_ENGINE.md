@@ -70,7 +70,7 @@ every case below, no frame shows a wrong note once judged by the leap rule (§2)
 |---|---|---|---|---|
 | E4 → low E, E4 stopped | 65 / 63.8 | 118.3 / 117.1 | 170 / 170.5 | 110 / 150 |
 | E4 → low E, after a 0.1 s gap | 42.5 / 42.5 | 95.8 / 95.9 | 145 / 149.2 | 110 / 150 |
-| E4 → low E, E4 rings 12 dB under (τ 0.6–3 s) | 60 / 58.7 | 113.3 / 112.1 | 165 / 165.4 | 110 / 150 |
+| E4 → low E, E4 rings 12 dB under (τ 0.6–3 s) | 60 / 61.3 | 113.3 / 114.6 | 165 / 165.4 | 110 / 150 |
 | A2 → bass E, A2 stopped | 125 / 128.6 | 178.3 / 181.9 | as the needle | 190 / 260 |
 | A2 → bass E, after a 0.1 s gap | 95 / 98.4 | 148.3 / 151.7 | as the needle | 190 / 260 |
 | A2 → bass E, A2 rings 12 dB under (τ 0.6–3 s) | 110 / 113.6 | 163.3 / 166.9 | as the needle | 190 / 260 |
@@ -86,7 +86,9 @@ and 585 / 358.0 ms (low B), past the fail line, until `T-003f`'s median of five 
 1.9 ms past its 190 ms target. On the stopped and gap rows the needle is the smoothing line (5 or
 10 ms) behind the estimate, so their totals are `T-003c`'s; on the 12 dB-under rows it is faster
 than the estimate was, which wandered and the median does not. A low E's octave is known only once Low, which can see
-41.2 Hz, reads it (§2), so 105–110 ms after the needle.
+41.2 Hz, reads it (§2), so 105–110 ms after the needle. Under an E4 ringing 12 dB down, at 44.1 kHz,
+the low E waits one hop for its fundamental to resolve, since it is a quarter of the E4 (§3, two
+strings ringing, `adr/0033`): 61.3 ms, where it was 58.7.
 
 **A gap shorter than the gate's 250 ms hold** is no silence to the selector: the gate stays open,
 and its frames find no pitch. They are no misses (`Observation::Holding`, §2), so the chain stays
@@ -102,14 +104,9 @@ waits for its own scan, so A2 → bass E after 0.1 s takes 148.3 / 151.7 ms in a
 Two louder cases are recorded only. E4 ringing at the new note's level is a harmonic of it: the
 needle moves in 115 / 114.6 ms, and the octave is known in 225 / 223.8 ms. A2 ringing over a bass
 E is a chord. It shows `None`, ambiguity or the old note, never a third note: not the notes' common
-period, and not a reading near the old one that is no single note (§3). **That holds for that chord
-only:** since single notes win over chord rejection (owner, 2026-10-25), A2 ringing over a low B and
-the detuned chords (`tests/chain.rs`,
-`a_detuned_downward_change_or_chord_never_shows_a_wrong_or_third_note`) are recorded, not gated,
-and loud chords in general are not handled: a consonant interval (a fourth or fifth: A2 + D3 reads D1, D3 + G3 G1, B3 + E4 E2, at
-clarity 1.0) is periodic at the common period and cannot be told from one note by periodicity, and
-other pairs read the old note's sub-harmonic (G2 over low B, C3 over bass E). That is
-`T-014-consonant-chords`, a known gap that predates `T-003c`.
+period, and not a reading near the old one that is no single note (§3). Loud chords in general,
+consonant intervals above all, are §3's rule for two strings ringing (`adr/0033`,
+`tests/chain.rs`, `two_strings_ringing_show_no_third_note`).
 
 ## 2. Signal chain (tuner)
 
@@ -193,7 +190,7 @@ partial, which High holds. So each frame of a range below the selected one is an
 **verifier**: Mid and Low under High, Low under Mid. An estimate whose range cannot test its octave
 is flagged `ambiguous octave` until a verifier that sees the octave below reads the estimate itself
 in a window that started after the note did (`RangeSelector::octave`). A verifier's pitch below the
-current band moves the chain to that pitch's range under five conditions:
+current band moves the chain to that pitch's range under six conditions:
 - the current range's last clear pitch is 2, 3 or 4 times it, or there is none;
 - at 3 or 4 times it, the current range cannot see it (`adr/0031`). A range that sees the longer
   period and still read one a third or a quarter of it found the shorter one about as periodic,
@@ -205,7 +202,10 @@ current band moves the chain to that pitch's range under five conditions:
   long a wrong reading can hold a range, `REFERENCE_PATIENCE_SECONDS`);
 - it is at least 28.32 Hz, and it is not the octave below a pitch the chain has just moved up to.
   That would be the lower string still ringing under the one just plucked, which stays ambiguous;
-  the selected range reading it does not move the chain down either (`RangeSelector::observe`).
+  the selected range reading it does not move the chain down either (`RangeSelector::observe`);
+- it is no chord's common period: a third or a quarter of a note still ringing, with no fundamental
+  of its own (§3, two strings ringing, `adr/0033`). A consonant interval is periodic there, so the
+  hidden-fundamental test alone took A2 + D3 for a D1.
 
 A verifier's reading must pass the same tests as an estimate (§3, after a note) before it verifies
 an octave, or a chord's reading would. `Selection::Fixed` runs no verifier: a range locked by hand
@@ -293,8 +293,21 @@ defences, which work as one, over the selected range's frames:
   lock makes the held note ambiguous. And the note the estimate left by moving up an octave stays
   ambiguous until it has been read for a window without the upper one in between (G3 under G4,
   read by a range that sees both).
-- **Not handled:** loud chords other than those families, consonant intervals above all, which
-  are periodic at their common period (`T-014-consonant-chords`, §1).
+- **Two strings ringing** (`adr/0033`, `chain::Analysis`). A consonant interval is periodic at
+  the notes' common period, which passes every test above. But it has no fundamental of its own,
+  and a string does. A reading is suspect when the note locked before is still sounding (its
+  partial in the reading range's window) and, as it locked (`OctaveGuard::anchor`), is 3/2, 3 or
+  4 times the reading (`octave::COMMON_RATIOS`). A suspect is a string only if
+  `pitch::partial_near` finds a peak within 50 ¢ of it, with at least `chain::FUNDAMENTAL_SHARE`
+  of the frame. The peak is searched in the shortest recent tail of a window that resolves the
+  fundamental from its octave (`chain::RESOLVED_BINS`; never below 40 Hz). A low E under the E4
+  it is a quarter of has its fundamental. A2 + D3 has none at D1. A suspect that fails is
+  withheld, moves no verifier, and keeps the old note heard. Until another note locks, every
+  frame shown must be the held note or repeat at 2τ (`REPEATS`) in the first range that can
+  search there: two strings also read as quasi-periods of neither. Three suspects in a row with a
+  fundamental, or the old string stopping, release it. Not handled, measured: fifths up, whose
+  common period is half the lower note, and two strings struck together from silence, where no
+  note is locked (`T-021`).
 
 Tests: `octave::tests` covers both cases of (b), the hysteresis holding and giving way, the
 threshold at its edge and in absolute terms, and which estimates must repeat. `tests/chain.rs` holds the leap sweep to zero wrong
@@ -319,6 +332,11 @@ them is a design error:
   held note in another octave, the guard settling it, moves the history by that octave: the needle
   neither blanks nor mixes octaves. A frame without an estimate shows none; the history outlives
   five of them (`smooth::HELD_GAP_FRAMES`). The octave flag is the frame's own.
+- **While two strings ring it holds** (`chain::Frame::held`, `adr/0033`). A frame without an
+  estimate shows the needle's last value of the held note, flagged `ambiguous octave`, once a
+  suspect has failed for longer than its fundamental takes to resolve. "Hold the last confident
+  estimate" (`PRODUCT_SPEC.md` §2) belongs to the detector's decision and the needle's value. The
+  estimate stays `None`, so nothing locks on it, and the needle's history is left alone.
 - Measured (`tests/chain.rs`, `a_held_note_holds_the_needle_within_a_cent`): a held sawtooth with
   noise at 20 dB SNR, 41.2–1318.5 Hz, wobbles ≤ 0.12 ¢ peak to peak on the needle (the estimate:
   up to 2.22 ¢); at 10 dB SNR, ≤ 0.92 ¢ (the estimate: 7.2 ¢). On every recording

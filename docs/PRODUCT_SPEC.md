@@ -49,7 +49,8 @@ Harmonics and pinch harmonics may read an octave up: the octave guard handles it
 never flickers between octaves. Where the octave is not yet decided, `ambiguous octave` shows the
 letter and the cents without the octave number (`adr/0029`). Ambient noise raises the gate rather
 than producing wrong readings.
-Two strings ringing at once: hold the last confident estimate rather than alternating.
+Two strings ringing at once: hold the last confident estimate rather than alternating
+(`adr/0033`).
 
 ## 3. Metronome
 
