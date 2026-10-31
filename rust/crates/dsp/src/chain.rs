@@ -7,7 +7,8 @@
 //!   - the frames of every range, and `Mpm` on the selected range's;
 //!   - the [`OctaveGuard`] on each estimate, and the [`RangeSelector`], with the frames of the
 //!     ranges below the selected one that verify its octave (`docs/adr/0029`);
-//!   - the [`Needle`] on the guarded estimate: what the needle shows (`docs/adr/0032`);
+//!   - the [`Needle`] on the guarded estimate: what the needle shows (`docs/adr/0032`), held while
+//!     two strings ring at once (`docs/adr/0033`);
 //!   - the report, back to the gate, that the open gate has heard no pitch for a while
 //!     ([`Analysis::unpitched`], [`Front::set_unpitched`]).
 //!
@@ -22,9 +23,10 @@ use crate::filter::{DcBlock, Decimator, FilterError};
 use crate::frame::{FrameAssembler, FrameError};
 use crate::gate::{GateConfig, GateError, GateState, NoiseGate};
 use crate::octave::{
-    AFTER_NOTE_CLARITY, Guarded, Octave, OctaveGuard, REPEATS, SAME_NOTE_CENTS, UNVERIFIED_CLARITY,
+    AFTER_NOTE_CLARITY, CONFIRM_FRAMES, Guarded, Octave, OctaveGuard, REPEATS, SAME_NOTE_CENTS,
+    UNVERIFIED_CLARITY,
 };
-use crate::pitch::{Mpm, MpmConfig, MpmError, PitchEstimate};
+use crate::pitch::{Mpm, MpmConfig, MpmError, PitchEstimate, partial_near};
 use crate::range::{
     DECIMATION, LOWEST_FUNDAMENTAL_HZ, Observation, Path, Range, RangeSelector, RangeTable,
 };
@@ -35,6 +37,19 @@ use crate::smooth::Needle;
 /// attack, or a scan through the ranges (at most 150 ms per range), never counts; as long as the
 /// floor's own memory, so the room is learned on the same time scale it is forgotten.
 pub const UNPITCHED_SECONDS: f64 = 2.0;
+
+/// The least share of a frame's power ([`crate::pitch::Partial::share`]) at a reading's own
+/// frequency for a third or a quarter of the locked note to be a string, not two strings' common
+/// period (`docs/adr/0033`). The common period of two strings has none: measured, at most
+/// 10⁻⁵ of the frame. A string has its fundamental, weak or not: a guitar's low E with a weak one,
+/// ringing under the E4 it is a quarter of, is 0.03.
+pub const FUNDAMENTAL_SHARE: f64 = 1e-3;
+
+/// Bins of a window (its rate over its length) a fundamental must lie above for
+/// [`partial_near`] to tell it from its own octave: a Hann window's main lobe is four bins wide.
+/// 40 Hz in Low's window. Below it a common period is never taken for a string: a weak low B's
+/// peak, alone, lands 27.5 ¢ sharp, and G2's third, 32.67 Hz, over a low B, reads as one.
+pub const RESOLVED_BINS: f64 = 4.0;
 
 /// Why a chain could not be built.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -166,6 +181,11 @@ pub struct Frame {
     /// Whether the estimate's octave is known, or only its pitch class and cents
     /// (`docs/PRODUCT_SPEC.md` §2, `ambiguous octave`). [`Octave::Known`] when there is no estimate.
     pub octave: Octave,
+    /// Two strings ring at once: a range read their common period within its last window, and the
+    /// chain withheld it (`docs/adr/0033`). The estimate is `None`, so nothing locks on it, and the
+    /// display holds the last value the needle showed of the note that rang before, flagged
+    /// [`Octave::Ambiguous`].
+    pub held: bool,
 }
 
 /// The analysis side. Under [`Selection::Auto`] both filters and all three frame assemblers run on
@@ -208,6 +228,23 @@ pub struct Analysis {
     /// The clarity of the current range's latest estimate, before any test: what a watcher's
     /// reading must exceed ([`RangeSelector::observe_watcher`]).
     current_clarity: Option<f32>,
+    /// The position up to which a chord's common period is within the window of the range that read
+    /// it ([`Self::in_chord`]).
+    chord_until: u64,
+    /// The locked note a chord was read over ([`OctaveGuard::anchor`]): until another note locks,
+    /// the two strings may still both ring ([`Self::in_chord`]), even once the guard forgets the
+    /// old note, whose string may still beat under the new one.
+    chord_over: Option<f64>,
+    /// Since when suspected common periods have had no fundamental, and from when that is longer
+    /// than one takes to resolve: then the two strings are taken to ring, and frames are held
+    /// ([`Frame::held`]). Before, a low string just plucked may only not be resolved yet.
+    chord_since: Option<(u64, u64)>,
+    /// Suspected common periods in a row that had a fundamental: [`CONFIRM_FRAMES`] of them and
+    /// a string is sounding there, so the strings are no longer taken to ring together.
+    strings: usize,
+    /// What the needle last showed of the locked note ([`OctaveGuard::is_anchor_note`]): the last
+    /// confident estimate, which a [`Frame::held`] frame shows.
+    confident: Option<f64>,
     position: u64,
     gate: GateState,
     /// The position of the latest clear estimate, or of the latest closed-gate block.
@@ -268,6 +305,11 @@ impl Analysis {
             display: Needle::new(sample_rate),
             below: [None; 2],
             current_clarity: None,
+            chord_until: 0,
+            chord_over: None,
+            chord_since: None,
+            strings: 0,
+            confident: None,
             table,
             selection,
             position: 0,
@@ -359,19 +401,45 @@ impl Analysis {
             if !self.gate.is_open() {
                 self.guard.reset();
                 self.display.reset();
+                self.release_chord();
                 self.observe(Observation::Silent);
                 return;
             }
             let (estimate, octave) = self.judge(range);
-            let display = self
-                .display
-                .update(estimate.map(|e| e.frequency_hz), self.position);
+            // Another note has locked: whatever rang with the old one, this one is no chord.
+            if self.chord_over.is_some_and(|over| {
+                self.guard.anchor().is_some() && !self.guard.is_anchor_note(over)
+            }) {
+                self.release_chord();
+            }
+            let held = estimate.is_none()
+                && self.in_chord()
+                && self
+                    .chord_since
+                    .is_some_and(|(_, confirmed)| self.position >= confirmed);
+            // A held frame leaves the needle's history alone: no miss, so the note it held goes on
+            // when the chord resolves back to it.
+            let display = if held {
+                self.confident
+            } else {
+                self.display
+                    .update(estimate.map(|e| e.frequency_hz), self.position)
+            };
+            if let (Some(e), Some(shown)) = (estimate, display)
+                && self.guard.is_anchor_note(e.frequency_hz)
+            {
+                self.confident = Some(shown);
+            }
+            // While two strings ring the octave is not decided: a held frame shows the letter and the
+            // cents of the note held, not its octave (a low E under the E4 it is a quarter of).
+            let octave = if held { Octave::Ambiguous } else { octave };
             on_frame(&Frame {
                 end: self.position,
                 range,
                 estimate,
                 display,
                 octave,
+                held,
             });
         } else if matches!(self.selection, Selection::Auto(_))
             && self.gate.is_open()
@@ -382,12 +450,13 @@ impl Analysis {
             if let Some(e) = analysed {
                 self.guard.heard(e.frequency_hz);
             }
-            let raw = analysed.filter(|e| self.within_range(range, e));
+            let chord = self.chord(range, analysed);
+            let raw = analysed.filter(|e| !chord && self.within_range(range, e));
             if let (Some(below), Some(e)) = (self.below.get_mut(slot(range)), raw) {
                 *below = Some((e.frequency_hz, self.position));
             }
             let reading = raw
-                .filter(|e| self.proven(range, e))
+                .filter(|e| self.proven(range, e) && self.one_string(range, e))
                 .map(|e| e.frequency_hz);
             self.selector
                 .observe_verifier(range, reading, self.position);
@@ -423,8 +492,10 @@ impl Analysis {
         if let Some(e) = analysed {
             self.guard.heard(e.frequency_hz);
         }
+        let chord = self.chord(range, analysed);
         let raw = analysed.filter(|pick| self.within_range(range, pick));
-        let pick = raw.filter(|pick| self.proven(range, pick));
+        let pick =
+            raw.filter(|pick| !chord && self.proven(range, pick) && self.one_string(range, pick));
         let guarded = if let Some(pick) = pick {
             let up = self.peak_near(range, pick.period_samples / 2.0);
             let down = self.peak_near(range, pick.period_samples * 2.0);
@@ -489,6 +560,156 @@ impl Analysis {
             self.forget_frames(range),
         );
         (guarded.map(|g| g.estimate), octave)
+    }
+
+    /// Whether `analysed`, `range`'s reading, is the common period of two strings ringing at once
+    /// (`docs/adr/0033`): 3/2, 3 or 4 times it is the locked note ([`OctaveGuard::is_common_period`]),
+    /// which still sounds, and it has no fundamental of its own ([`Self::sounds`]). If so, the
+    /// locked note is still sounding, and frames without an estimate are [`Frame::held`].
+    fn chord(&mut self, range: Range, analysed: Option<PitchEstimate>) -> bool {
+        let Some((hz, anchor)) = analysed
+            .map(|e| e.frequency_hz)
+            .filter(|&hz| self.guard.is_common_period(hz))
+            .zip(self.guard.anchor())
+        else {
+            return false;
+        };
+        // A note left for one a fifth below it is no chord: the old string has stopped. Only the
+        // latch goes: this test flickers under a near-miss chord (G2 over a low B), so the last
+        // reading's window still asks for one string, and a held needle keeps its value.
+        if !self.rings(range, anchor) {
+            self.chord_over = None;
+            self.chord_since = None;
+            return false;
+        }
+        if self.sounds(range, hz) {
+            // A string is sounding there. Confirmed, whatever rang before is no chord with it.
+            self.strings += 1;
+            if self.strings >= CONFIRM_FRAMES {
+                self.release_chord();
+            }
+            return false;
+        }
+        self.strings = 0;
+        self.guard.ringing();
+        if self.position > self.chord_until {
+            self.chord_since = None;
+        }
+        let resolve = self.resolving_samples(range, hz);
+        self.chord_since
+            .get_or_insert((self.position, self.position + resolve));
+        self.chord_until = self.position + self.selector.span(range);
+        self.chord_over = Some(anchor);
+        true
+    }
+
+    /// Two strings no longer ring together: the old one stopped, a string sounds at the reading,
+    /// another note locked, or the gate closed. Nothing is held, nor must repeat, any more.
+    fn release_chord(&mut self) {
+        self.chord_until = 0;
+        self.chord_over = None;
+        self.chord_since = None;
+        self.strings = 0;
+        self.confident = None;
+    }
+
+    /// Input samples it takes [`Self::sounds`] to resolve `hz` from its octave: the latest
+    /// [`RESOLVED_BINS`] periods of the bin width, at the rate of the window it would use.
+    fn resolving_samples(&self, range: Range, hz: f64) -> u64 {
+        let spec = self.table.spec(range);
+        let factor = match spec.path {
+            Path::Decimated => DECIMATION,
+            Path::Full => 1,
+        };
+        let needed = index_from_f64((RESOLVED_BINS * f64::from(spec.analysis_rate) / hz).ceil());
+        let samples = needed
+            .saturating_mul(factor)
+            .min(self.table.spec(Range::Low).window * DECIMATION);
+        u64::try_from(samples).unwrap_or(u64::MAX)
+    }
+
+    /// Whether two strings may be ringing together: a range read their common period within its
+    /// window, or since then no other note has locked and the one they rang over is remembered.
+    /// The second keeps the old string's beating off the new one: a D3 sine 10 dB under the G3
+    /// it was a fourth below bent High's estimate of G3 by up to 65 ¢, after every range had
+    /// stopped reading their common period (`docs/adr/0033`).
+    fn in_chord(&self) -> bool {
+        self.position <= self.chord_until
+            || self.chord_over.is_some_and(|over| {
+                self.guard.anchor().is_none() || self.guard.is_anchor_note(over)
+            })
+    }
+
+    /// Whether `pick` may be shown while two strings ring ([`Frame::held`]): the note held, as it
+    /// locked ([`OctaveGuard::is_anchor_note`]), or a period that repeats at twice itself ([`REPEATS`]) in the first range, from `range` down,
+    /// that can search there ([`Self::repeats_in`]). Two strings read as a period of neither
+    /// between their common period's multiples, and that does not repeat; the string just plucked
+    /// does, once it rings clear. Two sines, A2 and D3, read 131.8 Hz in Mid; D3 and G3 read their
+    /// mean, 174.5 Hz, in High, which cannot search 2τ there, and in Mid, which can. No range below
+    /// Low: a reading no range can test is withheld while the chord rings.
+    fn one_string(&self, range: Range, pick: &PitchEstimate) -> bool {
+        let hz = pick.frequency_hz;
+        let below = match self.selection {
+            Selection::Auto(_) => [Range::Mid, Range::Low],
+            Selection::Fixed(fixed) => [fixed, fixed],
+        };
+        !self.in_chord()
+            || self.guard.is_anchor_note(hz)
+            || [range]
+                .into_iter()
+                .chain(below.into_iter().filter(|&lower| lower < range))
+                .find_map(|range| self.repeats_in(range, hz))
+                .unwrap_or(false)
+    }
+
+    /// Whether `hz` repeats at twice its period in `range`'s last analysed frame: its NSDF's peak
+    /// near `2τ` at least [`REPEATS`] of its peak near `τ`. `None` where `range` cannot search `2τ`.
+    fn repeats_in(&self, range: Range, hz: f64) -> Option<bool> {
+        let index = slot(range);
+        let detector = self.detectors.get(index)?;
+        let lag = f64::from(self.table.spec(range).analysis_rate) / hz;
+        if 2.0 * lag + 1.0 >= index_to_f64(detector.max_lag()) {
+            return None;
+        }
+        let at = self.peak_near(range, lag);
+        let double = self.peak_near(range, 2.0 * lag);
+        Some(
+            at.zip(double)
+                .is_some_and(|(at, double)| double.clarity >= REPEATS * at.clarity),
+        )
+    }
+
+    /// Whether a partial sounds at `hz` itself ([`partial_near`]), in the latest samples of `range`'s
+    /// window, or else of Low's, the longest, if the decimated path runs: as few as resolve `hz`
+    /// from its octave ([`RESOLVED_BINS`]), so that as little as possible of them is from before
+    /// the string was plucked. A whole window spanning the onset puts a low E's fundamental, under
+    /// the E4 it is a quarter of, 50 to 150 ¢ flat for 70 ms. The first window long enough decides;
+    /// a partial no window resolves is taken to be absent.
+    fn sounds(&self, range: Range, hz: f64) -> bool {
+        [range, Range::Low]
+            .into_iter()
+            .filter(|&range| self.runs(range.path()))
+            .find_map(|range| {
+                let rate = self.table.spec(range).analysis_rate;
+                let window = self.frames.get(slot(range))?.window();
+                let needed = index_from_f64((RESOLVED_BINS * f64::from(rate) / hz).ceil());
+                let tail = window.get(window.len().checked_sub(needed)?..)?;
+                Some(partial_near(tail, rate, hz))
+            })
+            .flatten()
+            .is_some_and(|partial| present(partial, hz))
+    }
+
+    /// Whether a partial sounds at `hz` in `range`'s whole window ([`partial_near`]): the note
+    /// that rang before still does. The whole window, because the note was there before the onset
+    /// and the next string's partials must fall outside its main lobe: B3's under E4 are 83 Hz
+    /// apart, inside the lobe of the 16 ms that would resolve B3 from its octave.
+    fn rings(&self, range: Range, hz: f64) -> bool {
+        let rate = self.table.spec(range).analysis_rate;
+        self.frames
+            .get(slot(range))
+            .and_then(|frames| partial_near(frames.window(), rate, hz))
+            .is_some_and(|partial| present(partial, hz))
     }
 
     /// Frames of `range` that span Low's window, the longest: how long a locked note no range
@@ -589,6 +810,13 @@ impl Analysis {
             self.selector.observe(observation, self.position);
         }
     }
+}
+
+/// Whether `partial` is a partial at `hz`: within [`SAME_NOTE_CENTS`] of it, at least
+/// [`FUNDAMENTAL_SHARE`] of the frame.
+fn present(partial: crate::pitch::Partial, hz: f64) -> bool {
+    partial.share >= FUNDAMENTAL_SHARE
+        && (1_200.0 * (partial.frequency_hz / hz).log2()).abs() <= SAME_NOTE_CENTS
 }
 
 #[cfg(test)]

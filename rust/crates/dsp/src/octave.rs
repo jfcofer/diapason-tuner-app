@@ -18,7 +18,8 @@
 //!   read as neither: the guard says which estimates must prove they are one note
 //!   ([`OctaveGuard::must_repeat`]), when the octave above a held
 //!   note has entered ([`RISE`]), and when a reading is the lower string the estimate just left
-//!   by moving up an octave ([`OctaveGuard::is_ringing_below`]).
+//!   by moving up an octave ([`OctaveGuard::is_ringing_below`]), and which readings may be the
+//!   common period it makes with the next string ([`OctaveGuard::is_common_period`]).
 //!
 //! So an octave flicker of one or two frames inside a held note shows the held note, ambiguous,
 //! and a real change costs at most two hops (5 ms in Mid and High) of `None` or ambiguity.
@@ -107,6 +108,15 @@ pub const OCTAVE_ABOVE_PRESENT: f32 = 0.75;
 /// locked note is remembered, and a withheld frame is no miss.
 pub const AFTER_NOTE_CLARITY: f32 = 0.85;
 
+/// The ratios of the locked note to a reading for the reading to be suspected of being the common
+/// period of two strings (`docs/adr/0033`). A fourth up, the guitar's and the bass's adjacent
+/// strings, is periodic at a third of the lower note (A2 + D3 at D1); a fourth down, or a major
+/// third up, at a quarter of the higher (D3 + A2, G3 + B3). With a weak fundamental, the lower
+/// note's octave partial and the upper note make a fifth, periodic at two thirds of the lower note
+/// (A2 + D3 at D2, 73.4 Hz). A fifth's own common period, half the lower note, is the octave
+/// guard's case.
+pub const COMMON_RATIOS: [f64; 3] = [1.5, 3.0, 4.0];
+
 /// What the guard made of one frame's estimate.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Guarded {
@@ -152,6 +162,11 @@ pub struct OctaveGuard {
     /// silence: while it may still be sounding, some estimates must be periods
     /// ([`OctaveGuard::must_repeat`]).
     locked: Option<f64>,
+    /// The locked note as it was when its run of known frames first locked it: [`Self::locked`]
+    /// follows each frame of the run, and a second string's attack drags it (A2 to 117 Hz, 108 ¢,
+    /// in five frames). A chord's common period is a third or a quarter of the note as it rang
+    /// ([`Self::is_common_period`]).
+    anchor: Option<f64>,
     /// The note of the current run of frames shown known, and the run's length.
     known_run: Option<(f64, usize)>,
     /// Consecutive frames, since the last one that showed it, without the locked note: a window
@@ -184,6 +199,7 @@ impl OctaveGuard {
     pub fn switched(&mut self) {
         *self = Self {
             locked: self.locked,
+            anchor: self.anchor,
             known_run: self.known_run,
             below: self.below,
             ..Self::default()
@@ -213,6 +229,41 @@ impl OctaveGuard {
     pub fn is_locked_note(&self, hz: f64) -> bool {
         self.locked
             .is_some_and(|locked| cents(hz, locked).abs() <= SAME_NOTE_CENTS)
+    }
+
+    /// Whether the locked note, as it locked, is 3/2, 3 or 4 times `hz` ([`COMMON_RATIOS`], within
+    /// [`SAME_NOTE_CENTS`]): the period two strings ringing together share, if the locked one is
+    /// still sounding, or a lower string plucked under it. Only
+    /// the spectrum tells the two apart (`crate::pitch::partial_near`).
+    #[must_use]
+    pub fn is_common_period(&self, hz: f64) -> bool {
+        self.anchor.is_some_and(|anchor| {
+            COMMON_RATIOS
+                .iter()
+                .any(|&k| cents(anchor / hz, k).abs() <= SAME_NOTE_CENTS)
+        })
+    }
+
+    /// The locked note as it locked, while it is remembered.
+    #[must_use]
+    pub fn anchor(&self) -> Option<f64> {
+        self.anchor
+    }
+
+    /// Whether `hz` is the locked note as it locked, within [`SAME_NOTE_CENTS`]: what the needle
+    /// holds while two strings ring is the last value it showed of that note (`docs/adr/0033`).
+    #[must_use]
+    pub fn is_anchor_note(&self, hz: f64) -> bool {
+        self.anchor
+            .is_some_and(|anchor| cents(hz, anchor).abs() <= SAME_NOTE_CENTS)
+    }
+
+    /// A chord's common period was read: the locked note is still sounding, though no range reads
+    /// it as itself, so [`Self::shown`] does not forget it yet.
+    pub fn ringing(&mut self) {
+        if self.locked.is_some() {
+            self.without_locked = 0;
+        }
     }
 
     /// Whether a note has been locked since the last silence, and so may still be sounding under
@@ -274,6 +325,7 @@ impl OctaveGuard {
         self.without_locked = if showing { 0 } else { self.without_locked + 1 };
         if self.without_locked >= forget_frames {
             self.locked = None;
+            self.anchor = None;
         }
         let Some(hz) = hz.filter(|_| known) else {
             self.known_run = None;
@@ -285,6 +337,9 @@ impl OctaveGuard {
         };
         self.known_run = Some((hz, run));
         if run >= lock_frames {
+            if run == lock_frames || self.anchor.is_none() {
+                self.anchor = Some(hz);
+            }
             self.locked = Some(hz);
             self.without_locked = 0;
         }
