@@ -90,7 +90,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - **Rust crate licences** (M6), **`appLifecycleProvider`** moving down (M4): in `ROADMAP.md`.
   `T-002f`: **a stall's input queued as latency** (`adr/0025`); the Redmi refuses output FAST.
 - **Weak odd partials, 107–150 Hz:** 2f₀ shown known ~60 ms before Mid corrects it (`adr/0031`).
-  **Chords:** fifths up and strums still show a third note (`T-021`); three ceilings (`adr/0033`).
+  **Chords:** fifths up and strums still show a third note (`T-021`); three accepted ceilings
+  (`adr/0033`).
 - **A2 → low B, 12 dB under, 44.1 kHz:** 1.9 ms past its 190 ms target (§1). **No bench baseline
   since `T-020`:** `chain/smooth`, `chain/chord` reported, not gated, until the owner's (Next up).
 - **`router.dart` uses plain `GoRoute`s**, not the typed routes `AGENTS.md` §7 requires: `T-016`.
@@ -110,9 +111,9 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **`T-021`**, then `T-003d` (note table; M3's lock needs it), `T-003g`. **Owner:** accept or
-   reject `T-014`'s three ceilings; on a quiet host `just bench`, then `just bench-baseline`
-   (it adopts `chain/smooth` and `chain/chord`); and, if wanted, `T-019`'s hook.
+1. **`T-021`**, then `T-003d` (note table; M3's lock needs it), `T-003g`. **Owner:** on a quiet host
+   `just bench`, then `just bench-baseline` (it adopts `chain/smooth` and `chain/chord`); and, if
+   wanted, `T-019`'s hook.
 2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then L10 (the silenced microphone).
    Also owed: `T-003a`'s 4096 frame cost on the phone (≤ 1.5 ms).
 3. **`T-002e`** (overlay in Settings → Diagnostics; first golden), then **`T-002f`** (latency, FAST).
