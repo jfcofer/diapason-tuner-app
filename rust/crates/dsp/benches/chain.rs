@@ -19,6 +19,12 @@
 //!   octave guard and the needle, and the Mid and Low verifier frames. The worst case per 10 ms of
 //!   input, so the CPU figure is this over 10 ms.
 //!
+//! - `chain/chord`: the same 10 ms block through `chain::Analysis` from home Mid while two
+//!   strings ring, an A2 and the D3 over it: each verifier frame reads their common period and
+//!   pays `pitch::partial_near` for the fundamental and the note held (`docs/adr/0033`), the
+//!   worst case of the chord rule. The second cycles through one `Analysis`, so a later block may
+//!   meet the chain in another state: reported, not gated, until a baseline adopts it.
+//!
 //! `just bench` compares the medians with `benches/baseline.json` (`tools/bench-compare.sh`): the
 //! ids are the baseline's keys, so renaming one orphans its baseline.
 
@@ -152,6 +158,30 @@ fn chain(c: &mut Criterion) {
                 estimates += usize::from(frame.estimate.is_some());
             });
             estimates
+        });
+    });
+
+    // One second of A2 and D3 ringing together, after half a second of A2 alone has locked it.
+    let mut chord = vec![0.0_f32; usize::try_from(RATE).expect("small")];
+    let mut d3 = vec![0.0_f32; chord.len()];
+    pluck(&mut chord, 110.0, RATE, 0.4, &Pluck::default());
+    pluck(&mut d3, 146.83, RATE, 0.4, &Pluck::default());
+    for (a, d) in chord.iter_mut().zip(&d3) {
+        *a += d;
+    }
+    let mut lead = vec![0.0_f32; chord.len() / 2];
+    pluck(&mut lead, 110.0, RATE, 0.4, &Pluck::default());
+    let mut two = Analysis::new(RATE, Selection::Auto(Range::Mid)).expect("a supported rate");
+    two.push(&lead, GateState::Open, |_| {});
+    let mut chord_blocks = chord.chunks(BLOCK).cycle();
+    group.bench_function("chord", |b| {
+        b.iter(|| {
+            let block = chord_blocks.next().unwrap_or_default();
+            let mut held = 0_usize;
+            two.push(std::hint::black_box(block), GateState::Open, |frame| {
+                held += usize::from(frame.held);
+            });
+            held
         });
     });
     group.finish();
