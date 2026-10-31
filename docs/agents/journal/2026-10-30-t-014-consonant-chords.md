@@ -49,6 +49,6 @@
   a low B: that presence test flickers, so it drops the latch only.
 
 ## Left for next session
-- `T-003d` (note table), then `T-021`. The owner: accept or reject the three ceilings
+- `T-021` (active), then `T-003d` (note table). The owner: accept or reject the three ceilings
   (`Gate::ChordCeiling`, `adr/0033`) and the 2.5 ms on E4 → low E at 44.1 kHz; decide whether a
   loud chord should hold the old note for over 1.5 s (STATE, Open questions).
