@@ -1,6 +1,7 @@
 # 0033 — Two strings ringing: a common period has no fundamental, and the needle holds
 
-**Status:** Accepted · 2026-10-30 (`T-014`)
+**Status:** Accepted · 2026-10-30 (`T-014`) · in part superseded by
+[0034](0034-fifths-and-strums.md)
 
 ## Context
 
