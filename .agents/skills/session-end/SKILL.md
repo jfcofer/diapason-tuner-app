@@ -1,4 +1,5 @@
 ---
+name: session-end
 description: Close the session so the next agent loses nothing
 ---
 

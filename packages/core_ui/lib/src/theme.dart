@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 ///
 /// Deliberately thin in `T-001`: the scaffold task explicitly ships no design tokens, so this is
 /// stock Material 3 with a seed colour and nothing else. Replacing it with the real token set is
-/// milestone M3's job, and doing it early would mean rebuilding it around whatever the engine turns
-/// out to be able to provide (`docs/BOOTSTRAP.md`).
+/// milestone M3's job (`T-033`), and doing it early would mean rebuilding it around whatever the
+/// engine turns out to be able to provide.
 abstract final class DiapasonTheme {
   /// Seed colour for both brightness variants until real tokens exist.
   static const Color _seed = Color(0xFF2E7D6F);

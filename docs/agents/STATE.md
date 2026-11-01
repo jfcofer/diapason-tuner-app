@@ -1,4 +1,4 @@
-# STATE — updated 2026-11-01 (T-022: names a branch never pushed; T-025 next)
+# STATE — updated 2026-11-01 (T-025: docs checked for true paths; T-003d next)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > Agents: run `just session-start`, read this, then the active task file. PR and merge state
@@ -11,8 +11,8 @@ decision (2026-11-01, `T-024`) the next product work is the vertical slice `T-02
 M1, M2 and M3 (`docs/ROADMAP.md`) before they close. **1.0 is Android only** (`adr/0035`). **Status:**
 
 - **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`–`T-003c`, T-015,
-  T-019, `T-003e`, `T-020`, `T-003f`, `T-014`, `T-021`, `T-024`, `T-022` (PRs #6–#9, #11–#16, #24,
-  #27–#31, #34, #36, #38–#45, and this one), Dependabot #2, #10, #21, #22, #25, #26,
+  T-019, `T-003e`, `T-020`, `T-003f`, `T-014`, `T-021`, `T-024`, `T-022`, `T-025` (PRs #6–#9, #11–#16,
+  #24, #27–#31, #34, #36, #38–#46, and this one), Dependabot #2, #10, #21, #22, #25, #26,
   #32, #37. #20, #33 closed; #35 closed, superseded by #36. **Open:** none.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 - **Hardware:** Fedora 44 host; **Redmi 23117RA68G** (Android 16, arm64), the one reference device.
@@ -20,8 +20,7 @@ M1, M2 and M3 (`docs/ROADMAP.md`) before they close. **1.0 is Android only** (`a
 
 ## Active task
 
-**`docs/agents/tasks/T-025-docs-truth-and-portability.md`** (todo): true docs, checked by `docs-check`; a
-smaller STATE; rules for every agent in `AGENTS.md`. Then `T-003d` and `T-027`.
+**`docs/agents/tasks/T-003d-note-table.md`** (todo): the note table Rust and Dart share. Then `T-027`.
 **Waiting on the Redmi:** `T-026` (the kill tests, with the owner playing) and `T-002d` (L3/L4, L10).
 
 ## What exists now
@@ -41,47 +40,9 @@ smaller STATE; rules for every agent in `AGENTS.md`. Then `T-003d` and `T-027`.
   `Frame::display`, `dsp::lock`), gated on §1's latency rows. Chords (`0033`, `0034`): `Frame::held`.
   **Recordings** (`adr/0030`): `cargo xtask fixtures import|reference|check`, `recorded.rs`.
 
-## Decisions already made (do not re-litigate without an ADR)
-
-The index is `docs/adr/README.md`. The ones a session most often runs into:
-- `0011` pins live in `tools/versions.env`. `0019` minSdk is 28, the first API with AAudio presets.
-- `0018` lossy casts only in `dsp::convert`; `docs-check` rejects every other suppression.
-- `0020` Android audio: raw `ndk-sys`, our own wrapper; `clock_gettime` is the one RT timing call.
-- `0021` release builds abort on panic, and nothing catches it. The FFI `api` module denies
-  `unwrap`, `expect`, `panic!` and unchecked indexing, and so must any new crate the FFI calls.
-- `0022` `session` owns the stream; every (re)open replays desired state (a replay test each).
-- `0024` Pigeon for platform channels; Rust picks the preset; Dart tells the session the permission.
-- `0025` buffer growth is session policy; only the start-up drain discards input.
-- `0028` windows, hops, crossover from a worst-case latency ledger; **tuner snapshots at 60 Hz**;
-  budgets ≥ 160 Hz ≤ 85 ms, 80–160 Hz ≤ 110 ms, low B ≤ 190 ms (owner, 2026-10-23).
-- `0026` patrol runs device tests, never in a release; it applies KGP: check before Flutter bumps.
-- `0027` synthetic audio fixtures are generated in code; only recordings are checked in.
-- `0031` a verifier moves down only to a third or a quarter of a pitch the range cannot see.
-  `0032` the needle: one-euro in cents, ≤ 3 ¢ behind the median; lock takes the caller's cents.
-- `0033`/`0034` a chord is told from a string by the partials it sounds, never an onset.
-- `0035` Android only for 1.0. `0036` the tuner listens by itself after one consent, only while visible.
-
-## Traps a later session will otherwise re-discover
-
-- **A clean checkout has no `*.g.dart` or `*.g.kt`** (Pigeon). Run `just deps` first. A tree that
-  has them hides this, so test CI-shaped changes in a fresh clone.
-- **`doctor` uses GNU grep `-P`** (not macOS). **`flutter build ipa` needs a team**: `build-ios-unsigned`.
-  **JDK 25 breaks Flutter Android** (flutter#187223): Flutter uses JDK 21 via `--jdk-dir`.
-- **A cold release build can exhaust this 14 GB host** (fat LTO for every ABI; cargokit ignores
-  `--target-platform`): main checkout only, `CARGO_BUILD_JOBS=4`, nothing else running.
-- **`cargo fmt` reformats FRB's generated file**, so `just gen` formats (cargokit is not ours).
-  **A `clippy.toml` edit keeps clippy's cache:** `touch` a source file. **Compiling a crate is not
-  linking it:** verify on the shipped binary.
-- **HyperOS (the Redmi) wants a tap on every USB install**, even with "USB debugging (Security
-  settings)" on (it is). Unanswered: `INSTALL_FAILED_USER_RESTRICTED`, which the runner names.
-- **Run patrol only through `tools/patrol.sh`:** bare, it edits `~/.bashrc`, hangs on Chrome,
-  sends Google Analytics, and fails offline on a pub.dev update check.
-- **`uiautomator dump` fails while the tuner listens** (30 Hz redraws): `rm` the old XML first,
-  or use `screencap`. **A patrol run uninstalls the app**, and its APK is the test bundle.
-- **`check-drift` diffs the index, `ios-project-check` HEAD:** stage regenerated output first.
-  **`dsp`'s clippy list is the RT list, tests too:** no `println!`, `prop_assert!`, `Vec::push`.
-  **`just bench` needs a quiet host** (parallel agents: +20 %, just after `verify`: +68 %); even
-  idle, 2 of 4 runs failed one µs-scale entry at 10 %. `dsp` tests take ~50 s in a debug build.
+**Decisions:** `docs/adr/README.md` is the index. Read the ADR before touching its area, and do not
+re-litigate one without a new ADR. **Traps a session would otherwise re-discover:** `docs/DEVELOPMENT.md`
+§6; read it before your first build.
 
 ## Known gaps (not blocking)
 
@@ -109,12 +70,11 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **`T-025`** (true docs, portable protocol, a smaller STATE).
-2. **`T-026`, with the owner and the Redmi:** frame cost on the phone and real microphone captures. Its
+1. **`T-026`, with the owner and the Redmi:** frame cost on the phone and real microphone captures. Its
    gate can change everything after it, and it decides `T-023` and `T-003g`.
-3. **`T-003d`**, then the slice: **`T-027` → `T-028` → `T-029` → `T-030`**, host-testable without the
+2. **`T-003d`**, then the slice: **`T-027` → `T-028` → `T-029` → `T-030`**, host-testable without the
    Redmi, then **`T-031`** (a real note, measured latency) and **`T-032`** (a stall on a real string).
-4. **`T-033`** (the strobe display), which also holds `T-016`, `T-002e` and `T-002f`. `T-002d`'s rows
+3. **`T-033`** (the strobe display), which also holds `T-016`, `T-002e` and `T-002f`. `T-002d`'s rows
    whenever the Redmi is attached.
-5. **To close M2:** `T-003h`; and, on a quiet host, the owner's `just bench`, then `just bench-baseline`
+4. **To close M2:** `T-003h`; and, on a quiet host, the owner's `just bench`, then `just bench-baseline`
    (it adopts `chain/smooth`, `chain/chord`, `chain/strum`; `T-019`'s hook). `T-004` as slices need it.

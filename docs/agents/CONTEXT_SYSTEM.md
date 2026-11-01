@@ -70,7 +70,7 @@ it cannot be answered.
 ## 4. The protocol
 
 Written out in `AGENTS.md` §2 because that is the file every agent loads. The mechanics are wrapped
-in `just session-start` and `just session-end` (and `.claude/commands/` for Claude Code) so that
+in `just session-start` and `just session-end` (and portable skills in `.agents/skills/`) so that
 compliance does not depend on an agent remembering. On entry the recipe prints the reading list,
 the working tree, branches not merged into `main` and open PRs with their check verdicts. On exit
 it runs `just verify` and checks that STATE, the task file and the journal were all touched.
@@ -95,6 +95,11 @@ no agent is running, so STATE records PRs by number and never asserts merge stat
 4. **Delete aggressively.** A doc nobody has read in three milestones is a liability. Deleting it is
    a normal commit, and the journal remembers it existed.
 5. **Never rewrite history.** ADRs are superseded; journal entries are appended; STATE is replaced.
+6. **A drift fix lands in the PR that finds it.** Six `process-drift-N` tasks in 35 said otherwise.
+7. **A new process rule needs a named incident and a mechanical check.** Otherwise it is one more
+   thing to load. A study of repository context files found they tended to lower task success and
+   raise cost, and advises minimal requirements (Gloaguen et al. 2026, arXiv 2602.11988; Python only).
+8. **Bookkeeping travels in the PR it describes,** not in separate start and close PRs.
 
 ## 6. Deliberately not used
 
@@ -105,3 +110,13 @@ no agent is running, so STATE records PRs by number and never asserts merge stat
 - **Auto-generated summaries of the codebase.** They go stale silently, which is the worst failure
   mode a memory file can have.
 - **A single giant `context.md`.** It is the thing every one of these rules exists to prevent.
+- **`llms.txt`, an MCP config, `.cursor` rules, or new memory files** (considered 2026-11-01, `T-025`).
+  Each is more to load and to keep true, with no failure on record that it would have prevented.
+
+## 7. Skills
+
+`.agents/skills/<name>/SKILL.md` is the home of the repo's four workflows, in the open Agent Skills format
+(`agentskills.io`). Checked against each tool's docs on 2026-11-01: Codex, Gemini CLI, Copilot and Cursor read
+`.agents/skills/`. Claude Code reads `.claude/skills/` and documents a symlink per skill, so each one is
+a link to the real folder. `.claude/agents/` stays Claude-only: it holds delegation roles, and no rule may
+live only there.

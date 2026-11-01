@@ -296,6 +296,93 @@ while read -r id; do
 done < <(sort -u <<<"$todo_hits")
 [[ $unknown -eq 0 ]] && ok "every TODO names a real task (or T-0xx)"
 
+# ── Paths in living docs must exist ──────────────────────────────────────────
+printf '\n%sPaths in docs%s\n' "$BOLD" "$OFF"
+# Markdown links were checked and backticked paths were not, so docs named a baseline directory and
+# a BOOTSTRAP.md that did not exist while this script passed (T-025). A path counts if git knows it,
+# so a clean clone and a built tree agree. `adr/0028` is shorthand for its file.
+# What may be named before it exists. An entry that comes to exist fails below, so the list shrinks.
+planned_paths=(
+    fixtures/note_table.json   # T-003d
+    adr/0039                   # T-032
+    GEMINI.md                  # Gemini CLI's default file name, which we do not use (T-015)
+)
+is_planned() {
+    local entry
+    for entry in "${planned_paths[@]}"; do [[ "$1" == "$entry" ]] && return 0; done
+    return 1
+}
+git_knows() {
+    local found
+    found="$(git ls-files --cached --others --exclude-standard -- "$@")"
+    [[ -n "$found" ]]
+}
+path_exists() {
+    if [[ "$1" =~ ^[A-Z_]+\.md$ ]]; then
+        git_knows "$1" ":(glob)**/$1"
+    else
+        git_knows "$1" "$1-*" "docs/$1" "docs/$1-*"
+    fi
+}
+# Print the paths named in file $1 that do not exist.
+missing_paths() {
+    local token
+    while read -r token; do
+        [[ "$token" == *###* ]] && continue                   # the `T-###` placeholder, not an anchor
+        token="${token%/}"
+        token="${token%%#*}"
+        case "$token" in
+            *[\*\<\>\{\}\$\(\)=,\|:]*|*…*) continue ;;  # a pattern or a command, not a path
+            apps/*|packages/*|rust/*|tools/*|docs/*|fixtures/*|.github/*|.claude/*|.agents/*|.gemini/*|agents/*|adr/*) ;;
+            *) [[ "$token" =~ ^[A-Z_]+\.md$ ]] || continue ;;
+        esac
+        is_planned "$token" || path_exists "$token" || printf '%s\n' "$token"
+    done < <(grep -oP "\x60\K[^\x60[:space:]]+(?=\x60)" "$1")
+}
+# It proves itself on a planted file first, or a broken pattern would pass everything (T-010).
+planted="$(mktemp)"
+printf '%s\n' '~tools/docs-check.sh~ ~tools/no-such-file.sh~ ~docs/BOOTSTRAP.md~ ~BOOTSTRAP.md~' \
+    '~AGENTS.md~ ~adr/0028~ ~adr/9999~ ~docs/adr/0028~ ~tools/~ ~rust/crates/*/src~ ~a/b.rs~ ~docs/T-###-x.md~' \
+    | tr '~' '\140' >"$planted"
+want=$'tools/no-such-file.sh\ndocs/BOOTSTRAP.md\nBOOTSTRAP.md\nadr/9999'
+if [[ "$(missing_paths "$planted")" != "$want" ]]; then
+    fail "the path check no longer tells real paths from missing ones" "Fix missing_paths in tools/docs-check.sh."
+fi
+rm -f "$planted"
+stalepaths=0
+for doc in docs/*.md AGENTS.md CLAUDE.md tools/README.md docs/agents/STATE.md docs/agents/CONTEXT_SYSTEM.md \
+    docs/agents/GLOSSARY.md docs/adr/README.md docs/agents/tasks/README.md docs/agents/journal/README.md; do
+    while read -r name; do
+        [[ -z "$name" ]] && continue
+        fail "$doc names $name, which does not exist" \
+             "Fix the doc. If it is planned, add it to planned_paths in tools/docs-check.sh."
+        stalepaths=1
+    done < <(missing_paths "$doc")
+done
+# Code cites docs too, and that is where the BOOTSTRAP.md lived. Exit 1 is "no match"; above it, the
+# scan never ran, which must not read as a pass.
+cited="$(git grep --untracked -ohE 'docs/[A-Za-z0-9_./-]+\.md' -- '*.dart' '*.rs' '*.kt' '*.kts' '*.sh' justfile \
+    ':!tools/docs-check.sh' ':!tools/pr-check.sh' ':!**/cargokit/**' ':!**/frb_generated*' 2>&1)"
+cited_rc=$?
+if [[ $cited_rc -gt 1 ]]; then
+    fail "the scan of docs cited in code could not run" "$cited"
+    stalepaths=1
+    cited=''
+fi
+while read -r name; do
+    [[ -z "$name" ]] && continue
+    path_exists "$name" && continue
+    fail "code cites $name, which does not exist"
+    stalepaths=1
+done < <(sort -u <<<"$cited")
+for entry in "${planned_paths[@]}"; do
+    [[ "$entry" == GEMINI.md ]] && continue
+    path_exists "$entry" || continue
+    fail "$entry is in planned_paths, but now exists" "Remove it from tools/docs-check.sh."
+    stalepaths=1
+done
+[[ $stalepaths -eq 0 ]] && ok "every path a living doc names exists, or is planned; every doc cited in code exists"
+
 # ── Code names in living docs must exist in the code ─────────────────────────
 printf '\n%sCode names in docs%s\n' "$BOLD" "$OFF"
 # A doc that names a constant or a `Type::member` the code no longer has describes code that is

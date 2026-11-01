@@ -8,16 +8,14 @@ adds Claude-specific mechanics. Keep it short; if a rule matters to all agents, 
 
 ## Working style here
 
-- **Plan mode first** for anything touching the Rust engine, the FFI surface, or more than three
-  files. Present the plan, get approval, then implement.
-- Use the `/session-start` and `/session-end` commands in `.claude/commands/` — they encode the
-  protocol in `AGENTS.md` §2 so it does not depend on you remembering it.
+- **Plan mode** is how you meet `AGENTS.md` §3.1's plan approval.
+- Use the `/session-start` and `/session-end` skills in `.agents/skills/` (each linked from
+  `.claude/skills/`) — they encode the protocol in `AGENTS.md` §2 so it does not depend on you
+  remembering it.
 - Delegate to subagents in `.claude/agents/` when the work splits cleanly: `dsp-engineer` for
   `rust/crates/dsp`, `flutter-ui` for `core_ui`/`feature_*`, `reviewer` before you hand back.
   Subagents keep their exploration out of the main context window — use them for search-heavy
   spelunking, not for decisions.
-- Long tasks: checkpoint into the task file as you go. Assume the session can end at any moment and
-  another agent (possibly not Claude) picks it up with only `STATE.md` and the task file.
 
 ## Context hygiene
 
@@ -29,10 +27,8 @@ adds Claude-specific mechanics. Keep it short; if a rule matters to all agents, 
 ## Permissions
 
 `.claude/settings.json` is the only statement of what is pre-approved, asked or denied; read it,
-do not rely on a summary. What it cannot say: its rules match command prefixes, so treat any
-spelling of a destructive command (`git push -f`, `rm -fr`) as denied whatever it matches. Edits
-to `apps/diapason/android/app/build.gradle.kts` ask because it holds the signing block. That
-boundary is deliberate; do not propose widening it to move faster.
+do not rely on a summary. Its rules match command prefixes, so `AGENTS.md` §8's "in any spelling"
+is what binds. Do not propose widening the signing boundary to move faster.
 
 One recorded exception, approved by the owner on 2026-10-09 (`T-007`): `just session-start` runs
 two **read-only network** calls, `git fetch --prune` and `gh pr list`, without a prompt, even though

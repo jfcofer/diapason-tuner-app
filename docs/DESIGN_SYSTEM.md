@@ -26,7 +26,7 @@ one element carries the app.
 Spend the boldness there. The rest is disciplined: generous negative space, one accent, no
 gradients-for-decoration, no glassmorphism, no glow.
 
-### Tokens (starting point — refine in T-004, then this section is the record)
+### Tokens (starting point — refine in T-033, then this section is the record)
 
 | Token | Value | Use |
 |---|---|---|

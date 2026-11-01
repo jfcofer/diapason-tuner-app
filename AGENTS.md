@@ -21,8 +21,8 @@ Diapasón is a production instrument **tuner + metronome** for Android (phone + 
 3. The active task file named in STATE.md (`docs/agents/tasks/T-###-*.md`).
 4. Only the reference docs the task points to. Do not bulk-read `docs/`.
 5. Reconcile STATE.md and the task files with what `session-start` printed (merged or open PRs,
-   unmerged branches, red checks, open tasks whose PR merged). Those change between sessions;
-   report every contradiction before starting work.
+   unmerged branches, red checks, open tasks whose PR merged). Report every contradiction, then
+   wait: starting a session is not a request to implement.
 
 **At session end — write, in order:**
 1. Update the task file: check off acceptance criteria, record deviations.
@@ -40,40 +40,40 @@ Rationale and the full memory model → `docs/agents/CONTEXT_SYSTEM.md`.
 
 ## 3. Golden rules
 
-1. **Plan before code.** Non-trivial work starts as a task file with acceptance criteria. If no task
-   file exists for what you are about to do, write one first (`docs/agents/tasks/TEMPLATE.md`).
+1. **Plan before code.** Non-trivial work starts as a task file with acceptance criteria
+   (`docs/agents/tasks/TEMPLATE.md`). Work on the Rust engine, the FFI surface or more than three
+   files needs the owner's approval of a plan first. Checkpoint into the task file as you go: a
+   session can end at any moment, and the next agent has only that file and STATE.md.
 2. **`just verify` is the gate.** It must pass before you claim anything is done. Never weaken a
    lint, skip a test, or add `// ignore:` / `#[allow]` to get it green — fix the cause or escalate
    in STATE.md. The one audited exception is lossy numeric casts in `dsp::convert` (`adr/0018`);
    `docs-check` enforces both.
 3. **Never invent an API.** If unsure of a crate, package, or platform API, check the pinned docs or
-   say so in STATE.md under "Open questions". Guessing wastes more of my time than asking.
+   say so in STATE.md under "Open questions".
 4. **Small, reversible commits.** Conventional Commits, imperative mood, one concern each,
    `refs T-###` in the body. `main` is protected: work lands only through a PR with all six CI
    jobs green, **rebase-merged** (linear history, each commit kept). No one can bypass the ruleset.
-5. **Respect the layer boundaries** in §5. Most damage in this repo will come from crossing them.
+5. **Respect the layer boundaries** in §5.
 6. **One fact, one home.** Duplicated documentation rots. Link instead of copying.
-7. Files are code: prefer editing an existing file over creating a parallel one. No `*_v2.dart`,
-   no `utils.dart` dumping grounds.
+7. Edit an existing file over creating a parallel one: no `*_v2.dart`, no `utils.dart` dumping grounds.
 
 ## 4. Commands
 
-`just` is the single entry point for humans, agents, and CI. Never hand-roll a command an agent
-might need to repeat — add a recipe.
+`just` is the single entry point for everyone. Never hand-roll a repeatable command: add a recipe.
 
 | Command | Does |
 |---|---|
 | `just setup` | Toolchain check, `dart pub get` across the workspace, codegen |
 | `just verify` | **The gate:** format + lint + test + codegen-drift check, Dart *and* Rust |
-| `just gen` | flutter_rust_bridge + build_runner + Pigeon + l10n codegen |
+| `just gen` | flutter_rust_bridge + build_runner + Pigeon codegen |
 | `just test-rust` / `just test-dart` | Focused test loops |
 | `just bench` | Criterion DSP benches (fails on regression vs. baseline) |
-| `just run android` / `just run ios` | Launch the dev flavor |
+| `just run android` | Launch the dev flavor |
 | `just fix` | Auto-fix formatting and trivial lints |
 
 Full list: `just --list`. If a recipe is missing, add it in the same PR.
 
-## 5. Boundaries (the rules that keep this codebase clean)
+## 5. Boundaries
 
 **Dependency direction is one-way. Nothing below may depend on anything above it.**
 
@@ -96,7 +96,7 @@ apps/diapason  →  packages/feature_*  →  packages/core_ui, core_domain, core
   (60 Hz while tuning, `adr/0028`).
 - No `dart:io`/plugin calls inside `core_ui` widgets; inject via `core_platform` interfaces.
 
-## 6. Real-time audio rules (violating these ships audible bugs)
+## 6. Real-time audio rules
 
 The audio callback thread is sacred. Inside it, and anything it calls:
 
@@ -106,8 +106,7 @@ The audio callback thread is sacred. Inside it, and anything it calls:
 - **No** panics: release builds abort on one, and nothing catches it (`adr/0021`).
 - Communicate with the rest of the app only through the lock-free SPSC ring buffers and atomic
   snapshots defined in `docs/AUDIO_ENGINE.md`.
-- Every buffer the RT path needs is preallocated at stream start, sized from the largest supported
-  configuration.
+- Every buffer the RT path needs is preallocated at stream start, for the largest configuration.
 - Debug builds assert this with `assert_no_alloc`; tests fail if the callback allocates.
 
 Timing: the **audio clock is the only clock**. Never drive a beat, a countdown, or an animation
@@ -139,11 +138,12 @@ UI changes to `core_ui` require a golden. Never assert on wall-clock timing in a
 
 - Never commit generated files that `just gen` produces, except where `.gitattributes` marks them
   as checked-in (frb bindings are checked in — regenerate, never hand-edit).
-- Never add a Dart package that bundles its own audio I/O, or a plugin that duplicates something
-  Rust already owns.
+- Never add a Dart package with its own audio I/O, or a plugin duplicating what Rust owns.
 - Never add analytics, ad SDKs, or any network call. This app makes zero network requests.
   If a task seems to need one, stop and flag it.
 - Never bump `targetSdk`, `minSdk`, deployment target, or a pinned toolchain version as a side
   effect of another change — that is its own task and its own ADR.
 - Never edit `docs/adr/*.md` that are marked Accepted, or rewrite journal entries.
-- Never `git push --force`, rewrite main's history, or commit secrets/keystores/`*.p8`/`*.p12`.
+- Never `git push --force`, `git reset --hard` or `rm -rf`, in any spelling (`git push -f`, `rm -fr`).
+  Never rewrite main's history, or commit secrets/keystores/`*.p8`/`*.p12`. The signing block in
+  `apps/diapason/android/app/build.gradle.kts` changes only with the owner's say.
