@@ -6,8 +6,8 @@
 
 ## 1. What this is
 
-Diapasón is a production instrument **tuner + metronome** for Android and iOS (phone + tablet).
-Flutter owns the UI; **Rust owns all audio and DSP**. Offline-first, zero telemetry by default.
+Diapasón is a production instrument **tuner + metronome** for Android (phone + tablet); iOS is post-1.0
+(`adr/0035`). Flutter owns the UI; **Rust owns all audio and DSP**. Offline-first, zero telemetry by default.
 
 - Product scope & requirements → `docs/PRODUCT_SPEC.md`
 - System architecture → `docs/ARCHITECTURE.md`

@@ -29,15 +29,18 @@ third-party crates only from the list in `tools/check-deps.sh` (`AGENTS.md` §5)
 | `T-003b` | Pre-processing: 20 Hz DC block, adaptive RMS gate, ×4 FIR decimation with hysteresis, adaptive window per range. **Gates harmonic-rich tones (sawtooth) at ±0.5 ¢ through the chain:** its filter must cut well below the analysis Nyquist (`T-003a`'s notes). Also derives windows, hops and the crossover from a latency ledger | done (#31) |
 | `T-003c` | Octave guard at the estimate (τ/2, 2τ, three-frame hysteresis) and across ranges, designed together; pinch-harmonic, low-B, ringing-string and gapless-leap tests; downward note changes inside §1's fail lines (owner, 2026-10-23) | done (#34) |
 | `T-003f` | Median-of-5 and one-euro filter, `frequency_raw` and `frequency_display`, lock detection, §1's display stability, inside the ledger's smoothing reserve. Split from `T-003c` on 2026-10-23; also gates the two 12 dB-under downward changes `T-003c` moved to it | done (`adr/0032`) |
-| `T-003d` | `fixtures/note_table.json`; `dsp` and `core_domain` both assert against it (A4, temperaments, transposition) | todo, no file |
+| `T-003d` | `fixtures/note_table.json`; `dsp` and `core_domain` both assert against it: 12-TET, A4, transposition. `T-031` needs it | todo |
+| `T-003h` | Temperament tables added to the same file and asserted by both (`AUDIO_ENGINE.md` §4). Split from `T-003d` on 2026-11-01 | todo, no file |
 | `T-003e` | Recorded fixtures (guitar, bass, ukulele, violin) from CC0 libraries the owner chose over recording (2026-10-30), an independent reference pitch, §1's ±2 ¢ on acoustic guitar | done |
-| `T-003g` | Budgets for recorded bass, electric guitar, ukulele and violin, set by ADR from `T-003e`'s measurements (owner, 2026-10-30) | todo, no file |
+| `T-003g` | Budgets for recorded bass, electric guitar, ukulele and violin. Moved to M3 on 2026-11-01 (`T-024`): not an M2 exit, and it waits on `T-026` | blocked |
 
-Wiring the detector into `engine` and the snapshot is M3, not this task.
+Wiring the detector into `engine` and the snapshot is M3 (`T-027`–`T-031`), not this task. It runs
+before M2 closes, by the owner's decision on 2026-11-01 (`T-024`), because no budget had been measured
+through the real path.
 
 ## Acceptance criteria
 
-- [ ] Every slice above is done, or abandoned with a reason
+- [ ] Every slice above is done, or abandoned with a reason, except `T-003g`, which moved to M3
 - [ ] The M2 exit criteria in `ROADMAP.md` hold, each with the test or bench that proves it
 
 ## Out of scope

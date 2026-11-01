@@ -12,7 +12,7 @@ differentiators, in priority order:
 1. **Accuracy you can see** — a strobe display that physically stalls at pitch, not a needle that
    guesses.
 2. **Zero friction** — opens straight into the tuner, listening, in under a second. No account, no
-   onboarding wall, no interstitial.
+   onboarding wall, no interstitial. The one tap is the first run's microphone consent (`adr/0036`).
 3. **Nothing leaves the device** — no network permission, no analytics, no ads. Stated plainly on
    the store listing.
 4. **It works for the instruments people actually own**, and speaks their note names (letters,
@@ -20,7 +20,7 @@ differentiators, in priority order:
 
 ## 2. Tuner
 
-**Core loop.** Open → it is already listening → play a note → see the note name, the cents
+**Core loop.** Open → it is already listening (from the second launch; `adr/0036`) → play a note → see the note name, the cents
 deviation, and the strobe → adjust → it locks with a colour change, a settling animation, and an
 optional haptic tick.
 
@@ -96,7 +96,7 @@ silence the user cannot explain), and screen off (must keep exact time).
 
 ## 5. Non-goals for 1.0
 
-Polyphonic/chord tuning · recording or playback of takes · chord libraries or lesson content ·
+iOS (`adr/0035`) · polyphonic/chord tuning · recording or playback of takes · chord libraries or lesson content ·
 cloud sync or accounts · a watch app · MIDI · audio interface / multi-channel input ·
 sample-based click packs · ads or subscriptions. Each of these is a reasonable future; none may
 influence the 1.0 architecture beyond leaving the seams that already exist.
@@ -110,7 +110,7 @@ network posture of the app. Record the decision as an ADR when it is made.
 
 ## 7. Quality bar for "done"
 
-A feature is finished when: it works on the four reference devices, it handles every state in its
+A feature is finished when: it works on the reference device (`adr/0035`), it handles every state in its
 section above, it has tests per `TESTING.md`, it is accessible per §4, it is localised in both
 launch languages, it looks right at 320 dp and at 1024 dp, it survives the lifecycle matrix in
 `PLATFORM_AUDIO.md` §5, and it does not regress a budget in `AUDIO_ENGINE.md` §1.

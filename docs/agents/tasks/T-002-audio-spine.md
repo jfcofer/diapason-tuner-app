@@ -1,6 +1,6 @@
 ---
 id: T-002
-title: Prove one duplex audio stream on both platforms
+title: Prove one duplex audio stream on Android
 status: in-progress
 milestone: M1
 owner: claude
@@ -54,12 +54,13 @@ Mac and no iPhone.
 
 - `T-002a` — engine RT core, `OfflineBackend`, conformance suite, zero-alloc test. Host-only.
 - `T-002b` — Android duplex on the Redmi, binding ADR first (`oboe` vs `ndk` AAudio).
-- `T-002c` — iOS CoreAudio, verified on the CI Simulator. On-device rows stay open.
+- `T-002c` — iOS CoreAudio, verified on the CI Simulator. **Abandoned for 1.0 (`adr/0035`).**
 - `T-002d` — tuner lifecycle on Android: release the microphone off screen (added 2026-10-21).
 - `T-002e` — diagnostics overlay and the first golden (added 2026-10-21).
 - `T-002f` — round-trip latency, estimated in-app and checked against OboeTester (added 2026-10-21).
 
-This task is done when all its slices are, plus whatever the slices could not reach is listed as open
+**Amended 2026-11-01 (`adr/0035`):** Android only for 1.0, so the `CoreAudio` backend and "both
+platforms" in the criteria above no longer bind this task. This task is done when all its slices are, plus whatever the slices could not reach is listed as open
 in STATE.md. **Criterion amended before work started:** "all four reference devices" became "every
 reference device available". Four devices cannot be measured with one, and a criterion nobody can
 meet only gets ticked dishonestly or ignored. **Amended 2026-10-09 (`T-010`):** the Android backend

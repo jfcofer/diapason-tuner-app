@@ -18,10 +18,18 @@ branch was never pushed. Name that case where the two session recipes already lo
 
 ## Context
 
-Read: `tools/session-start.sh` (the "Branches" loop over `git for-each-ref`, which already reads
-`%(upstream:track)`), `tools/session-end.sh`, `AGENTS.md` §2, and `docs/agents/CONTEXT_SYSTEM.md`.
+Read: `tools/session-start.sh` (the "Branches" loop over `git for-each-ref`), `tools/session-end.sh`, `AGENTS.md` §2, and `docs/agents/CONTEXT_SYSTEM.md`.
 Both scripts must stay bash 3.2-portable and never fatal on network failure (`T-007`). The
 `pr-check` self-test (`just pr-check-selftest`) is the pattern for proving a rule fails.
+
+**Traps, found 2026-11-01 before any work started (`T-024`):**
+- `%(upstream:track)` is empty both for a branch in sync with its upstream and for one with no
+  upstream, so it cannot tell them apart. Test `%(upstream)`.
+- These verdicts rest on refs from `git fetch`, which can fail. On 2026-11-01 `session-start` printed
+  `Permission denied (publickey)`, then the same fetch succeeded minutes later with no change on this
+  side; the cause is unknown. When the fetch failed, say so beside any verdict that read those refs.
+- A branch pushed without `-u` has no upstream while the remote has it. Compare with
+  `refs/remotes/origin/<branch>` too, or it reads as never pushed.
 
 ## Acceptance criteria
 
@@ -34,6 +42,8 @@ Both scripts must stay bash 3.2-portable and never fatal on network failure (`T-
 - [ ] `just session-end` also notices, never fails, when the current branch is `main` or is
   already merged (`git cherry` empty against `origin/main`). The owner merging, or switching the
   working copy, mid-session put a commit on local `main` on 2026-10-31.
+- [ ] After a failed fetch, the verdicts above say they may be stale. Shown on the scratch clone.
+- [ ] A branch pushed without `-u` does not read as never pushed. Shown on the scratch clone.
 - [ ] `shellcheck` stays clean. No new network call: only refs `git fetch` already brought.
 
 ## Out of scope

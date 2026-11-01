@@ -1,11 +1,16 @@
 ---
 id: T-002c
 title: iOS CoreAudio backend, verified as far as CI can reach
-status: todo
+status: abandoned
 milestone: M1
 owner: unassigned
 created: 2026-10-04
 ---
+
+**Abandoned 2026-11-01 for 1.0 (`adr/0035`):** Android only for 1.0, and with no iPhone a microphone
+path on iOS could not be verified. A blocked slice would keep `T-002` open for ever, so it closes here.
+A later iOS effort starts from this file, and must first settle where `audio_io` puts lossy casts:
+Core Audio's `mSampleTime` is an `f64`, and `adr/0018` keeps those casts in `dsp::convert`.
 
 ## Goal
 

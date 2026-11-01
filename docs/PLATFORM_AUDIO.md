@@ -4,6 +4,8 @@ This document owns everything **outside** the algorithm: how the stream is opene
 the store requires in 2026, and the platform behaviours that break naive audio apps. Algorithms are
 in `AUDIO_ENGINE.md`.
 
+**1.0 is Android only (`adr/0035`).** The iOS material here is kept as the post-1.0 starting point.
+
 ## 1. The backend trait
 
 `rust/crates/audio_io` exposes one trait and four implementations. The engine knows nothing else.
@@ -177,7 +179,7 @@ its shell branch goes offstage; a dialog, a menu or a bottom sheet over it does 
 | L8 | Screen locked | Stop | Continue, show lock-screen controls | manual: Redmi 23117RA68G, Android 16 (HyperOS), 2026-10-22 |
 | L9 | Low-power mode | Reduce update rate to 20 Hz | Unaffected | deferred: M3 |
 | L10 | Another app takes exclusive audio | Stop with a clear message | Pause | open: T-002d |
-| L11 | User leaves the screen | Stop; returning does not restart it (M1, open question for M3) | Decided in M4 | patrol: Redmi 23117RA68G, Android 16 (HyperOS), 2026-10-22 |
+| L11 | User leaves the screen | Stop; returning listens again, unless paused in this run (`adr/0036`) | Decided in M4 | open: T-031 |
 
 ## 6. Battery and thermals
 
