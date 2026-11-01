@@ -11,6 +11,7 @@
 //! - [`smooth`]: what the needle shows, the guarded estimate through a median of five and a
 //!   one-euro filter (`docs/adr/0032`).
 //! - [`lock`]: the "held in tune" indicator, from the estimate's cents on the audio clock.
+//! - [`note`]: the note a frequency is nearest, and its cents (`docs/AUDIO_ENGINE.md` §4).
 //! - [`chain`]: all of it composed, split at the ring buffer into the callback's [`chain::Front`]
 //!   and the analysis thread's [`chain::Analysis`], so the engine only owns the threads.
 //! - [`synth`]: deterministic, seeded fixture signals that test and bench it.
@@ -44,6 +45,7 @@ pub mod frame;
 pub mod gate;
 pub mod level;
 pub mod lock;
+pub mod note;
 pub mod octave;
 pub mod osc;
 pub mod pitch;

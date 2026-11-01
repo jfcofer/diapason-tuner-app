@@ -71,3 +71,24 @@ pub fn index_to_f64(index: usize) -> f64 {
 pub fn index_from_f64(value: f64) -> usize {
     value as usize
 }
+
+/// The largest whole number not above `value`, as an `i32`, saturating at both ends.
+///
+/// A note number is a few hundred at most, so the only loss is the fraction, which is the point. NaN
+/// gives 0, which is what Rust's float-to-integer `as` does; [`crate::note`] rejects NaN first.
+///
+/// ```
+/// use diapason_dsp::convert::floor_to_i32;
+/// assert_eq!(floor_to_i32(69.5), 69);
+/// assert_eq!(floor_to_i32(-0.5), -1);
+/// assert_eq!(floor_to_i32(1e300), i32::MAX);
+/// ```
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "flooring and saturation are the documented behaviour of this function"
+)]
+#[must_use]
+#[inline]
+pub fn floor_to_i32(value: f64) -> i32 {
+    value.floor() as i32
+}

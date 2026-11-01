@@ -37,9 +37,12 @@ ok() { printf '  %s✓%s %s\n' "$GREEN" "$OFF" "$1"; }
 # Only directories that exist are searched: grep exits 2 on a missing one, and under pipefail that
 # status used to make `imports_of x | grep -q y` false even on a match - so a package without a
 # test/ directory could import anything unreported. `|| true` because no matches is not an error.
+# Searches lib and test, or only the subdirectories named after the package.
 imports_of() {
-    local dirs=() d
-    for d in "$1"/lib "$1"/test; do [[ -d "$d" ]] && dirs+=("$d"); done
+    local package="$1" dirs=() d
+    shift
+    [[ $# -eq 0 ]] && set -- lib test
+    for d in "$@"; do [[ -d "$package/$d" ]] && dirs+=("$package/$d"); done
     [[ ${#dirs[@]} -eq 0 ]] && return 0
     { grep -rhoP "^\s*(import|export)\s+'\K[^']+" "${dirs[@]}" || true; } | sort -u
 }
@@ -70,15 +73,35 @@ done
 [[ $VIOLATIONS -eq 0 ]] && ok "no feature_* imports another feature_*"
 
 # ── core_domain is pure Dart ──────────────────────────────────────────────────
+# What package $1 must not import: Flutter anywhere, and dart:io in what ships. Its tests may read a
+# fixture, as adr/0007 and docs/TESTING.md require of the note table; they still run under `dart test`
+# (owner, 2026-11-01, T-003d).
+impure_imports() {
+    { imports_of "$1"; imports_of "$1" lib | sed 's/^dart:io$/dart:io (in lib)/'; } \
+        | grep -E '^(package:flutter/|package:flutter_|dart:ui$|dart:io \(in lib\)$)' | sort -u
+}
+# The exception is narrow, so prove it stays narrow on a planted package, or it could widen unseen.
+planted="$(mktemp -d)"
+mkdir -p "$planted/lib" "$planted/test"
+printf "import 'dart:io';\n" >"$planted/lib/a.dart"
+printf "import 'dart:io';\nimport 'package:flutter/material.dart';\n" >"$planted/test/a.dart"
+if [[ "$(impure_imports "$planted")" != $'dart:io (in lib)\npackage:flutter/material.dart' ]]; then
+    violation "the core_domain purity check no longer tells what ships from its tests" \
+        "Fix impure_imports in tools/check-deps.sh."
+fi
+printf "import 'dart:math';\n" >"$planted/lib/a.dart"
+printf "import 'dart:io';\n" >"$planted/test/a.dart"
+if [[ -n "$(impure_imports "$planted")" ]]; then
+    violation "the core_domain purity check rejects dart:io in a test" \
+        "Fix impure_imports in tools/check-deps.sh."
+fi
+rm -rf "$planted"
 before=$VIOLATIONS
 while read -r import; do
-    case "$import" in
-        package:flutter/*|package:flutter_*|dart:io|dart:ui)
-            violation "core_domain imports $import" \
-                "core_domain is pure Dart: no Flutter, no I/O, no plugins. It must run under \`dart test\`."
-            ;;
-    esac
-done < <(imports_of packages/core_domain)
+    [[ -z "$import" ]] && continue
+    violation "core_domain imports $import" \
+        "core_domain is pure Dart: no Flutter, no plugins, and no I/O in lib. It must run under \`dart test\`."
+done < <(impure_imports packages/core_domain)
 [[ $VIOLATIONS -eq $before ]] && ok "core_domain is pure Dart"
 
 # ── core_ui owns no state management and no platform access ───────────────────

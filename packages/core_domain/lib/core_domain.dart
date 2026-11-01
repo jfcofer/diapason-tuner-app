@@ -9,4 +9,5 @@ library;
 
 export 'src/audio_device_capabilities.dart';
 export 'src/engine_status.dart';
+export 'src/note.dart';
 export 'src/session_snapshot.dart';

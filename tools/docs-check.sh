@@ -303,7 +303,6 @@ printf '\n%sPaths in docs%s\n' "$BOLD" "$OFF"
 # so a clean clone and a built tree agree. `adr/0028` is shorthand for its file.
 # What may be named before it exists. An entry that comes to exist fails below, so the list shrinks.
 planned_paths=(
-    fixtures/note_table.json   # T-003d
     adr/0039                   # T-032
     GEMINI.md                  # Gemini CLI's default file name, which we do not use (T-015)
 )
