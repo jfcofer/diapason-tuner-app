@@ -70,7 +70,8 @@ diapason/
 │
 ├── docs/                        See docs/README.md
 ├── tools/                       Scripts called by the justfile. Bash, POSIX-ish
-├── .claude/                     Claude Code: settings, commands, subagents
+├── .agents/skills/              The repo's workflows, for every agent (agents/CONTEXT_SYSTEM.md §7)
+├── .claude/                     Claude Code: settings, subagents, links to the skills
 └── .github/workflows/           CI
 ```
 

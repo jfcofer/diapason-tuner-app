@@ -50,7 +50,8 @@ flutter config --jdk-dir="$HOME/.sdkman/candidates/java/21.0.12+1.1-tem"
 rustup toolchain install
 
 # Tooling. FRB is pinned deliberately — `cargo install` without --version installs latest and
-# silently desynchronises you from the Rust and Dart sides. No cargo-ndk: cargokit drives the NDK.
+# silently desynchronises you from the Rust and Dart sides. cargokit drives the NDK for app builds;
+# only `just test-android-device` needs cargo-ndk 4, not pinned until T-004.
 cargo install cargo-nextest cargo-deny --locked
 cargo install flutter_rust_bridge_codegen --version 2.13.0 --locked
 
@@ -119,3 +120,25 @@ keep engine iterations in `cargo test` where they are milliseconds, not in the a
 Never commit with hooks disabled. Never leave a `TODO` without a task ID (`// TODO(T-042):`).
 Never check in `.env`, keystores, `*.p8`, `*.p12`, or provisioning profiles — `.gitignore` covers
 them and `lefthook` scans for them, but the check is a safety net, not permission to be careless.
+
+## 6. Traps a session would otherwise re-discover
+
+- **A clean checkout has no `*.g.dart` or `*.g.kt`** (Pigeon). Run `just deps` first. A tree that
+  has them hides this, so test CI-shaped changes in a fresh clone.
+- **`doctor` uses GNU grep `-P`** (not macOS). **`flutter build ipa` needs a team**: `build-ios-unsigned`.
+  **JDK 25 breaks Flutter Android** (flutter#187223): Flutter uses JDK 21 via `--jdk-dir`.
+- **A cold release build can exhaust this 14 GB host** (fat LTO for every ABI; cargokit ignores
+  `--target-platform`): main checkout only, `CARGO_BUILD_JOBS=4`, nothing else running.
+- **`cargo fmt` reformats FRB's generated file**, so `just gen` formats (cargokit is not ours).
+  **A `clippy.toml` edit keeps clippy's cache:** `touch` a source file. **Compiling a crate is not
+  linking it:** verify on the shipped binary.
+- **HyperOS (the Redmi) wants a tap on every USB install**, even with "USB debugging (Security
+  settings)" on (it is). Unanswered: `INSTALL_FAILED_USER_RESTRICTED`, which the runner names.
+- **Run patrol only through `tools/patrol.sh`:** bare, it edits `~/.bashrc`, hangs on Chrome,
+  sends Google Analytics, and fails offline on a pub.dev update check.
+- **`uiautomator dump` fails while the tuner listens** (30 Hz redraws): `rm` the old XML first,
+  or use `screencap`. **A patrol run uninstalls the app**, and its APK is the test bundle.
+- **`check-drift` diffs the index, `ios-project-check` HEAD:** stage regenerated output first.
+  **`dsp`'s clippy list is the RT list, tests too:** no `println!`, `prop_assert!`, `Vec::push`.
+  **`just bench` needs a quiet host** (parallel agents: +20 %, just after `verify`: +68 %); even
+  idle, 2 of 4 runs failed one µs-scale entry at 10 %. `dsp` tests take ~50 s in a debug build.

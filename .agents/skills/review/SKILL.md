@@ -1,4 +1,5 @@
 ---
+name: review
 description: Review the working tree against this repo's actual standards
 ---
 

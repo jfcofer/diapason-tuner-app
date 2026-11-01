@@ -16,7 +16,7 @@ This document owns **everything between a commit and a user**.
 | `build-ios` | macos-26 | `build-ios-unsigned prod`, `check-ios-release` (privacy manifest *in the .app*, mic string, MinimumOSVersion, Rust linked). Kept until it would need iOS-only work (`adr/0035`) | Yes |
 | `bench` | — | Criterion vs. the committed baseline, > 10 % regression fails | Local only (`just bench`): the baseline belongs to one host, so a CI job needs a dedicated runner first (`T-003a`) |
 | `integration` | — | Lifecycle matrix on device/simulator | Not yet: `T-002` |
-| `miri` | — | `ffi` and `audio_io` unsafe blocks | Not yet: no `unsafe` exists |
+| `miri` | — | `ffi` and `audio_io` unsafe blocks | Not yet. `audio_io/src/android.rs` has `unsafe`, nearly all of it calls into AAudio, which Miri cannot execute |
 
 Everything a job runs is a `just` recipe. CI never contains logic that a developer or an agent
 cannot reproduce with one command — that is the whole point of the justfile.
@@ -38,9 +38,9 @@ is a no-op when warm) and flutter-action's SDK and pub caches.
 
 | Flavour | Bundle ID | Purpose |
 |---|---|---|
-| `dev` | `com.example.diapason.dev` | Local, debug logging, on-screen engine diagnostics |
-| `stg` | `com.example.diapason.stg` | Internal testers, release build, diagnostics still available |
-| `prod` | `com.example.diapason` | Store |
+| `dev` | `dev.jfcofer.diapason.dev` | Local, debug logging, on-screen engine diagnostics |
+| `stg` | `dev.jfcofer.diapason.stg` | Internal testers, release build, diagnostics still available |
+| `prod` | `dev.jfcofer.diapason` | Store |
 
 All three install side by side. Configuration comes from `--dart-define-from-file=flavors/<f>.json`;
 there is no `.env` and no runtime configuration file.
@@ -63,7 +63,7 @@ policy. Getting this boundary right is what makes it safe to let an agent run CI
 
 Blocking checklist, automated where possible (`just release-check`):
 
-- Android targets API 36 (required for submission from 31 Aug 2026), min 26, 16 KB pages verified,
+- Android targets API 36 (required for submission from 31 Aug 2026), min 28, 16 KB pages verified,
   AAB under budget, Data Safety form declares **no data collected**, foreground-service type
   declared and justified in the listing.
 - iOS, post-1.0 (`adr/0035`), ships `PrivacyInfo.xcprivacy` with tracking false and required-reason APIs declared,

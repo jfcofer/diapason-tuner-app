@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 
 /// The app's routes.
 ///
-/// `go_router` with typed routes (`AGENTS.md` §7). `T-001` wires the three destinations so the
+/// Plain `GoRoute`s, until `T-016` makes them the typed routes `AGENTS.md` §7 requires. `T-001` wires the three destinations so the
 /// dependency direction from the shell down into `feature_*` is real and enforced by
 /// `just check-deps`; the shell chrome that lets a user move between them arrives with the UI.
 final GoRouter appRouter = GoRouter(

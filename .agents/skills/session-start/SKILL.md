@@ -1,4 +1,5 @@
 ---
+name: session-start
 description: Load project context and pick up the active task
 ---
 

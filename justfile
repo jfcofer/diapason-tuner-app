@@ -72,8 +72,9 @@ gen-dart:
 
 # ── The gate ──────────────────────────────────────────────────────────────────
 
-# Everything CI checks. Must be green before any work is called done. Each CI job runs a subset of
-# these recipes, never a command of its own (docs/CI_RELEASE.md §1).
+# The gate. Must be green before any work is called done. CI also runs what needs a runner or a PR:
+# goldens, the two app builds, check-android-release and pr-check (docs/CI_RELEASE.md §1). Every CI
+# job runs recipes, never a command of its own.
 verify: doctor-selftest fmt-check lint test fixtures-check deny doc-rust check-drift check-deps docs-check pr-check-selftest lint-ci ios-project-check
 
 fmt-check: fmt-check-dart fmt-check-rust fmt-check-kotlin

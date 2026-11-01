@@ -1,4 +1,5 @@
 ---
+name: plan-task
 description: Turn a request into a task file with acceptance criteria, before any code
 ---
 
