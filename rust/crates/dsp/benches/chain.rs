@@ -26,9 +26,9 @@
 //!   meet the chain in another state: reported, not gated, until a baseline adopts it.
 //!
 //! - `chain/strum`: the same 10 ms block through `chain::Analysis` from home Mid while two
-//!   strings struck together from silence ring, a D3 and an A3, a fifth: no note has locked, so
-//!   each reading pays `pitch::partial_near` at f, 2f, 3f and 5f (`docs/adr/0034`), the worst
-//!   case of the test for one string. Reported, not gated, as `chain/chord`.
+//!   strings struck together from silence ring, a B3 and an E4, a fourth: no note has locked, so
+//!   each reading pays `pitch::partial_near` at f and 2f (`docs/adr/0034`), and the strum is
+//!   withheld. Reported, not gated, as `chain/chord`.
 //!
 //! `just bench` compares the medians with `benches/baseline.json` (`tools/bench-compare.sh`): the
 //! ids are the baseline's keys, so renaming one orphans its baseline.
@@ -190,13 +190,13 @@ fn chain(c: &mut Criterion) {
         });
     });
 
-    // A D3 and an A3 struck together, after a tenth of a second of silence, once the test decides.
+    // A B3 and an E4 struck together, after a tenth of a second of silence, once the test decides.
     let mut strum = vec![0.0_f32; usize::try_from(RATE).expect("small")];
-    let mut a3 = vec![0.0_f32; strum.len()];
-    pluck(&mut strum, 146.83, RATE, 0.4, &Pluck::default());
-    pluck(&mut a3, 220.0, RATE, 0.4, &Pluck::default());
-    for (d, a) in strum.iter_mut().zip(&a3) {
-        *d += a;
+    let mut e4 = vec![0.0_f32; strum.len()];
+    pluck(&mut strum, 246.94, RATE, 0.4, &Pluck::default());
+    pluck(&mut e4, 329.63, RATE, 0.4, &Pluck::default());
+    for (b, e) in strum.iter_mut().zip(&e4) {
+        *b += e;
     }
     let mut struck = Analysis::new(RATE, Selection::Auto(Range::Mid)).expect("a supported rate");
     struck.push(&vec![0.0_f32; strum.len() / 10], GateState::Closed, |_| {});

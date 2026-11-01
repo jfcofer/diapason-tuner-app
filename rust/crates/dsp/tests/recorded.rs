@@ -28,11 +28,14 @@
 //! - on the needle (`Frame::display`, `T-003f`): gross needle frames, by the estimate's rule, and,
 //!   over the whole recording, *flicker*: the needle blank while the estimate shows the note it
 //!   showed last, in any octave, within a gap it outlives (`smooth::HELD_GAP_FRAMES`). A new
-//!   pitch class or a longer gap warms up, which is the rule, not flicker.
+//!   pitch class or a longer gap warms up, which is the rule, not flicker;
+//! - over the whole recording, *held* frames (`Frame::held`): a single note taken for two strings
+//!   ringing at once (`docs/adr/0033`, `0034`). Gated on `gold` only: a ukulele's open strings
+//!   ring in sympathy, and `T-014` held 5 frames of `ukulele_a4` and `ukulele_g4`.
 //!
 //! **What is gated,** by the manifest's `set`:
 //! - `gold`, recorded acoustic guitar: |median| within §1's ±2 ¢, no gross and no unvoiced frame,
-//!   on the estimate or the needle, and no blank one;
+//!   on the estimate or the needle, no blank one, and no held one;
 //! - `ceiling`: |median| under its entry in [`CEILINGS`], a regression ceiling, not a budget
 //!   (`T-003g` owns budgets for the instruments §1 does not name), and no unvoiced, gross or
 //!   blank frame, on the estimate or the needle: a wrong note is no instrument's regression to
@@ -145,6 +148,8 @@ struct Row {
     /// Flicker, over the whole recording: frames whose needle shows nothing while the estimate
     /// shows the needle's last note, in any octave, within a gap the needle outlives.
     blank: usize,
+    /// Over the whole recording: frames held as two strings ringing ([`Frame::held`]).
+    held: usize,
     /// Needle frames more than [`GROSS_CENTS`] from the reference, by frequency.
     needle_gross: usize,
 }
@@ -255,9 +260,11 @@ fn measure(fixture: &Fixture) -> Row {
     // Frames after the window are judged for flicker only.
     let mut errors = Vec::new();
     let (mut frames, mut unvoiced, mut ambiguous, mut blank, mut needle_gross) = (0, 0, 0, 0, 0);
+    let mut held = 0;
     // The needle's last value, and the frames since it without an estimate.
     let mut last: Option<(f64, usize)> = None;
     tuner.push(&audio, |frame: &Frame| {
+        held += usize::from(frame.held);
         // Flicker, over the whole recording (`T-003f`'s review found 29 frames in a decay): the
         // needle blank while the estimate shows the note it showed last, in any octave, after no
         // longer a gap than the needle outlives.
@@ -314,6 +321,7 @@ fn measure(fixture: &Fixture) -> Row {
         unvoiced,
         ambiguous,
         blank,
+        held,
         needle_gross,
     }
 }
@@ -420,13 +428,14 @@ fn recorded_acoustic_guitar_is_within_two_cents_and_never_on_another_note() {
                 || row.unvoiced > 0
                 || row.needle_gross > 0
                 || row.blank > 0
+                || row.held > 0
                 || row.frames == 0
         })
         .collect();
     assert!(
         failing.is_empty(),
-        "over §1's ±{GOLD_BUDGET_CENTS} ¢, or with a gross or unvoiced frame, or a flickering or \
-         gross needle: {failing:#?}"
+        "over §1's ±{GOLD_BUDGET_CENTS} ¢, or with a gross, unvoiced or held frame, or a \
+         flickering or gross needle: {failing:#?}"
     );
 }
 

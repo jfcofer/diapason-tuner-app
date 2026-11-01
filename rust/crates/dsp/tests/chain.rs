@@ -1432,8 +1432,9 @@ fn chord_cases() -> Vec<ChordCase> {
         }
     }
     // The two fifths up, gated as the fourths (`T-021`, `docs/adr/0034`): their common period is
-    // half the lower note, the octave guard's ratio. D3 → A3 with D3 6 dB under: A3's octave
-    // below, A2, read before A3 locks as D3 decays (0.8–1.4 s), never the common period.
+    // half the lower note, the octave guard's ratio. With the old note 6 dB under: the new note's
+    // octave below (A2, G3), read before it locks as the old one decays (0.8–1.4 s), never the
+    // common period; the octave guard's, as before (single notes win).
     let fifths = [("D3 → A3", 146.83, 220.0), ("G3 → D4", 196.0, 293.66)];
     for (name, from, to) in fifths {
         for (timbre_name, timbre) in TIMBRES {
@@ -1450,6 +1451,15 @@ fn chord_cases() -> Vec<ChordCase> {
                     }
                     ("D3 → A3", "weak", Ending::Under(..)) => {
                         Gate::ChordCeiling { raw: 7, shown: 5 }
+                    }
+                    ("G3 → D4", "sawtooth", Ending::Under(1.5, _)) => {
+                        Gate::ChordCeiling { raw: 4, shown: 4 }
+                    }
+                    ("G3 → D4", "weak", Ending::Under(1.5, _)) => {
+                        Gate::ChordCeiling { raw: 7, shown: 7 }
+                    }
+                    ("G3 → D4", "weak", Ending::Under(..)) => {
+                        Gate::ChordCeiling { raw: 16, shown: 16 }
                     }
                     _ => Gate::Chord,
                 };
@@ -1713,7 +1723,9 @@ fn strum_signal(
 }
 
 /// **Two strings struck together from silence** (`T-021`, `docs/adr/0034`): no note has locked to
-/// hold, so nothing is shown while both ring (owner, 2026-10-31), and never a third note. Judged
+/// hold, so nothing is shown while both ring (owner, 2026-10-31), and never a third note. The two
+/// fifths, D3 + A3 and G3 + D4, are measured only: their common period sounds the 2f and 3f of a
+/// string's attack with a weak fundamental, and is not told from one (`docs/adr/0034`). Judged
 /// frames (the leap rule, [`Judge`]) showing neither string, by pitch class when ambiguous, and
 /// clear frames at the common period, on the estimate and on the needle. Held out, measured only:
 /// the higher string 20 ms after the lower, and the lower 6 dB under.
@@ -1760,7 +1772,7 @@ fn two_strings_struck_together_from_silence_show_no_third_note() {
                              raw / {} shown, {} / {} common-period, of {frames} judged frames",
                             third[0], third[1], common[0], common[1],
                         ));
-                        if strum != Strum::Together {
+                        if strum != Strum::Together || name.ends_with("A3") || name.ends_with("D4") {
                             return;
                         }
                         // The frames before the test can decide (`docs/adr/0034`): the window's
@@ -1817,6 +1829,123 @@ fn a_string_with_no_fundamental_is_shown_from_silence() {
             ));
             assert_eq!(traps.wrong(), (0, 0), "{hz} Hz at {rate} Hz: {traps:?}");
             assert!(total <= fail, "{hz} Hz at {rate} Hz: {total:.1} ms");
+        }
+    }
+}
+
+/// **A note after a strum is shown, though the gate never closes** (`docs/adr/0034`, review). D3
+/// and A3 struck together ring 0.8 s, then, with no gap, a single note: a low B, a bass E, an A1,
+/// a low E, an A2 or an A3, sawtooth or sine, from home Mid, and in Low and Mid fixed by hand for
+/// the notes they hold. The
+/// strum's latch must let go: the needle reaches the note within its range's fail line, and no
+/// frame from 300 ms on shows nothing. A low B, which no range tests at 2τ, cannot lock to
+/// release it.
+#[test]
+fn a_note_after_a_strum_is_shown_though_the_gate_never_closes() {
+    let selections = [
+        Selection::Auto(Range::Mid),
+        Selection::Fixed(Range::Low),
+        Selection::Fixed(Range::Mid),
+    ];
+    for rate in SUPPORTED_RATES {
+        let table = RangeTable::new(rate).unwrap();
+        for (name, generate) in SIGNALS {
+            for selection in selections {
+                for next in [30.87, 41.2, 55.0, 82.41, 110.0, 220.0] {
+                    // A range fixed by hand is asked only for the notes it holds.
+                    if let Selection::Fixed(range) = selection
+                        && !table.holds(range, next)
+                    {
+                        continue;
+                    }
+                    let (onset, cut) = (samples(0.5, rate), samples(1.3, rate));
+                    let mut signal = vec![0.0_f32; cut + samples(2.0, rate)];
+                    let mut a3 = vec![0.0_f32; cut - onset];
+                    generate(&mut signal[onset..cut], 146.83, rate, 0.25, 0.0);
+                    generate(&mut a3, 220.0, rate, 0.25, 0.0);
+                    for (s, a) in signal[onset..cut].iter_mut().zip(&a3) {
+                        *s += a;
+                    }
+                    generate(&mut signal[cut..], next, rate, 0.4, 0.0);
+                    let cut = u64::try_from(cut).unwrap();
+                    let late = u64::try_from(samples(0.3, rate)).unwrap();
+                    let (mut needle, mut blank) = (None, 0);
+                    let mut tuner = Tuner::new(rate, selection);
+                    tuner.push(&signal, |frame| {
+                        if frame.end <= cut {
+                            return;
+                        }
+                        let ms = index_to_f64(usize::try_from(frame.end - cut).unwrap()) * 1e3
+                            / f64::from(rate);
+                        if frame
+                            .display
+                            .is_some_and(|hz| cents(hz, next).abs() <= WRONG_NOTE_CENTS)
+                        {
+                            needle.get_or_insert(ms);
+                        }
+                        blank += usize::from(frame.end - cut >= late && frame.display.is_none());
+                    });
+                    let fail = fail_line_ms(table.range_for(next));
+                    let what =
+                        format_args!("{name} {next} Hz after a strum, {selection:?}, {rate} Hz");
+                    report(format_args!(
+                        "{what}: needle {needle:?} ms, {blank} blank late"
+                    ));
+                    assert!(needle.is_some_and(|ms| ms <= fail), "{what}: {needle:?}");
+                    assert_eq!(blank, 0, "{what}");
+                }
+            }
+        }
+    }
+}
+
+/// Partials 1–7 of a square wave, the odd ones only, and of a tone whose third partial is missing:
+/// timbres whose 2f and 3f differ, unlike a sine's or a sawtooth's (`docs/adr/0034`, review).
+const ODD_ONLY: [f64; 7] = [1.0, 0.0, 1.0 / 3.0, 0.0, 0.2, 0.0, 1.0 / 7.0];
+const NO_THIRD: [f64; 7] = [1.0, 0.5, 0.0, 0.25, 0.2, 0.0, 1.0 / 7.0];
+
+fn odd_only(out: &mut [f32], f0: f64, rate: u32, amplitude: f64, phase: f64) {
+    synth::partials(out, f0, rate, amplitude, phase, &ODD_ONLY);
+}
+
+fn no_third(out: &mut [f32], f0: f64, rate: u32, amplitude: f64, phase: f64) {
+    synth::partials(out, f0, rate, amplitude, phase, &NO_THIRD);
+}
+
+/// **High fixed by hand never takes a note for a strum** (`docs/adr/0034`, review). Below 213 Hz
+/// High's window resolves no fundamental, and no lower range runs to: the struck-together test
+/// rejects nothing there, whatever the timbre. Notes of 164.81–207.65 Hz from silence show on
+/// every frame from 50 ms on (a violin's pizzicato G3 lost half its frames to it).
+#[test]
+fn high_fixed_by_hand_shows_every_timbre_below_its_octave_test() {
+    let timbres: [(&str, Generator); 2] = [("odd only", odd_only), ("no third", no_third)];
+    for rate in SUPPORTED_RATES {
+        for (name, generate) in timbres {
+            for hz in [164.81, 174.61, 185.0, 196.0, 207.65] {
+                let onset = samples(0.5, rate);
+                let mut signal = vec![0.0_f32; onset + samples(1.5, rate)];
+                generate(&mut signal[onset..], hz, rate, 0.25, 0.0);
+                let after = u64::try_from(onset + samples(0.05, rate)).unwrap();
+                let (mut frames, mut shown) = (0, 0);
+                let mut tuner = Tuner::new(rate, Selection::Fixed(Range::High));
+                tuner.push(&signal, |frame| {
+                    if frame.end >= after {
+                        frames += 1;
+                        shown += usize::from(
+                            frame
+                                .display
+                                .is_some_and(|d| cents(d, hz).abs() <= WRONG_NOTE_CENTS),
+                        );
+                    }
+                });
+                report(format_args!(
+                    "High fixed, {name} {hz} Hz at {rate} Hz: {shown} of {frames} frames shown"
+                ));
+                assert!(
+                    frames > 500 && shown == frames,
+                    "{name} {hz} Hz at {rate} Hz: {shown} of {frames}"
+                );
+            }
         }
     }
 }
