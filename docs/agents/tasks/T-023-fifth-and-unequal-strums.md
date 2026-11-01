@@ -1,11 +1,15 @@
 ---
 id: T-023
 title: Fifths and unequal strums from silence show no third note
-status: todo
+status: blocked
 milestone: M2
 owner: unassigned
 created: 2026-10-31
 ---
+
+**Blocked on `T-026`** (since 2026-11-01): a phone's high-pass may change every figure below, and the
+chords must be measured on real microphone captures before more logic is added for them. Re-scope or
+abandon this task from that evidence (`T-024`).
 
 ## Goal
 

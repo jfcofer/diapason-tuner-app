@@ -55,3 +55,5 @@ agent from "improving" a deliberate choice.
 | [0032](0032-display-smoothing-and-lock.md) | The needle: a median of five, a one-euro filter in cents bounded to the median, and a lock from the caller's cents | Accepted, in part superseded by 0033 |
 | [0033](0033-two-strings-ringing.md) | Two strings ringing: a common period has no fundamental, and the needle holds; supersedes part of 0029, 0031 and 0032 | Accepted, in part superseded by 0034 |
 | [0034](0034-fifths-and-strums.md) | Fifths up and strums: a reading must be one string, by the partials it sounds; supersedes part of 0033 | Accepted |
+| [0035](0035-android-only-for-1-0.md) | Android only for 1.0; iOS moves post-1.0, its seams kept | Accepted |
+| [0036](0036-listen-after-one-consent.md) | The tuner listens by itself after one consent, and only while visible | Accepted |

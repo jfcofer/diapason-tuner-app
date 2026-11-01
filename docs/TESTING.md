@@ -80,16 +80,15 @@ component with no fixture accuracy test proves nothing.
 
 ## 7. Manual verification (before each release)
 
-Reference devices, deliberately spanning the range where audio behaviour differs:
+The reference device for 1.0 is the Redmi 23117RA68G (`adr/0035`). The rest are wanted, not owned, and
+span the range where audio behaviour differs. M7's closed test is the first evidence from them:
 
-| Device | Why |
-|---|---|
-| A recent iPhone | ProMotion, the happy path |
-| An iPhone SE-class device | Small screen, older audio hardware |
-| A recent Pixel | AAudio exclusive mode, the Android happy path |
-| A budget Android (< $200, 60 Hz) | Where the fast path is denied and the frame budget bites |
-| One tablet (iPad + Android tablet, alternating) | Expanded layout |
+| Device | Why | Status |
+|---|---|---|
+| A budget Android (< $200, 60 Hz) | Where the fast path is denied and the frame budget bites | **The Redmi** |
+| A recent Pixel | AAudio exclusive mode, the Android happy path | Not owned |
+| An Android tablet | Expanded layout | Not owned |
 
 Manual pass: the lifecycle matrix, tuning a real instrument against a known-good reference tuner,
-30 minutes of metronome against a stopwatch, screen reader on both platforms, largest dynamic type,
+30 minutes of metronome against a stopwatch, TalkBack, largest dynamic type,
 and both languages.

@@ -76,7 +76,8 @@ Then `just doctor`, which is the only authority on whether the above worked.
 and so does *editing* the iOS project: `just ios-project` regenerates its flavours, schemes and
 Podfile from `tools/ios/configure_project.rb`. On a Linux-only machine the `build-ios` CI job on a
 macOS runner is your sole iOS validation — treat a red macOS job as a red build, not as someone
-else's problem.
+else's problem. iOS is post-1.0: if keeping it green would take iOS-only work, `adr/0035` says what
+happens instead.
 
 ## 3. The loop
 

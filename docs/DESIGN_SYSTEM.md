@@ -4,6 +4,10 @@ This document owns the **visual and motion language**: direction, tokens, compon
 behaviour, accessibility. It is a brief for implementation in `packages/core_ui`, not a description
 of code that exists.
 
+**Owner's direction, 2026-11-01:** an asymmetric two-band strobe sweep, guided by Peterson's hardware
+displays. It changes the single ring and "no glow" below; `T-033` holds the brief, and `T-032` and
+`T-033` rewrite this document with `adr/0039` once a stall has been seen on a real phone.
+
 ## 1. Direction
 
 The brief is "clean, minimal, modern" — which is where most tuner apps arrive at the same dark
@@ -74,7 +78,7 @@ Reduced motion: the strobe becomes a static arc whose *length* encodes error; th
 a discrete colour step; transitions become cross-fades. The app must remain fully usable, and the
 tuner must remain fully readable, with all motion disabled.
 
-Frame budget: 120 fps target on ProMotion. The strobe and needle are painted by a `CustomPainter`
+Frame budget: the display's own refresh rate, and at least 60 fps on the budget Android. The strobe and needle are painted by a `CustomPainter`
 driven by a `Listenable` inside a `RepaintBoundary` — no widget rebuilds per frame
 (`ARCHITECTURE.md` §5). Nothing on either main screen may allocate per frame; hoist `Paint`, `Path`
 and `TextPainter` objects into painter fields.

@@ -55,6 +55,8 @@ beyond what `core_ui` already requires.
 
 ## Implementation notes
 
+- **The first golden and its regeneration ADR moved to `T-032` (2026-11-01, `T-024`),** so M3's first
+  painted widget proves the pipeline. This task's goldens use what it decides.
 - **Placement, decided by the owner (2026-10-22):** Settings → Diagnostics, a screen support can
   name ("open Settings, then Diagnostics"). A hidden gesture on the tuner was rejected as
   undiscoverable. `PRODUCT_SPEC.md` records it when this task builds the screen.

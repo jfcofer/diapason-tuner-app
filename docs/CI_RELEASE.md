@@ -13,7 +13,7 @@ This document owns **everything between a commit and a user**.
 | `goldens` | ubuntu-24.04 | `goldens` (`adr/0016`) | Yes |
 | `checks` | ubuntu-24.04 | `doctor-selftest`, `fmt-check-kotlin`, `check-drift`, `ios-project-check`, `check-deps`, `docs-check`, `pr-check-selftest`, `pr-check` (pull requests), `lint-ci` | Yes |
 | `build-android` | ubuntu-24.04 | `build-android prod`, `check-android-release` (targetSdk, 16 KB alignment, size, no patrol code or INTERNET), `build-android-tests` (`adr/0026`) | Yes |
-| `build-ios` | macos-26 | `build-ios-unsigned prod`, `check-ios-release` (privacy manifest *in the .app*, mic string, MinimumOSVersion, Rust linked) | Yes |
+| `build-ios` | macos-26 | `build-ios-unsigned prod`, `check-ios-release` (privacy manifest *in the .app*, mic string, MinimumOSVersion, Rust linked). Kept until it would need iOS-only work (`adr/0035`) | Yes |
 | `bench` | — | Criterion vs. the committed baseline, > 10 % regression fails | Local only (`just bench`): the baseline belongs to one host, so a CI job needs a dedicated runner first (`T-003a`) |
 | `integration` | — | Lifecycle matrix on device/simulator | Not yet: `T-002` |
 | `miri` | — | `ffi` and `audio_io` unsafe blocks | Not yet: no `unsafe` exists |
@@ -53,9 +53,7 @@ triggers `release.yml`.
 
 ## 4. Signing and secrets
 
-iOS: `fastlane match` with a private certificates repo; App Store Connect API key as a GitHub
-Actions secret in a protected environment. Android: upload keystore in the same protected
-environment, base64-encoded, and Play App Signing enabled so the upload key is replaceable.
+Android: upload keystore in a protected environment, base64-encoded, and Play App Signing enabled so the upload key is replaceable.
 
 No secret exists in the repository. No agent has access to the release environment — agents build
 unsigned artifacts only, and this is enforced by the environment protection rules rather than by
@@ -68,7 +66,7 @@ Blocking checklist, automated where possible (`just release-check`):
 - Android targets API 36 (required for submission from 31 Aug 2026), min 26, 16 KB pages verified,
   AAB under budget, Data Safety form declares **no data collected**, foreground-service type
   declared and justified in the listing.
-- iOS ships `PrivacyInfo.xcprivacy` with tracking false and required-reason APIs declared,
+- iOS, post-1.0 (`adr/0035`), ships `PrivacyInfo.xcprivacy` with tracking false and required-reason APIs declared,
   `NSMicrophoneUsageDescription` localised in both languages, background audio mode declared and
   used, screenshots for every required device class.
 - Both: all strings localised (en + es) with no fallback leaks, accessibility pass complete,

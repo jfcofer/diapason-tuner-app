@@ -1,11 +1,14 @@
 ---
 id: T-017
 title: Give audio_engine Swift Package Manager support before Flutter makes it an error
-status: todo
+status: blocked
 milestone: M3
 owner: unassigned
 created: 2026-10-30
 ---
+
+**Blocked on a decision to do iOS** (since 2026-11-01, `adr/0035`). If a Flutter bump would turn this
+warning into an error first, `adr/0035` removes the `build-ios` job rather than doing this work.
 
 ## Goal
 
