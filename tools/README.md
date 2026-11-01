@@ -8,12 +8,12 @@ identically — that is the whole reason they live here instead of inline in a w
 |---|---|
 | `doctor.sh` | Verify every pinned version in `docs/DEVELOPMENT.md` §1. Must fail loudly on an FRB codegen/runtime mismatch — that one mismatch causes more lost hours than anything else in this stack |
 | `check-deps.sh` | Parse `pubspec.yaml` and `Cargo.toml` files; fail on any upward or sideways dependency (`AGENTS.md` §5) |
-| `docs-check.sh` | Resolve relative links and backticked paths, enforce line budgets, and hold task files, the ADR index and the lifecycle matrix to what they claim |
+| `docs-check.sh` | Resolve relative links and backticked paths, enforce line budgets, and hold task files, the ADR index, the lifecycle matrix and `STATE.md` to what they claim |
 | `pr-check.sh` | Hold a PR's diff to the session protocol (`AGENTS.md` §2): STATE, task file, journal. CI runs it; `session-end` shares its rules |
 | `check-android-release.sh` | Assert targetSdk 36, verify 16 KB page alignment on every shipped `.so`, that the engine links AAudio and no C++ runtime, and the size budgets |
 | `goldens.sh` | Run goldens; refuses to update them until M3 decides how (`docs/adr/0016`) |
 | `bench-compare.sh` | Compare criterion output against `rust/crates/dsp/benches/baseline.json`; fail on >10 % regression |
-| `session-start.sh` | Print the reading order, branches, open PRs, open tasks and `doctor`, for the agent to reconcile with STATE.md |
+| `session-start.sh` | Print the reading order, branches, open PRs, open tasks, attached devices and `doctor`, for the agent to reconcile with STATE.md |
 | `branch-state.sh` | Sourced by the two session scripts: a branch's commits not in main, and whether it was never pushed |
 | `session-end.sh` | Verify STATE.md, the active task file and a journal entry were all updated this session |
 | `format-changed.sh` | Format only changed files. Called by the Claude Code post-edit hook |

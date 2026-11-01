@@ -82,8 +82,9 @@ entry was added and none was edited, and the task's status says what it is after
 or a `**Next part:**`). `session-end` calls the same script for the rules they share (`T-019`).
 
 **STATE goes stale between sessions, not only within them.** Merges, Dependabot and CI happen while
-no agent is running, so STATE records PRs by number and never asserts merge state as settled.
-`session-start` prints that state and the agent reconciles the two before working (`T-007`).
+no agent is running, so STATE names a PR only on its **In flight** line and never lists merged ones
+(`docs-check`, `T-034`). `session-start` prints that state live, and the agent reconciles the two before
+working (`T-007`).
 
 ## 5. Rules that keep it from rotting
 

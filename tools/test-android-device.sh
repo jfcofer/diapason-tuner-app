@@ -13,7 +13,7 @@
 #   --release  measures callback timing without debug overhead. There is no allocation trap in
 #              release builds, so the canary is skipped.
 # CARGO_BUILD_JOBS defaults to 4: a cold build at full parallelism has exhausted the 14 GB dev host
-# (docs/agents/STATE.md, Traps).
+# (docs/DEVELOPMENT.md §6).
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

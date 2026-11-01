@@ -418,6 +418,41 @@ for doc in docs/*.md docs/agents/STATE.md; do
 done
 [[ $stale -eq 0 ]] && ok "every constant and Type::member a living doc names exists in the code"
 
+# ── STATE is a snapshot, and agrees with itself (AGENTS.md §2, T-034) ─────────
+# A PR number in STATE goes stale the moment anything merges, and session-start reads them live. An
+# active task other than the first in "Next up" leaves a session two answers to what comes next.
+printf '\n%sSTATE%s\n' "$BOLD" "$OFF"
+state_section_task() { # FILE HEADING: the first task ID in that section, if any
+    awk -v heading="## $2" '$0 == heading { on = 1; next } /^## / { on = 0 } on' "$1" |
+        grep -oE 'T-[0-9]{3}[a-z]?' | head -1
+}
+state_problems() { # FILE: prints one line per problem
+    grep -E '#[0-9]+' "$1" | grep -vF '**In flight:**' | sed 's/^/a PR number outside **In flight:**: /'
+    local active next
+    active="$(state_section_task "$1" 'Active task')"
+    next="$(state_section_task "$1" 'Next up (in order)')"
+    if [[ -n "$active" && -n "$next" && "$active" != "$next" ]]; then
+        echo "active task $active is not the first in Next up ($next)"
+    fi
+}
+# The rules must still fire, or a clean pass below proves nothing.
+planted="$(mktemp)"
+printf '## Active task\n\nT-002\n\n## Next up (in order)\n\n1. T-001\n\nMerged in #12.\n' >"$planted"
+if [[ "$(state_problems "$planted" | wc -l)" -ne 2 ]]; then
+    fail "the STATE rules no longer catch planted drift" "Fix state_problems in tools/docs-check.sh."
+fi
+printf '## Active task\n\nT-001\n\n## Next up (in order)\n\n1. T-001\n\n**In flight:** #12.\n' >"$planted"
+if [[ -n "$(state_problems "$planted")" ]]; then
+    fail "the STATE rules reject a clean STATE" "Fix state_problems in tools/docs-check.sh."
+fi
+rm -f "$planted"
+problems="$(state_problems docs/agents/STATE.md)"
+if [[ -n "$problems" ]]; then
+    while IFS= read -r problem; do fail "STATE.md: $problem"; done <<<"$problems"
+else
+    ok "STATE.md names no merged PRs, and its active task is first in Next up"
+fi
+
 printf '\n'
 if [[ $FAILURES -gt 0 ]]; then
     printf '%s✗ %d documentation problem(s)%s\n\n' "$RED" "$FAILURES" "$OFF"; exit 1

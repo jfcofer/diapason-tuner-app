@@ -159,5 +159,19 @@ for task in docs/agents/tasks/T-*.md; do
     printf '  %-8s %-12s %s\n' "$id" "$status" "$verdict"
 done
 
+section "Devices"
+# A task can be blocked on hardware, and the hardware arrives between sessions (T-034).
+if ! command -v adb >/dev/null 2>&1; then
+    note "adb is not on PATH, so attached devices are unknown"
+else
+    devices="$(bounded adb devices -l 2>/dev/null | sed -n '2,$p' | sed '/^[[:space:]]*$/d')"
+    if [[ -z "$devices" ]]; then
+        note "none attached, or adb did not answer"
+    else
+        printf '  %s\n' "$devices"
+        note "Tasks blocked on a device may be unblocked: check them against this."
+    fi
+fi
+
 section "Toolchain"
 just doctor
