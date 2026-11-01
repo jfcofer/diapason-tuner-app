@@ -203,14 +203,14 @@ fn two_strings_ringing_never_allocate() {
     }
 }
 
-/// Two strings struck together from silence, at both rates: a D3 and an A3, a fifth, periodic at
-/// D2, with no note locked before them. The paths of `docs/adr/0034` run with the trap armed:
-/// every reading tested for one string (`pitch::partial_near` at f, 2f, 3f and 5f), the common
-/// period withheld, and nothing shown that is neither string.
+/// Two strings struck together from silence, at both rates: a B3 and an E4, a fourth, periodic
+/// at E2, with no note locked before them. The paths of `docs/adr/0034` run with the trap armed:
+/// every reading tested (`pitch::partial_near` at f, 2f and 3f), the common period withheld, and
+/// nothing shown that is neither string.
 #[test]
 fn two_strings_struck_together_never_allocate() {
     let neither = |hz: f64| {
-        [146.83_f64, 220.0].iter().all(|&string| {
+        [246.94_f64, 329.63].iter().all(|&string| {
             let off = 1_200.0 * (hz / string).log2();
             (off - 1_200.0 * (off / 1_200.0).round()).abs() > 50.0
         })
@@ -218,11 +218,11 @@ fn two_strings_struck_together_never_allocate() {
     for rate in SUPPORTED_RATES {
         let second = usize::try_from(rate).unwrap();
         let mut signal = vec![0.0_f32; 2 * second];
-        let mut a3 = vec![0.0_f32; second];
-        synth::sawtooth(&mut signal[second / 2..], 146.83, rate, 0.25, 0.0);
-        synth::sawtooth(&mut a3, 220.0, rate, 0.25, 0.0);
-        for (s, a) in signal[second / 2..].iter_mut().zip(&a3) {
-            *s += a;
+        let mut e4 = vec![0.0_f32; second];
+        synth::sawtooth(&mut signal[second / 2..], 246.94, rate, 0.25, 0.0);
+        synth::sawtooth(&mut e4, 329.63, rate, 0.25, 0.0);
+        for (s, e) in signal[second / 2..].iter_mut().zip(&e4) {
+            *s += e;
         }
         let mut chain = Tuner::new(rate, Selection::Auto(Range::Mid));
         let (mut withheld, mut third) = (0, 0);
