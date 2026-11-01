@@ -1,4 +1,4 @@
-# STATE — updated 2026-11-01 (T-024: Android only, a real note on the Redmi next)
+# STATE — updated 2026-11-01 (T-022: names a branch never pushed; T-025 next)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > Agents: run `just session-start`, read this, then the active task file. PR and merge state
@@ -11,8 +11,8 @@ decision (2026-11-01, `T-024`) the next product work is the vertical slice `T-02
 M1, M2 and M3 (`docs/ROADMAP.md`) before they close. **1.0 is Android only** (`adr/0035`). **Status:**
 
 - **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`–`T-003c`, T-015,
-  T-019, `T-003e`, `T-020`, `T-003f`, `T-014`, `T-021`, `T-024` (PRs #6–#9, #11–#16, #24, #27–#31,
-  #34, #36, #38–#44, and this one), Dependabot #2, #10, #21, #22, #25, #26,
+  T-019, `T-003e`, `T-020`, `T-003f`, `T-014`, `T-021`, `T-024`, `T-022` (PRs #6–#9, #11–#16, #24,
+  #27–#31, #34, #36, #38–#45, and this one), Dependabot #2, #10, #21, #22, #25, #26,
   #32, #37. #20, #33 closed; #35 closed, superseded by #36. **Open:** none.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 - **Hardware:** Fedora 44 host; **Redmi 23117RA68G** (Android 16, arm64), the one reference device.
@@ -20,8 +20,8 @@ M1, M2 and M3 (`docs/ROADMAP.md`) before they close. **1.0 is Android only** (`a
 
 ## Active task
 
-**`docs/agents/tasks/T-022-process-drift-6.md`** (todo): name a branch never pushed in `session-start`.
-Its file now carries three traps found before work began. Then `T-025`, `T-003d` and `T-027`.
+**`docs/agents/tasks/T-025-docs-truth-and-portability.md`** (todo): true docs, checked by `docs-check`; a
+smaller STATE; rules for every agent in `AGENTS.md`. Then `T-003d` and `T-027`.
 **Waiting on the Redmi:** `T-026` (the kill tests, with the owner playing) and `T-002d` (L3/L4, L10).
 
 ## What exists now
@@ -109,7 +109,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **`T-022`**, then **`T-025`** (true docs, portable protocol, a smaller STATE).
+1. **`T-025`** (true docs, portable protocol, a smaller STATE).
 2. **`T-026`, with the owner and the Redmi:** frame cost on the phone and real microphone captures. Its
    gate can change everything after it, and it decides `T-023` and `T-003g`.
 3. **`T-003d`**, then the slice: **`T-027` → `T-028` → `T-029` → `T-030`**, host-testable without the
