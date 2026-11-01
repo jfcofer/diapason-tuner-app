@@ -366,11 +366,15 @@ on: M3 decides which value drives `in tune` (`adr/0032`).
 - **Temperament** — Equal (default), Just (relative to a chosen key), Pythagorean, Werckmeister III,
   Kirnberger III, Vallotti, and a "sweetened guitar" table. Each is a 12-entry cents-offset table
   applied to the equal-tempered target.
-- **Transposition** — ±12 semitones, for capo and transposing instruments.
+- **Transposition** — ±12 semitones, for capo and transposing instruments. The note shown is the
+  sounding note plus it, so a B♭ clarinet is +2 and a capo on the second fret is −2. Cents do not change.
 - **Per-string offsets** — a stored table for players who compensate specific strings.
 
+A frequency exactly between two semitones goes to the upper note, within a tolerance far below any
+reading, as the two languages' logarithms can differ in their last bit (`dsp::note`).
+
 The table lives in `fixtures/note_table.json` and is the shared truth for the Rust and Dart
-implementations (`ARCHITECTURE.md` §3).
+implementations (`ARCHITECTURE.md` §3). It holds equal temperament so far; `T-003h` adds the rest.
 
 ## 5. Metronome scheduling (drift-free by construction)
 

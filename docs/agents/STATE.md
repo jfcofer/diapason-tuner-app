@@ -1,4 +1,4 @@
-# STATE — updated 2026-11-01 (T-025: docs checked for true paths; T-003d next)
+# STATE — updated 2026-11-01 (T-003d: the shared note table; T-027 next)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > Agents: run `just session-start`, read this, then the active task file. PR and merge state
@@ -11,8 +11,9 @@ decision (2026-11-01, `T-024`) the next product work is the vertical slice `T-02
 M1, M2 and M3 (`docs/ROADMAP.md`) before they close. **1.0 is Android only** (`adr/0035`). **Status:**
 
 - **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`–`T-003c`, T-015,
-  T-019, `T-003e`, `T-020`, `T-003f`, `T-014`, `T-021`, `T-024`, `T-022`, `T-025` (PRs #6–#9, #11–#16,
-  #24, #27–#31, #34, #36, #38–#46, and this one), Dependabot #2, #10, #21, #22, #25, #26,
+  T-019, `T-003e`, `T-020`, `T-003f`, `T-014`, `T-021`, `T-024`, `T-022`, `T-025`, `T-003d` (PRs #6–#9,
+  #11–#16, #24, #27–#31, #34, #36, #38–#44, and this one, which carries `T-024`, `T-022` and `T-025`;
+  #45–#47 closed in its favour), Dependabot #2, #10, #21, #22, #25, #26,
   #32, #37. #20, #33 closed; #35 closed, superseded by #36. **Open:** none.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 - **Hardware:** Fedora 44 host; **Redmi 23117RA68G** (Android 16, arm64), the one reference device.
@@ -20,7 +21,7 @@ M1, M2 and M3 (`docs/ROADMAP.md`) before they close. **1.0 is Android only** (`a
 
 ## Active task
 
-**`docs/agents/tasks/T-003d-note-table.md`** (todo): the note table Rust and Dart share. Then `T-027`.
+**`docs/agents/tasks/T-027-front-in-the-callback.md`** (todo): the first link from `dsp` into the app.
 **Waiting on the Redmi:** `T-026` (the kill tests, with the owner playing) and `T-002d` (L3/L4, L10).
 
 ## What exists now
@@ -72,7 +73,7 @@ re-litigate one without a new ADR. **Traps a session would otherwise re-discover
 
 1. **`T-026`, with the owner and the Redmi:** frame cost on the phone and real microphone captures. Its
    gate can change everything after it, and it decides `T-023` and `T-003g`.
-2. **`T-003d`**, then the slice: **`T-027` → `T-028` → `T-029` → `T-030`**, host-testable without the
+2. The slice: **`T-027` → `T-028` → `T-029` → `T-030`**, host-testable without the
    Redmi, then **`T-031`** (a real note, measured latency) and **`T-032`** (a stall on a real string).
 3. **`T-033`** (the strobe display), which also holds `T-016`, `T-002e` and `T-002f`. `T-002d`'s rows
    whenever the Redmi is attached.

@@ -86,7 +86,7 @@ apps/diapason  →  packages/feature_*  →  packages/core_ui, core_domain, core
 ```
 
 - `feature_*` packages **never import each other**. Shared code moves down to `core_*`.
-- `core_domain` is pure Dart: no Flutter import, no I/O, no plugins.
+- `core_domain` is pure Dart: no Flutter import, no plugins, no I/O (its tests may read a fixture).
 - `rust/crates/dsp` is pure computation: no allocation in hot paths, no I/O, no platform code,
   no workspace dependency, and direct third-party crates only from `tools/check-deps.sh`'s list.
   It must stay testable offline with fixture buffers.
