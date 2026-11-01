@@ -31,6 +31,9 @@ Both scripts must stay bash 3.2-portable and never fatal on network failure (`T-
   that is merged. Shown on a scratch clone in the PR's verification.
 - [ ] `just session-end` prints the same as a notice, never a failure, when the current branch
   has commits not in `origin/main` and no upstream.
+- [ ] `just session-end` also notices, never fails, when the current branch is `main` or is
+  already merged (`git cherry` empty against `origin/main`). The owner merging, or switching the
+  working copy, mid-session put a commit on local `main` on 2026-10-31.
 - [ ] `shellcheck` stays clean. No new network call: only refs `git fetch` already brought.
 
 ## Out of scope

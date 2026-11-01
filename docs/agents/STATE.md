@@ -10,8 +10,8 @@
 is the active work.** M0 closed 2026-10-09 (`T-006`; its macOS gap is in the roadmap). **Status:**
 
 - **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`–`T-003c`, T-015,
-  T-019, `T-003e`, `T-020`, `T-003f`, `T-014`, and `T-021` with this snapshot (PRs #6–#9,
-  #11–#16, #24, #27–#31, #34, #36, #38–#42, and this one), Dependabot #2, #10, #21, #22, #25, #26,
+  T-019, `T-003e`, `T-020`, `T-003f`, `T-014`, `T-021`, and its deviations accepted (PRs #6–#9,
+  #11–#16, #24, #27–#31, #34, #36, #38–#43, and this one), Dependabot #2, #10, #21, #22, #25, #26,
   #32, #37. #20, #33 closed; #35 closed, superseded by #36. **Open:** none.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 - **Hardware:** Fedora 44 host; **Redmi 23117RA68G** (Android 16, arm64, `TESTING.md` §7's budget
@@ -91,7 +91,7 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
   `T-002f`: **a stall's input queued as latency** (`adr/0025`); the Redmi refuses output FAST.
 - **Weak odd partials, 107–150 Hz:** 2f₀ shown known ~60 ms before Mid corrects it (`adr/0031`).
   **Chords:** fifths and unequal strums from silence show a third note (`T-023`); ceilings in
-  `adr/0033` (accepted) and `0034` (to accept).
+  `adr/0033` and `0034`, all accepted by the owner.
 - **A2 → low B, 12 dB under, 44.1 kHz:** 1.9 ms past its 190 ms target (§1). **No bench baseline
   since `T-020`:** `chain/smooth`, `chain/chord`, `chain/strum` reported, not gated (Next up).
 - **`router.dart` uses plain `GoRoute`s**, not the typed routes `AGENTS.md` §7 requires: `T-016`.
@@ -112,8 +112,8 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 ## Next up (in order)
 
 1. **`T-022`**, then `T-003d` (note table; M3's lock needs it), `T-023`, `T-003g`. **Owner:**
-   accept or reject `T-021`'s deviations (its task file); on a quiet host `just bench`, then
-   `just bench-baseline` (it adopts `chain/smooth`, `chain/chord`, `chain/strum`); `T-019`'s hook.
+   on a quiet host `just bench`, then `just bench-baseline` (it adopts `chain/smooth`,
+   `chain/chord`, `chain/strum`); `T-019`'s hook.
 2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then L10 (the silenced microphone).
    Also owed: `T-003a`'s 4096 frame cost on the phone (≤ 1.5 ms).
 3. **`T-002e`** (overlay in Settings → Diagnostics; first golden), then **`T-002f`** (latency, FAST).

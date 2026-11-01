@@ -36,11 +36,11 @@ Also open: while two strings ring loud, the new note waits until the old one dec
 
 - [x] `just verify` passes, and all six CI jobs are green. Local `just verify` is green; CI runs on
   the PR.
-- [x] *(with deviation: ceilings at 6 dB under, owner to accept)* D3 → A3 and G3 → D4 (sine,
+- [x] *(with deviation: ceilings at 6 dB under, accepted by the owner 2026-10-31)* D3 → A3 and G3 → D4 (sine,
   sawtooth, weak; τ 1.5 and 3 s, 6 dB under; both rates) show no third note, by `T-014`'s rule
   (`Traps::third`). Ringing loud: none (524–547 before). With the old note 6 dB under: 2–16 frames a
   case, gated at their counts.
-- [x] *(with deviation: two pairs not handled, owner to accept)* The six strum pairs show no third
+- [x] *(with deviation: two pairs not handled, accepted by the owner 2026-10-31)* The six strum pairs show no third
   note, or a measured ceiling the owner accepts. Four pairs are at 0 or a ceiling of 1–5 frames.
   The two fifths (D3 + A3, G3 + D4) are not handled (522–545) and are measured only (`T-023`).
 - [x] Every `T-003c`, `T-014` and `recorded.rs` figure is unchanged, or the change is recorded
@@ -77,7 +77,7 @@ to `T-014`'s, except a gate dip under a held fifth, which went from 777 D2 frame
 audit found one more: a fifth with nothing at 2f or 3f latched (`0 < ¼ × 0`), which made a low B
 after an A2 40 ms late (216.8 ms against a 190 ms target). Fixed: 176.9 ms, as before.
 
-**Deviations** (owner to accept or reject):
+**Deviations** (all accepted by the owner, 2026-10-31):
 - The fifths up with the old note 6 dB under keep 2–16 frames of the new note's octave below (A2,
   G3), read before it locks. They are the octave guard's, as before. Withholding them blanked
   `ukulele_g4`'s needle. Gated as `Gate::ChordCeiling`.
