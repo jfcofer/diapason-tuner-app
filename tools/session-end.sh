@@ -18,6 +18,9 @@ FAILURES=0
 fail() { printf '  %s✗%s %s\n' "$RED" "$OFF" "$1"; [[ -n "${2:-}" ]] && printf '      %s%s%s\n' "$DIM" "$2" "$OFF"; FAILURES=$((FAILURES+1)); }
 ok()   { printf '  %s✓%s %s\n' "$GREEN" "$OFF" "$1"; }
 
+# shellcheck source=tools/branch-state.sh
+source tools/branch-state.sh
+
 printf '\nSession protocol (AGENTS.md §2)\n'
 
 # What this session changed, measured from where it started: `session-start` records HEAD in the
@@ -80,6 +83,24 @@ if [[ -f docs/agents/STATE.md ]]; then
         fail "STATE.md is $lines lines (budget 120)" "It is a snapshot. Delete what is no longer true."
     else
         ok "STATE.md is $lines/120 lines"
+    fi
+fi
+
+# Notices, never failures: an agent writes STATE "as it will be after the merge", and nothing else
+# says the merge cannot happen (T-022). As fresh as the last fetch, since this makes no network call.
+branch="$(git rev-parse --abbrev-ref HEAD)"
+notice() { printf '  %s! %s (as of the last fetch)%s\n' "$DIM" "$1" "$OFF"; }
+if [[ "$branch" == HEAD ]] || ! git rev-parse --verify --quiet origin/main >/dev/null; then
+    :
+elif [[ "$branch" == main ]]; then
+    notice "on main: work lands through a PR, so move it to a branch"
+elif never_pushed "$branch"; then
+    notice "$branch was never pushed: open its PR"
+elif [[ "$(commits_not_in_main "$branch")" == 0 ]]; then
+    if git merge-base --is-ancestor HEAD origin/main; then
+        notice "$branch has no commits of its own yet"
+    else
+        notice "$branch is already merged: new work needs a new branch"
     fi
 fi
 

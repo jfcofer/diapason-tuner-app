@@ -17,6 +17,9 @@ else
     BOLD=''; DIM=''; OFF=''
 fi
 
+# shellcheck source=tools/branch-state.sh
+source tools/branch-state.sh
+
 section() { printf '\n%s%s%s\n' "$BOLD" "$1" "$OFF"; }
 note()    { printf '  %s%s%s\n' "$DIM" "$1" "$OFF"; }
 
@@ -47,25 +50,26 @@ git -c color.ui=auto log --oneline -8
 git status --short --branch
 
 section "Branches"
-bounded git fetch --quiet --prune origin 2>"$errors" \
-    || note "git fetch failed, so remote branches may be stale: $(first_error)"
+stale=''
+if ! bounded git fetch --quiet --prune origin 2>"$errors"; then
+    note "git fetch failed, so remote branches may be stale: $(first_error)"
+    stale=' (may be stale: the fetch failed)'
+fi
 if ! git rev-parse --verify --quiet origin/main >/dev/null; then
     note "no origin/main, so merged and unmerged branches cannot be told apart"
 else
-    # main only accepts rebase-merges, which rewrite every SHA, so ancestry (`--no-merged`) calls a
-    # merged branch unmerged forever. `git cherry` compares patches instead: a branch with no
-    # commit missing from main is merged, whatever its SHAs.
-    while read -r ref track; do
+    while read -r full ref track; do
         [[ "$ref" == main || "$ref" == origin || "$ref" == origin/HEAD || "$ref" == origin/main ]] && continue
-        pending="$(git cherry origin/main "$ref" 2>/dev/null | grep -c '^+')"
+        pending="$(commits_not_in_main "$ref")"
         if [[ "$pending" == 0 ]]; then
             state="merged into main"
         else
             state="$pending commit(s) not in main"
         fi
         [[ "$track" == *gone* ]] && state="$state, upstream deleted"
-        printf '  %-48s %s\n' "$ref" "$state"
-    done < <(git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads refs/remotes/origin)
+        [[ "$full" == refs/heads/* ]] && never_pushed "$ref" && state="$state, never pushed: open its PR"
+        printf '  %-48s %s%s\n' "$ref" "$state" "$stale"
+    done < <(git for-each-ref --format='%(refname) %(refname:short) %(upstream:track)' refs/heads refs/remotes/origin)
 fi
 
 section "Pull requests"
