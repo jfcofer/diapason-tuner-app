@@ -1,4 +1,4 @@
-# STATE — updated 2026-10-30 (T-014 merged: two strings ringing; T-021 next)
+# STATE — updated 2026-10-31 (T-021 merged: fifths up and strums; T-022 next)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > Agents: run `just session-start`, read this, then the active task file. PR and merge state
@@ -10,18 +10,18 @@
 is the active work.** M0 closed 2026-10-09 (`T-006`; its macOS gap is in the roadmap). **Status:**
 
 - **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`–`T-003c`, T-015,
-  T-019, `T-003e`, `T-020`, `T-003f`, and `T-014` with this snapshot (PRs #6–#9, #11–#16, #24,
-  #27–#31, #34, #36, #38–#41, and this one), Dependabot #2, #10, #21, #22, #25, #26, #32, #37. #20, #33
-  closed; #35 closed, superseded by #36. **Open:** none.
+  T-019, `T-003e`, `T-020`, `T-003f`, `T-014`, and `T-021` with this snapshot (PRs #6–#9,
+  #11–#16, #24, #27–#31, #34, #36, #38–#42, and this one), Dependabot #2, #10, #21, #22, #25, #26,
+  #32, #37. #20, #33 closed; #35 closed, superseded by #36. **Open:** none.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 - **Hardware:** Fedora 44 host; **Redmi 23117RA68G** (Android 16, arm64, `TESTING.md` §7's budget
   Android). Emulator for lifecycle only, **never** latency. **No Mac, no iPhone:** iOS is CI-only.
 
 ## Active task
 
-**`docs/agents/tasks/T-021-fifths-and-strums.md`** (todo): fifths up and strums from silence. Read
-`adr/0033` first. Then `T-003d` (note table, no file yet). **Waiting on the Redmi:** `T-002d` (blocked;
-part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
+**`docs/agents/tasks/T-022-process-drift-6.md`** (todo): name a branch never pushed in
+`session-start`. Then `T-003d` (note table, no file yet), `T-023` (fifth and unequal strums).
+**Waiting on the Redmi:** `T-002d` (blocked; part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
 
 ## What exists now
 
@@ -35,9 +35,9 @@ part 1 is #29): L3/L4, L10, `lifecycle_test.dart`.
   `verifyEngineContract` binds fake and real engine; on a device: `just test-integration-android`.
 - **Tuner lifecycle** (`T-002d`): `engineTarget` policy, `AppLifecycle` seam; rows L1–L11 checked.
 - **Engine core** (`T-002a`): `Engine::prepare` → `(Engine, Processor)` over `rtrb`/`triple_buffer`.
-- **Pitch** (`T-003a`–`c`, `f`, `T-014`): `Mpm`, `synth`, `chain::Front` (RT) / `chain::Analysis`
+- **Pitch** (`T-003a`–`c`, `f`, `T-014`, `T-021`): `Mpm`, `chain::Front` (RT) / `chain::Analysis`
   (`adr/0028`); octave guard, verifiers (`0029`, `0031`); ±0.09 ¢. Needle and lock (`0032`,
-  `Frame::display`, `dsp::lock`), gated on §1's latency rows. Chords (`0033`): `Frame::held`.
+  `Frame::display`, `dsp::lock`), gated on §1's latency rows. Chords (`0033`, `0034`): `Frame::held`.
   **Recordings** (`adr/0030`): `cargo xtask fixtures import|reference|check`, `recorded.rs`.
 
 ## Decisions already made (do not re-litigate without an ADR)
@@ -55,9 +55,9 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
   budgets ≥ 160 Hz ≤ 85 ms, 80–160 Hz ≤ 110 ms, low B ≤ 190 ms (owner, 2026-10-23).
 - `0026` patrol runs device tests, never in a release; it applies KGP: check before Flutter bumps.
 - `0027` synthetic audio fixtures are generated in code; only recordings are checked in.
-- `0031` a verifier moves down to a third or a quarter only of a pitch the range cannot see.
+- `0031` a verifier moves down only to a third or a quarter of a pitch the range cannot see.
   `0032` the needle: one-euro in cents, ≤ 3 ¢ behind the median; lock takes the caller's cents.
-- `0033` a chord is told from a string by its own fundamental, not an onset; the needle holds.
+- `0033`/`0034` a chord is told from a string by the partials it sounds, never an onset.
 
 ## Traps a later session will otherwise re-discover
 
@@ -90,10 +90,10 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 - **Rust crate licences** (M6), **`appLifecycleProvider`** moving down (M4): in `ROADMAP.md`.
   `T-002f`: **a stall's input queued as latency** (`adr/0025`); the Redmi refuses output FAST.
 - **Weak odd partials, 107–150 Hz:** 2f₀ shown known ~60 ms before Mid corrects it (`adr/0031`).
-  **Chords:** fifths up and strums still show a third note (`T-021`); three accepted ceilings
-  (`adr/0033`).
+  **Chords:** fifths and unequal strums from silence show a third note (`T-023`); ceilings in
+  `adr/0033` (accepted) and `0034` (to accept).
 - **A2 → low B, 12 dB under, 44.1 kHz:** 1.9 ms past its 190 ms target (§1). **No bench baseline
-  since `T-020`:** `chain/smooth`, `chain/chord` reported, not gated, until the owner's (Next up).
+  since `T-020`:** `chain/smooth`, `chain/chord`, `chain/strum` reported, not gated (Next up).
 - **`router.dart` uses plain `GoRoute`s**, not the typed routes `AGENTS.md` §7 requires: `T-016`.
 
 ## Open questions
@@ -111,9 +111,9 @@ The index is `docs/adr/README.md`. The ones a session most often runs into:
 
 ## Next up (in order)
 
-1. **`T-021`**, then `T-003d` (note table; M3's lock needs it), `T-003g`. **Owner:** on a quiet host
-   `just bench`, then `just bench-baseline` (it adopts `chain/smooth` and `chain/chord`); and, if
-   wanted, `T-019`'s hook.
+1. **`T-022`**, then `T-003d` (note table; M3's lock needs it), `T-023`, `T-003g`. **Owner:**
+   accept or reject `T-021`'s deviations (its task file); on a quiet host `just bench`, then
+   `just bench-baseline` (it adopts `chain/smooth`, `chain/chord`, `chain/strum`); `T-019`'s hook.
 2. **When the Redmi is attached:** `T-002d` L3/L4 with a call, then L10 (the silenced microphone).
    Also owed: `T-003a`'s 4096 frame cost on the phone (≤ 1.5 ms).
 3. **`T-002e`** (overlay in Settings → Diagnostics; first golden), then **`T-002f`** (latency, FAST).
