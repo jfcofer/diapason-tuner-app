@@ -18,7 +18,7 @@ threads and no UI. A failure here moves `adr/0028`'s hops, or the chord tests of
 
 Read: `docs/AUDIO_ENGINE.md` §1, `docs/adr/0030` (recordings), `docs/adr/0033`, `docs/adr/0034`,
 `tools/test-android-device.sh`. Needs the Redmi attached and the owner playing a guitar. HyperOS wants
-a tap on every USB install (`STATE.md`, Traps).
+a tap on every USB install (`DEVELOPMENT.md` §6).
 
 - **First step, unverified:** whether the criterion benches can run on the phone through
   `cargo-ndk-runner`. Reuse them: `dsp`'s lint list bans `Instant::now`, tests included.

@@ -12,6 +12,7 @@ Close out this working session. Follow `AGENTS.md` §2 exactly.
    actually happened, including anything you tried and abandoned.
 3. Rewrite `docs/agents/STATE.md` completely. It is a snapshot, not a log. Keep it under 120 lines.
    It must answer: where are we, what is active, what is next, what is blocked, what is unresolved.
+   PR state is `session-start`'s to print: a number goes only on the `**In flight:**` line.
 4. Append a journal entry at `docs/agents/journal/YYYY-MM-DD-<slug>.md` using the template in that
    directory. The "Tried and abandoned" section is the one that pays for itself later — write it
    even when it is embarrassing.

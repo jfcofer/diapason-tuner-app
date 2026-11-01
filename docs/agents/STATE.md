@@ -1,8 +1,8 @@
-# STATE — updated 2026-11-01 (T-003d: the shared note table; T-027 next)
+# STATE — updated 2026-11-01 (T-034: process drift; T-026 active, the Redmi attached)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
-> Agents: run `just session-start`, read this, then the active task file. PR and merge state
-> changes between sessions: reconcile the PR numbers here against what `session-start` prints.
+> Agents: run `just session-start`, read this, then the active task file. PR and merge state lives
+> there, not here: `docs-check` rejects a PR number outside the **In flight** line (`T-034`).
 
 ## Where we are
 
@@ -10,19 +10,15 @@
 decision (2026-11-01, `T-024`) the next product work is the vertical slice `T-026`–`T-032`, which crosses
 M1, M2 and M3 (`docs/ROADMAP.md`) before they close. **1.0 is Android only** (`adr/0035`). **Status:**
 
-- **Merged:** T-006, T-002a, T-007–T-013, T-002b, `T-002d` part 1, `T-003a`–`T-003c`, T-015,
-  T-019, `T-003e`, `T-020`, `T-003f`, `T-014`, `T-021`, `T-024`, `T-022`, `T-025`, `T-003d` (PRs #6–#9,
-  #11–#16, #24, #27–#31, #34, #36, #38–#44, and this one, which carries `T-024`, `T-022` and `T-025`;
-  #45–#47 closed in its favour), Dependabot #2, #10, #21, #22, #25, #26,
-  #32, #37. #20, #33 closed; #35 closed, superseded by #36. **Open:** none.
+- **In flight:** none. `just session-start` prints open and merged PRs, read live.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
 - **Hardware:** Fedora 44 host; **Redmi 23117RA68G** (Android 16, arm64), the one reference device.
   Emulator for lifecycle only, **never** latency. No Mac, no iPhone: iOS is post-1.0 (`adr/0035`).
 
 ## Active task
 
-**`docs/agents/tasks/T-027-front-in-the-callback.md`** (todo): the first link from `dsp` into the app.
-**Waiting on the Redmi:** `T-026` (the kill tests, with the owner playing) and `T-002d` (L3/L4, L10).
+**`docs/agents/tasks/T-026-device-kill-tests.md`** (todo): the detector's cost on the Redmi and real
+microphone captures, with the owner playing. **Also waiting on the Redmi:** `T-002d` (L3/L4, L10).
 
 ## What exists now
 
