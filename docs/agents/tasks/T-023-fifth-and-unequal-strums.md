@@ -1,20 +1,22 @@
 ---
 id: T-023
-title: Fifths and unequal strums from silence show no third note
-status: blocked
+title: Real fourths, fifths and unequal strums from silence show no third note
+status: todo
 milestone: M2
 owner: unassigned
 created: 2026-10-31
 ---
 
-**Blocked on `T-026`** (since 2026-11-01): a phone's high-pass may change every figure below, and the
-chords must be measured on real microphone captures before more logic is added for them. Re-scope or
-abandon this task from that evidence (`T-024`).
+**Re-scoped by `T-026`'s captures** (2026-11-02). The case is real on a phone, and it includes the fourth, which
+`adr/0034` thought it had withheld: a real E2 + A2 shows A1, which neither string plays, on 651 of 742 needle
+frames. A real A2 + E3 mostly shows A2. Start after `T-035`: it may change how a weak fundamental reads. Takes:
+`fourth_e2_a2`, `fifth_a2_e3`, `strum_open`, `strum_slow`, in `~/.local/share/diapason/captures/2026-11-02/`.
 
 ## Goal
 
-`T-021` (`adr/0034`) withholds fourths, thirds and two sines struck together from silence. Three
-held-out families still show a third note. They are what a player does most: strumming open
+`T-021` (`adr/0034`) withholds fourths, thirds and two sines struck together from silence, on library
+recordings and synthetic signals. A real fourth on a phone still shows a third note, and three held-out
+families do too. They are what a player does most: strumming open
 strings, and a fiddler's double stop started from silence.
 - **Fifths struck together** (D3 + A3, G3 + D4): their common period sounds 2f and 3f, as a
   string's attack with a weak fundamental does. 522–545 frames.
@@ -37,11 +39,14 @@ Leads, not decisions:
   never sounds one. But showing nothing during that wait costs single notes.
 - A fifth from silence whose upper string locks first becomes `0033`'s case (ratio 3).
 
-Measure on the gold recordings frame by frame, not only inside their judged window.
+Measure on the owner's takes first, then on the gold recordings, frame by frame and not only inside
+their judged window.
 
 ## Acceptance criteria
 
 - [ ] `just verify` passes, and all six CI jobs are green.
+- [ ] A cut of the real fourth, under the ADR `T-035` writes, shows no third note, or a measured ceiling the
+  owner accepts.
 - [ ] The three families show no third note, or a measured ceiling the owner accepts. They are
   moved from measured to gated (`tests/chain.rs`).
 - [ ] Every `T-021` figure is unchanged, or the change is recorded. That covers the recordings

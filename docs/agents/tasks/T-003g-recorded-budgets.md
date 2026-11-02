@@ -7,8 +7,9 @@ owner: unassigned
 created: 2026-11-01
 ---
 
-**Blocked on `T-026`** (since 2026-11-01): real microphone captures show whether budgets set from
-library recordings mean anything on a phone. Re-scope or abandon it from that evidence.
+**Blocked on phone recordings of these instruments, and on `T-035`** (re-scoped 2026-11-02). `T-026` shows a guitar through a
+phone failing in ways no library recording did, with its first two partials balanced differently (up to 17 dB on
+G3). A budget set from libraries alone would promise nothing, so these budgets need phone takes as well.
 
 ## Goal
 

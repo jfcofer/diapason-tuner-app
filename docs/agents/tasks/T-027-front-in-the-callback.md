@@ -1,11 +1,14 @@
 ---
 id: T-027
 title: Run the front end in the callback and carry its blocks across a ring
-status: todo
+status: blocked
 milestone: M3
 owner: unassigned
 created: 2026-11-01
 ---
+
+**Blocked on `T-035` and `T-036`** (since 2026-11-02): `T-026` found a real low E misread and CPU on the A55 over
+budget. `T-036`'s decision can change what crosses this ring.
 
 ## Goal
 
