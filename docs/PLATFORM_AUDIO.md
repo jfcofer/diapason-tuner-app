@@ -71,6 +71,11 @@ which path a device took. The facts come from `core_platform`'s Pigeon channel, 
 `diapason_session::choose_input_preset`, in Rust (`adr/0024`). The snapshot carries the preset
 requested and the preset obtained.
 
+**Test low strings on a phone, not only on recordings.** Android's guidance asks `VoiceRecognition` for a flat
+response only from 100 Hz to 4 kHz, so low E is not covered. On the Redmi, 30 cm from one guitar, low E's fundamental
+measured 12.8–17.0 dB under its second partial, and it can read an octave up (`T-026`, `T-035`). The cause is open:
+A2, inside that band, was further from the library recordings still.
+
 **Permissions** — `RECORD_AUDIO` at runtime, requested only when the user first opens the tuner,
 with a pre-permission explanation screen. The metronome must work fully with the permission denied.
 Dart tells the session the permission (`set_microphone_access`), because AAudio refuses an input

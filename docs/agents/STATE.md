@@ -1,4 +1,4 @@
-# STATE — updated 2026-11-01 (T-034: process drift; T-026 active, the Redmi attached)
+# STATE — updated 2026-11-02 (T-026: the Redmi measured; a real low E reads E3)
 
 > The current truth. Rewritten at the end of every session. Budget: 120 lines.
 > Agents: run `just session-start`, read this, then the active task file. PR and merge state lives
@@ -8,7 +8,9 @@
 
 **The app cannot show a note yet:** nothing outside its own tests calls `dsp::chain`. By the owner's
 decision (2026-11-01, `T-024`) the next product work is the vertical slice `T-026`–`T-032`, which crosses
-M1, M2 and M3 (`docs/ROADMAP.md`) before they close. **1.0 is Android only** (`adr/0035`). **Status:**
+M1, M2 and M3 (`docs/ROADMAP.md`) before they close. **1.0 is Android only** (`adr/0035`).
+**`T-026` measured the detector on the phone for the first time, and two gates failed:** a real low E shows E3
+with its octave known (`T-035`), and CPU on an A55 is over budget (`T-036`). Frame cost passes. **Status:**
 
 - **In flight:** none. `just session-start` prints open and merged PRs, read live.
 - **`main` is protected** (ruleset `24468437`, no bypass): PR, six green checks, rebase-only.
@@ -17,8 +19,8 @@ M1, M2 and M3 (`docs/ROADMAP.md`) before they close. **1.0 is Android only** (`a
 
 ## Active task
 
-**`docs/agents/tasks/T-026-device-kill-tests.md`** (todo): the detector's cost on the Redmi and real
-microphone captures, with the owner playing. **Also waiting on the Redmi:** `T-002d` (L3/L4, L10).
+**`docs/agents/tasks/T-035-low-e-reads-e3.md`** (todo; a plan first, for the owner's approval). **Waiting on the
+Redmi:** `T-002d` (L3/L4, L10). The owner's takes are in `~/.local/share/diapason/captures/2026-11-02/`, not the repo.
 
 ## What exists now
 
@@ -49,10 +51,13 @@ re-litigate one without a new ADR. **Traps a session would otherwise re-discover
 - **Rust crate licences** (M6), **`appLifecycleProvider`** moving down (M4): in `ROADMAP.md`.
   `T-002f`: **a stall's input queued as latency** (`adr/0025`); the Redmi refuses output FAST.
 - **Weak odd partials, 107–150 Hz:** 2f₀ shown known ~60 ms before Mid corrects it (`adr/0031`).
-  **Chords:** fifths and unequal strums from silence show a third note (`T-023`, blocked on `T-026`);
+  **Chords:** a real fourth shows a note neither string plays (`T-023`, re-scoped by `T-026`);
   ceilings in `adr/0033` and `0034`, all accepted by the owner.
 - **A2 → low B, 12 dB under, 44.1 kHz:** 1.9 ms past its 190 ms target (§1). **No bench baseline
   since `T-020`:** `chain/smooth`, `chain/chord`, `chain/strum` reported, not gated (Next up).
+- **`just capture`'s limits** (`T-026`): silent-take rejection is unproven, as the one attempt was kept near the
+  room's level. Zero input xruns prove nothing if the Redmi's path always reports 0. **Four older scripts use `rm -rf`** on their own temp
+  directories, against `AGENTS.md` §8: `check-android-release`, `check-deps`, `doctor-selftest`, `pr-check`.
 - **`router.dart` uses plain `GoRoute`s**, not the typed routes `AGENTS.md` §7 requires: `T-016`.
 
 ## Open questions
@@ -61,17 +66,18 @@ re-litigate one without a new ADR. **Traps a session would otherwise re-discover
 |---|---|---|
 | Monetisation model | M6 | Must not introduce ads, analytics or network calls (`PRODUCT_SPEC.md` §6) |
 | Font licences confirmed for bundling | M3 | `DESIGN_SYSTEM.md` §1 assumes OFL faces |
-| While two strings ring loud, hold the old note until it decays (> 1.5 s), or show nothing? | M3 | `adr/0033` holds, as `PRODUCT_SPEC.md` §2 says. A phone mic's high-pass may also hold a real low string under its harmonic; re-measure on the Redmi |
+| While two strings ring loud, hold the old note until it decays (> 1.5 s), or show nothing? | M3 | `adr/0033` holds, as `PRODUCT_SPEC.md` §2 says. Real chords differ from the library's (`T-026`), so re-measure after `T-035` |
 | A second Android OEM before release? | M7 | `adr/0035`: one phone is all the evidence until M7's closed test. A Samsung or a Pixel would show input-preset and latency differences early |
 | Rates other than 44.1/48 kHz | `T-027` | `RangeTable::new` rejects them. `T-027` asks AAudio for 48 kHz so it resamples; any other rate reports the tuner unavailable |
 
 ## Next up (in order)
 
-1. **`T-026`, with the owner and the Redmi:** frame cost on the phone and real microphone captures. Its
-   gate can change everything after it, and it decides `T-023` and `T-003g`.
-2. The slice: **`T-027` → `T-028` → `T-029` → `T-030`**, host-testable without the
+1. **`T-035`:** a real low E must not read E3. It is a live bug, and it comes before any wiring.
+2. **`T-036`:** re-bench after `T-035`, then the owner's decision on CPU on the A55. `T-027` waits on it.
+3. The slice: **`T-027` → `T-028` → `T-029` → `T-030`**, host-testable without the
    Redmi, then **`T-031`** (a real note, measured latency) and **`T-032`** (a stall on a real string).
-3. **`T-033`** (the strobe display), which also holds `T-016`, `T-002e` and `T-002f`. `T-002d`'s rows
+4. **`T-023`** (a real fourth shows a note neither string plays), after `T-035`.
+5. **`T-033`** (the strobe display), which also holds `T-016`, `T-002e` and `T-002f`. `T-002d`'s rows
    whenever the Redmi is attached.
-4. **To close M2:** `T-003h`; and, on a quiet host, the owner's `just bench`, then `just bench-baseline`
+6. **To close M2:** `T-003h`; and, on a quiet host, the owner's `just bench`, then `just bench-baseline`
    (it adopts `chain/smooth`, `chain/chord`, `chain/strum`; `T-019`'s hook). `T-004` as slices need it.

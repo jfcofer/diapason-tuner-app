@@ -32,7 +32,7 @@ third-party crates only from the list in `tools/check-deps.sh` (`AGENTS.md` §5)
 | `T-003d` | `fixtures/note_table.json`; `dsp` and `core_domain` both assert against it: 12-TET, A4, transposition. `T-031` needs it | done |
 | `T-003h` | Temperament tables added to the same file and asserted by both (`AUDIO_ENGINE.md` §4). Split from `T-003d` on 2026-11-01 | todo, no file |
 | `T-003e` | Recorded fixtures (guitar, bass, ukulele, violin) from CC0 libraries the owner chose over recording (2026-10-30), an independent reference pitch, §1's ±2 ¢ on acoustic guitar | done |
-| `T-003g` | Budgets for recorded bass, electric guitar, ukulele and violin. Moved to M3 on 2026-11-01 (`T-024`): not an M2 exit, and it waits on `T-026` | blocked |
+| `T-003g` | Budgets for recorded bass, electric guitar, ukulele and violin. Moved to M3 on 2026-11-01 (`T-024`): not an M2 exit, and it waits on phone recordings | blocked |
 
 Wiring the detector into `engine` and the snapshot is M3 (`T-027`–`T-031`), not this task. It runs
 before M2 closes, by the owner's decision on 2026-11-01 (`T-024`), because no budget had been measured

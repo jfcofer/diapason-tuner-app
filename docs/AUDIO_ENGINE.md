@@ -23,6 +23,10 @@ ones are measured on the reference devices in `TESTING.md` §7.
 | Audio callback worst case | ≤ 15 % of one burst's period (`adr/0025`) | > 40 % |
 | Added binary size per ABI | ≤ 2.5 MB | > 4 MB |
 
+**Measured on the Redmi** (`T-026`, `just bench-android`, `dsp/benches/baseline-redmi.json`): frame cost is
+within budget on its slowest core, and **CPU is not**: 13.4 % of an A55 on a single note, 15.9 % with two
+strings ringing (about 10 % lower on one cooler pass), before `Front` and everything above `dsp`. `T-036` owes a decision.
+
 **Latency ledger.** Plucked string to moving needle, worst case, stage by stage, in ms at 48 kHz
 (44.1 kHz is within 0.4 ms). The constants live in `diapason_dsp::range` (`adr/0028`). Two tests
 bind this table:
@@ -312,7 +316,8 @@ defences, which work as one, over the selected range's frames:
   withheld and must repeat, but the needle holds nothing; otherwise the octave guard has it. With
   no note locked, a reading sounding neither its fundamental nor its octave (below 40 Hz: no
   octave, but 3f) is two strings struck together (`chain::Analysis::struck`): withheld, shown as
-  nothing, while the selector moves as it did. Fifths from silence and ranges fixed by hand are
+  nothing, while the selector moves as it did. On a real fourth through a phone this does not yet
+  hold: it shows a note neither string plays (`T-026`, `T-023`). Fifths from silence and ranges fixed by hand are
   left alone. Until the onset, past the filters, fills the tail, nothing is rejected
   (`Analysis::undecided`).
 
