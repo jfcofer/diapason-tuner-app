@@ -13,6 +13,8 @@ identically — that is the whole reason they live here instead of inline in a w
 | `check-android-release.sh` | Assert targetSdk 36, verify 16 KB page alignment on every shipped `.so`, that the engine links AAudio and no C++ runtime, and the size budgets |
 | `goldens.sh` | Run goldens; refuses to update them until M3 decides how (`docs/adr/0016`) |
 | `bench-compare.sh` | Compare criterion output against `rust/crates/dsp/benches/baseline.json`; fail on >10 % regression |
+| `bench-android.sh` | Run `dsp`'s benches on an attached device, on all cores and each CPU cluster, with thermal status logged, and judge `AUDIO_ENGINE.md` §1 on the slowest cluster |
+| `capture-android.sh` | Record microphone takes through `AAudioBackend` on an attached device and pull them outside the repo, one at a time or as `T-026`'s list |
 | `session-start.sh` | Print the reading order, branches, open PRs, open tasks, attached devices and `doctor`, for the agent to reconcile with STATE.md |
 | `branch-state.sh` | Sourced by the two session scripts: a branch's commits not in main, and whether it was never pushed |
 | `session-end.sh` | Verify STATE.md, the active task file and a journal entry were all updated this session |
