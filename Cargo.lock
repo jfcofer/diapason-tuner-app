@@ -380,8 +380,10 @@ name = "diapason_audio_io"
 version = "0.1.0"
 dependencies = [
  "assert_no_alloc",
+ "hound",
  "libc",
  "ndk-sys",
+ "rtrb",
  "thiserror",
 ]
 

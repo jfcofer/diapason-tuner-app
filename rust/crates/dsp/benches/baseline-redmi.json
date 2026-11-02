@@ -1,0 +1,68 @@
+{
+  "device": "23117RA68G",
+  "soc": "MT6789",
+  "android": "16",
+  "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+  "date": "2026-11-01",
+  "unit": "ns (median of runs)",
+  "runs": 3,
+  "verdict_set": "cluster-2000000",
+  "vitals": [
+    "all run 1: Thermal Status: 0 skin=39.444 mWakefulness=Awake  -> Thermal Status: 0 skin=41.47 mWakefulness=Awake ",
+    "all run 2: Thermal Status: 0 skin=41.411 mWakefulness=Awake  -> Thermal Status: 0 skin=41.0 mWakefulness=Awake ",
+    "all run 3: Thermal Status: 0 skin=41.0 mWakefulness=Awake  -> Thermal Status: 0 skin=41.0 mWakefulness=Awake ",
+    "cluster-2000000 run 1: Thermal Status: 0 skin=41.0 mWakefulness=Awake  -> Thermal Status: 0 skin=40.294 mWakefulness=Awake ",
+    "cluster-2000000 run 2: Thermal Status: 0 skin=40.294 mWakefulness=Awake  -> Thermal Status: 0 skin=40.117 mWakefulness=Awake ",
+    "cluster-2000000 run 3: Thermal Status: 0 skin=40.117 mWakefulness=Awake  -> Thermal Status: 0 skin=40.176 mWakefulness=Awake ",
+    "cluster-2200000 run 1: Thermal Status: 0 skin=40.176 mWakefulness=Awake  -> Thermal Status: 0 skin=41.235 mWakefulness=Awake ",
+    "cluster-2200000 run 2: Thermal Status: 0 skin=41.176 mWakefulness=Awake  -> Thermal Status: 0 skin=41.117 mWakefulness=Awake ",
+    "cluster-2200000 run 3: Thermal Status: 0 skin=41.058 mWakefulness=Awake  -> Thermal Status: 0 skin=41.411 mWakefulness=Awake "
+  ],
+  "benches": {
+    "all": {
+      "chain/analysis": 434528.7708333333,
+      "chain/band_limit": 18564.7320087896,
+      "chain/chord": 572333.0125,
+      "chain/decimate": 17833.29031301386,
+      "chain/frame/high": 34395.04720496894,
+      "chain/frame/low": 72095.3168997669,
+      "chain/frame/mid": 15555.308160106148,
+      "chain/octave": 108.75612321678108,
+      "chain/smooth": 146.53226242702374,
+      "chain/strum": 446223.56926982594,
+      "nsdf/2048": 76462.8191236413,
+      "nsdf/4096": 184024.4091880342,
+      "nsdf/8192": 410946.27777777775
+    },
+    "cluster-2000000": {
+      "chain/analysis": 1337768.1148018648,
+      "chain/band_limit": 81726.79042145594,
+      "chain/chord": 1593751.0388540032,
+      "chain/decimate": 81341.7154789272,
+      "chain/frame/high": 105942.62387069452,
+      "chain/frame/low": 234857.02037264538,
+      "chain/frame/mid": 48137.722866419295,
+      "chain/octave": 369.1017318924919,
+      "chain/smooth": 464.4579388560158,
+      "chain/strum": 1352768.1943084456,
+      "nsdf/2048": 247307.43434959347,
+      "nsdf/4096": 599228.6988095238,
+      "nsdf/8192": 1423756.3230769231
+    },
+    "cluster-2200000": {
+      "chain/analysis": 435405.9826388889,
+      "chain/band_limit": 18578.773327170136,
+      "chain/chord": 576789.9896076352,
+      "chain/decimate": 17821.624936868688,
+      "chain/frame/high": 34392.73664109122,
+      "chain/frame/low": 71829.45883838384,
+      "chain/frame/mid": 15582.003164091244,
+      "chain/octave": 108.4285797767717,
+      "chain/smooth": 146.55896163402707,
+      "chain/strum": 444685.30038759694,
+      "nsdf/2048": 77162.14861751153,
+      "nsdf/4096": 194045.46167523798,
+      "nsdf/8192": 407841.1703703704
+    }
+  }
+}

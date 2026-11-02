@@ -16,6 +16,11 @@ thiserror.workspace = true
 # release builds (AUDIO_ENGINE.md §7).
 assert_no_alloc.workspace = true
 
+[dev-dependencies]
+# Only `examples/capture.rs` (T-026): a dev-only recorder, never linked into an app.
+hound.workspace = true
+rtrb.workspace = true
+
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-sys.workspace = true
 libc.workspace = true

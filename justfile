@@ -172,6 +172,22 @@ run platform="android" flavor="dev" *flags="":
         --flavor {{flavor}} --target lib/main_{{flavor}}.dart \
         --dart-define-from-file=flavors/{{flavor}}.json {{flags}}
 
+# ── Device recordings ─────────────────────────────────────────────────────────
+
+# One take through the tuner's stream on an attached device, pulled outside the repo. Fails on a long
+# run of exact zeros or on audio the stream reports lost (T-026). Keeps every take: a repeated name
+# gets a suffix.
+capture name seconds="10":
+    @tools/capture-android.sh take "{{name}}" "{{seconds}}"
+
+# T-026's whole list, one take at a time, with a redo after each. Run it in a terminal of your own.
+capture-session:
+    @tools/capture-android.sh session
+
+# A WAV through the shipped chain, frame by frame. home: low, mid or high. expected: a MIDI note.
+replay file home="mid" *expected:
+    @cargo run --quiet -p diapason_dsp --release --example replay -- "{{file}}" {{home}} {{expected}}
+
 # ── Performance ───────────────────────────────────────────────────────────────
 
 bench group="":
@@ -182,6 +198,11 @@ bench group="":
 # only those runs' results.
 bench-baseline runs="5":
     @tools/bench-compare.sh --save {{runs}}
+
+# dsp's benches on an attached Android device, on all cores and each cluster, judged against
+# AUDIO_ENGINE §1 on the slowest. `--save` records them; `--runs N` sets the repeats.
+bench-android *args:
+    @tools/bench-android.sh {{args}}       # [T-026]
 
 size-report:
     cargo xtask size-report
